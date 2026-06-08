@@ -1,0 +1,50 @@
+# LLM-driven PR review, powered by @reviewer/cli (github:bilikaz/code-reviewer#v0.1.1),
+# a root devDependency of this workspace. Adapted from the reviewer's shipped
+# examples/review.yml for this pnpm monorepo.
+#
+# Set in Settings -> Secrets and variables -> Actions:
+#   Secret  LLM_URL    OpenAI-compatible base URL, e.g. https://llm.v84.eu:2083/v1
+#   Secret  LLM_KEY    API key (empty string allowed for a no-auth self-hosted endpoint)
+#   Var     LLM_MODEL  optional; auto-detected from /models if unset
+#   Secret  REVIEWER_GH_TOKEN  optional user PAT (Pull requests: read+write) so the
+#                              reviewer can also RESOLVE addressed threads on follow-up
+#                              pushes. Falls back to GITHUB_TOKEN (post-only) when unset.
+
+name: PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents:      read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so `git diff base...head` and rename detection work.
+          fetch-depth: 0
+
+      # Install pnpm before setup-node so its cache can resolve. Version comes
+      # from the root package.json "packageManager" field (pnpm@10.33.0).
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24      # reviewer ships prebuilt dist/, but needs Node >=24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Review this PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.REVIEWER_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          LLM_URL:      ${{ secrets.LLM_URL }}
+          LLM_KEY:      ${{ secrets.LLM_KEY }}
+          LLM_MODEL:    ${{ vars.LLM_MODEL }}
+        # @reviewer/cli is a root devDependency, so its bin resolves from the workspace root.
+        run: pnpm exec reviewer run --pr "${{ github.event.pull_request.html_url }}"

@@ -1,0 +1,99 @@
+{
+  "sidebar": {
+    "sessions": "Sessions",
+    "newSession": "New session",
+    "manage": "Manage sessions",
+    "rename": "Rename",
+    "delete": "Delete"
+  },
+  "nav": {
+    "procedures": "Procedures"
+  },
+  "procedures": {
+    "title": "Procedures",
+    "new": "New procedure",
+    "untitled": "Untitled procedure",
+    "namePlaceholder": "Procedure name",
+    "system": "System",
+    "systemHelp": "Standing instructions — how the model should behave.",
+    "systemPlaceholder": "# Role\\n\\nYou are…",
+    "user": "User",
+    "userHelp": "The task to run when this procedure is executed.",
+    "userPlaceholder": "Do the following…",
+    "run": "Run",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete this procedure?",
+    "empty": "Select or create a procedure."
+  },
+  "menu": {
+    "settings": "Settings",
+    "language": "Language",
+    "getHelp": "Get help",
+    "viewPlans": "View all plans",
+    "getApps": "Get apps and extensions",
+    "changelog": "View changelog",
+    "learnMore": "Learn more",
+    "logout": "Log out"
+  },
+  "settings": {
+    "title": "Settings",
+    "search": "Search"
+  },
+  "account": {
+    "title": "Account",
+    "subtitle": "Who you are, and how the harness connects.",
+    "connection": "Connection",
+    "offline": "Offline",
+    "offlineDesc": "Standalone — local models, nothing leaves this machine.",
+    "connected": "Connected",
+    "connectedDesc": "Link the company system — shared knowledge & sync.",
+    "soon": "soon",
+    "avatar": "Avatar",
+    "username": "Username",
+    "usernamePlaceholder": "Shown in the sidebar"
+  },
+  "provider": {
+    "title": "Provider",
+    "subtitle": "The model endpoint the chat and agents call.",
+    "provider": "Provider",
+    "baseUrl": "Base URL",
+    "model": "Model",
+    "detect": "Detect",
+    "found": "Found {{count}} model.",
+    "found_other": "Found {{count}} models.",
+    "failed": "Failed: {{error}}",
+    "contextWindow": "Context window: {{tokens}} tokens. Max output below is the per-response cap.",
+    "reasoning": "Reasoning effort",
+    "off": "Off",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "thinkingBudget": "Thinking budget",
+    "noBudget": "no cap (tokens)",
+    "maxOutput": "Max output tokens",
+    "contextReserve": "System reserve",
+    "providerDefault": "provider default",
+    "apiKey": "API key",
+    "apiKeyPlaceholder": "leave blank if none"
+  },
+  "session": {
+    "placeholder": "Write a message…",
+    "attach": "Attach image",
+    "disclaimer": "Agents can make mistakes. Review their output.",
+    "selectModel": "Select model",
+    "contextFull": "Context full — {{used}} / {{total}} tokens used. Start a new session to continue."
+  },
+  "progress": {
+    "progress": "Progress",
+    "workingFolder": "Working folder",
+    "context": "Context",
+    "connectors": "Connectors",
+    "contextWindow": "Context window",
+    "used": "{{used}} / {{total}} used",
+    "left": "{{tokens}} left",
+    "full": "full",
+    "noModel": "{{used}} used — detect a model to see the window size."
+  }
+}

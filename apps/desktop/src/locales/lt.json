@@ -1,0 +1,99 @@
+{
+  "sidebar": {
+    "sessions": "Sesijos",
+    "newSession": "Nauja sesija",
+    "manage": "Tvarkyti sesijas",
+    "rename": "Pervadinti",
+    "delete": "Ištrinti"
+  },
+  "nav": {
+    "procedures": "Procedūros"
+  },
+  "procedures": {
+    "title": "Procedūros",
+    "new": "Nauja procedūra",
+    "untitled": "Procedūra be pavadinimo",
+    "namePlaceholder": "Procedūros pavadinimas",
+    "system": "Sistema",
+    "systemHelp": "Nuolatinės instrukcijos — kaip modelis turi elgtis.",
+    "systemPlaceholder": "# Vaidmuo\\n\\nTu esi…",
+    "user": "Vartotojas",
+    "userHelp": "Užduotis, vykdoma paleidus šią procedūrą.",
+    "userPlaceholder": "Atlik šiuos veiksmus…",
+    "run": "Paleisti",
+    "edit": "Redaguoti",
+    "delete": "Ištrinti",
+    "cancel": "Atšaukti",
+    "confirmDelete": "Ištrinti šią procedūrą?",
+    "empty": "Pasirinkite arba sukurkite procedūrą."
+  },
+  "menu": {
+    "settings": "Nustatymai",
+    "language": "Kalba",
+    "getHelp": "Pagalba",
+    "viewPlans": "Visi planai",
+    "getApps": "Programos ir plėtiniai",
+    "changelog": "Pakeitimų žurnalas",
+    "learnMore": "Sužinoti daugiau",
+    "logout": "Atsijungti"
+  },
+  "settings": {
+    "title": "Nustatymai",
+    "search": "Ieškoti"
+  },
+  "account": {
+    "title": "Paskyra",
+    "subtitle": "Kas tu esi ir kaip jungiasi „Harness“.",
+    "connection": "Ryšys",
+    "offline": "Atsijungta",
+    "offlineDesc": "Savarankiškai — vietiniai modeliai, niekas neišeina iš šio kompiuterio.",
+    "connected": "Prisijungta",
+    "connectedDesc": "Prijungti įmonės sistemą — bendros žinios ir sinchronizacija.",
+    "soon": "netrukus",
+    "avatar": "Avataras",
+    "username": "Vartotojo vardas",
+    "usernamePlaceholder": "Rodomas šoninėje juostoje"
+  },
+  "provider": {
+    "title": "Tiekėjas",
+    "subtitle": "Modelio adresas, kurį iškviečia pokalbis ir agentai.",
+    "provider": "Tiekėjas",
+    "baseUrl": "Bazinis URL",
+    "model": "Modelis",
+    "detect": "Aptikti",
+    "found": "Rasta {{count}} modelis.",
+    "found_other": "Rasta {{count}} modelių.",
+    "failed": "Nepavyko: {{error}}",
+    "contextWindow": "Konteksto langas: {{tokens}} žetonų. Maks. išvestis žemiau yra vieno atsakymo riba.",
+    "reasoning": "Mąstymo intensyvumas",
+    "off": "Išjungta",
+    "low": "Žemas",
+    "medium": "Vidutinis",
+    "high": "Aukštas",
+    "thinkingBudget": "Mąstymo biudžetas",
+    "noBudget": "be ribos (žetonai)",
+    "maxOutput": "Maks. išvesties žetonų",
+    "contextReserve": "Sistemos rezervas",
+    "providerDefault": "tiekėjo numatytasis",
+    "apiKey": "API raktas",
+    "apiKeyPlaceholder": "palikite tuščią, jei nėra"
+  },
+  "session": {
+    "placeholder": "Rašykite žinutę…",
+    "attach": "Pridėti paveikslėlį",
+    "disclaimer": "Agentai gali klysti. Peržiūrėkite jų rezultatus.",
+    "selectModel": "Pasirinkti modelį",
+    "contextFull": "Kontekstas pilnas — sunaudota {{used}} / {{total}} žetonų. Pradėkite naują sesiją."
+  },
+  "progress": {
+    "progress": "Eiga",
+    "workingFolder": "Darbo aplankas",
+    "context": "Kontekstas",
+    "connectors": "Jungtys",
+    "contextWindow": "Konteksto langas",
+    "used": "Sunaudota {{used}} / {{total}}",
+    "left": "Liko {{tokens}}",
+    "full": "pilnas",
+    "noModel": "Sunaudota {{used}} — aptikite modelį, kad matytumėte lango dydį."
+  }
+}

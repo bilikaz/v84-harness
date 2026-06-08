@@ -1,0 +1,22 @@
+{
+  "name": "v84-harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "dev:desktop": "pnpm --filter @v84-harness/desktop dev",
+    "dev:desktop:electron": "pnpm --filter @v84-harness/desktop dev:electron",
+    "build:desktop": "pnpm --filter @v84-harness/desktop build",
+    "build:desktop:electron": "pnpm --filter @v84-harness/desktop build:electron"
+  },
+  "devDependencies": {
+    "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0"
+  }
+}
