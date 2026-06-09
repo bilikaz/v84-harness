@@ -36,6 +36,7 @@ export interface Message {
   text: string; // raw content — the answer, or a tool result (file/page content)
   thinking?: string; // reasoning stream (assistant); not resubmitted
   images?: ImageRef[]; // image attachments (user) — sent as multimodal parts
+  video?: ImageRef[]; // generated video clips (tool output) — shown in the tool card, not sent to the model
   files?: FileAttachment[]; // non-image attachments (user) — folded into content
   toolCalls?: ToolCall[]; // assistant: tools the model asked to call
   toolCallId?: string; // tool: which call this result answers

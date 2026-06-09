@@ -23,9 +23,9 @@ import { healLoop, type HealMessage } from "../heal.ts";
 // slider); quality scales with sampling steps. Starting values — tune as needed.
 type Quality = "low" | "good" | "super";
 const QUALITY: Record<Quality, { steps: number; guidance: number; flowShift: number }> = {
-  low: { steps: 60, guidance: 6, flowShift: 10 }, // fast drafts
-  good: { steps: 120, guidance: 6, flowShift: 10 }, // default
-  super: { steps: 200, guidance: 6, flowShift: 10 }, // final / hero images
+  low: { steps: 40, guidance: 6, flowShift: 10 }, // fast drafts
+  good: { steps: 60, guidance: 6, flowShift: 10 }, // default
+  super: { steps: 80, guidance: 6, flowShift: 10 }, // final / hero images
 };
 
 // Legal Cosmos aspect ratios → [w, h]. The model picks one; we derive height
@@ -50,7 +50,13 @@ export const generateImageTool: Tool = {
         type: "object",
         additionalProperties: false,
         properties: {
-          prompt: { type: "string", description: "The prompt to generate from." },
+          prompt: {
+            type: "string",
+            description:
+              "A DETAILED description of the image — several sentences, not one. Cover the subject(s) and their " +
+              "appearance, the setting/background, composition, lighting, colors, mood, and style. The more concrete " +
+              "detail you give, the better the result.",
+          },
           width: {
             type: "integer",
             description: "Image width in pixels, e.g. 1024. Omit to use the model's maximum. Automatically capped to the max.",

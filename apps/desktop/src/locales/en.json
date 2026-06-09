@@ -117,6 +117,7 @@
     "placeholder": "Write a message…",
     "attach": "Attach image",
     "noImageSupport": "This model doesn't accept images — enable image input in Settings → Provider to attach them.",
+    "noVideoSupport": "This model doesn't accept video — enable video input in Settings → Provider to attach it.",
     "disclaimer": "Agents can make mistakes. Review their output.",
     "selectModel": "Select model",
     "contextFull": "Context full — {{used}} / {{total}} tokens used. Start a new session to continue."

@@ -27,6 +27,9 @@ export interface HarnessApi {
     // Runs in main (no CORS) — lists models at the endpoint, used as a connection test.
     models(cfg: MediaProviderConfig): Promise<MediaModelsResult>;
   };
+  // Save a data-URL image to disk via a native Save dialog. Resolves to the
+  // written path, or null if cancelled.
+  saveImage(dataUrl: string): Promise<string | null>;
 }
 
 // IPC channel names — one source of truth for main + preload.
@@ -35,4 +38,5 @@ export const IPC = {
   toolsSchemas: "harness:tools:schemas",
   toolsExec: "harness:tools:exec",
   mediaModels: "harness:media:models",
+  saveImage: "harness:saveImage",
 } as const;

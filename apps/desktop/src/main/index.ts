@@ -40,6 +40,11 @@ function createWindow(): void {
       preload: path.join(dirname, "../preload/index.mjs"),
       sandbox: false,
       contextIsolation: true,
+      // Keep the renderer running at full speed when the window is hidden,
+      // occluded, or inactive. Chromium throttles background renderers by
+      // default — timers get clamped — which stalls long-running work like the
+      // video-generation poll loop until the window is focused again.
+      backgroundThrottling: false,
     },
   });
 

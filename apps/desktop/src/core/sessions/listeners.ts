@@ -25,7 +25,7 @@ import {
 // is what makes every streamed token / message appear twice in dev.
 const offs: Array<() => void> = [
   // Transcript — build the message log from the stream.
-  bus.on("turn:start", (e) => pushTurn(e.sessionId, e.text, e.images, e.files)),
+  bus.on("turn:start", (e) => pushTurn(e.sessionId, e.text, e.images, e.files, e.video)),
   bus.on("text", (e) => appendToLast(e.sessionId, e.delta, "text")),
   bus.on("thinking", (e) => appendToLast(e.sessionId, e.delta, "thinking")),
   bus.on("turn:error", (e) => appendToLast(e.sessionId, `⚠️ ${e.message}`, "text")),
@@ -33,7 +33,7 @@ const offs: Array<() => void> = [
   // Tool loop — attach the model's tool calls, append each result, then open a
   // fresh assistant message for the next model turn.
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
-  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images)),
+  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.video)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
   bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),
   bus.on("imageFeedback", (e) => pushImageFeedback(e.sessionId, e.images)),

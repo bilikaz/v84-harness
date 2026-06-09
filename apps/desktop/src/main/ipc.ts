@@ -3,6 +3,8 @@
 // the renderer/model. The `electron` module is passed in (index.ts already
 // loaded it via createRequire) to avoid a second require.
 
+import { writeFile } from "node:fs/promises";
+
 import { IPC, type ToolCallRequest, type ToolCtx, type MediaProviderConfig, type MediaModelsResult } from "../bridge.ts";
 import { execTool, TOOL_SCHEMAS } from "../core/tools/index.ts";
 
@@ -43,5 +45,21 @@ export function registerIpc(electron: Electron): void {
     } catch (e) {
       return { ok: false, models: [], error: (e as Error).message };
     }
+  });
+
+  // Save a data-URL image to disk via a native Save dialog. Returns the path
+  // written, or null if the user cancelled / the input wasn't a data URL.
+  ipcMain.handle(IPC.saveImage, async (_e: unknown, dataUrl: string): Promise<string | null> => {
+    const m = /^data:(image\/[\w.+-]+);base64,(.*)$/s.exec(dataUrl);
+    if (!m) return null;
+    const [, mime, b64] = m;
+    const ext = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : (mime.split("/")[1] || "png");
+    const res = await dialog.showSaveDialog({
+      defaultPath: `generated.${ext}`,
+      filters: [{ name: "Image", extensions: [ext] }],
+    });
+    if (res.canceled || !res.filePath) return null;
+    await writeFile(res.filePath, Buffer.from(b64, "base64"));
+    return res.filePath;
   });
 }
