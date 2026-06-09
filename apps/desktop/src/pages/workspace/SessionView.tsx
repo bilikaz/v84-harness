@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, ChevronDown, FileText, PanelRight, Pencil, Plus, RefreshCw, Sparkles, Square, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Download, FileText, PanelRight, Pencil, Plus, RefreshCw, Sparkles, Square, Terminal, Trash2, Wrench, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -15,6 +15,7 @@ import {
   useCompacting,
   useStreaming,
 } from "../../core/sessions/index.ts";
+import { harness, isElectron } from "../../lib/harness.ts";
 import { detectModels, useProvider } from "../../lib/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { navigate } from "../../lib/router.ts";
@@ -140,29 +141,44 @@ export function SessionView() {
     }
   }
 
+  // Turn a FileList (picked, dropped, or pasted) into composer attachments,
+  // dropping media the model can't accept. Images default on; video requires
+  // the model to explicitly declare video input.
+  async function addAttachments(list: FileList) {
+    const { images: imgs, video: vids, files: fs } = await readAttachments(list);
+    if (imgs.length) {
+      if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
+      else {
+        setImages((prev) => [...prev, ...imgs]);
+        setAttachNote("");
+      }
+    }
+    if (vids.length) {
+      if (!provider.input?.video) setAttachNote(t("session.noVideoSupport"));
+      else {
+        setVideos((prev) => [...prev, ...vids]);
+        setAttachNote("");
+      }
+    }
+    if (fs.length) setFiles((prev) => [...prev, ...fs]);
+  }
+
   async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const el = e.target;
-    if (el.files?.length) {
-      const { images: imgs, video: vids, files: fs } = await readAttachments(el.files);
-      // Guardrails: drop media the model can't accept. Images default on; video
-      // requires the model to explicitly declare video input.
-      if (imgs.length) {
-        if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
-        else {
-          setImages((prev) => [...prev, ...imgs]);
-          setAttachNote("");
-        }
-      }
-      if (vids.length) {
-        if (!provider.input?.video) setAttachNote(t("session.noVideoSupport"));
-        else {
-          setVideos((prev) => [...prev, ...vids]);
-          setAttachNote("");
-        }
-      }
-      if (fs.length) setFiles((prev) => [...prev, ...fs]);
-    }
+    if (el.files?.length) await addAttachments(el.files);
     el.value = ""; // allow re-picking the same file
+  }
+
+  // Paste an image/video straight from the clipboard (e.g. a screenshot) as an
+  // attachment. Only intercept when the clipboard actually carries media —
+  // otherwise let the normal text paste through.
+  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const list = e.clipboardData?.files;
+    if (!list?.length) return;
+    const hasMedia = Array.from(list).some((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    if (!hasMedia) return;
+    e.preventDefault();
+    void addAttachments(list);
   }
 
   function submit() {
@@ -351,6 +367,7 @@ export function SessionView() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             placeholder={t("session.placeholder")}
             style={{ maxHeight: "6rem" }}
             className="w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
@@ -443,20 +460,14 @@ function Message({
           {images && images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {images.map((im, i) => (
-                <img
-                  key={i}
-                  src={im.url}
-                  alt={im.name ?? ""}
-                  onClick={() => openLightbox(im.url)}
-                  className="max-h-48 cursor-zoom-in rounded-xl object-cover"
-                />
+                <SavableImage key={i} src={im.url} name={im.name} className="max-h-48 cursor-zoom-in rounded-xl object-cover" />
               ))}
             </div>
           )}
           {video && video.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {video.map((v, i) => (
-                <video key={i} src={v.url} controls className="max-h-48 rounded-xl" />
+                <SavableVideo key={i} src={v.url} name={v.name} className="max-h-48 rounded-xl" />
               ))}
             </div>
           )}
@@ -499,6 +510,66 @@ function Message({
 
 // A tool call rendered as a card: the tool name on top, then IN (the call's
 // arguments) and OUT (the result, once it arrives). Collapsed by default.
+// A thumbnail with a Save button overlaid in the top corner. Clicking the
+// image still opens the lightbox; the button saves directly (native dialog in
+// Electron, browser download on the web) without the extra popup hop.
+function SavableImage({ src, name, className }: { src: string; name?: string; className?: string }) {
+  async function save(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (isElectron()) {
+      await harness!.saveImage(src);
+    } else {
+      const a = document.createElement("a");
+      a.href = src;
+      a.download = name ?? "generated.png";
+      a.click();
+    }
+  }
+  return (
+    <div className="group relative inline-block">
+      <img src={src} alt={name ?? ""} onClick={() => openLightbox(src)} className={className} />
+      <button
+        type="button"
+        onClick={save}
+        title="Save image"
+        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+      >
+        <Download size={16} />
+      </button>
+    </div>
+  );
+}
+
+// A generated-video player with a Save button overlaid in the top corner —
+// kept out of the way of the native controls bar along the bottom. Saves via
+// the native dialog in Electron, a browser download on the web.
+function SavableVideo({ src, name, className }: { src: string; name?: string; className?: string }) {
+  async function save(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (isElectron()) {
+      await harness!.saveVideo(src);
+    } else {
+      const a = document.createElement("a");
+      a.href = src;
+      a.download = name ?? "generated.mp4";
+      a.click();
+    }
+  }
+  return (
+    <div className="group relative inline-block">
+      <video src={src} controls className={className} />
+      <button
+        type="button"
+        onClick={save}
+        title="Save video"
+        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+      >
+        <Download size={16} />
+      </button>
+    </div>
+  );
+}
+
 function ToolCard({ call, output, images, video }: { call: ToolCall; output?: string; images?: ImageRef[]; video?: ImageRef[] }) {
   const [open, setOpen] = useState(false);
   let args: Record<string, unknown> = {};
@@ -527,20 +598,14 @@ function ToolCard({ call, output, images, video }: { call: ToolCall; output?: st
       {images && images.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
           {images.map((im, i) => (
-            <img
-              key={i}
-              src={im.url}
-              alt={im.name ?? ""}
-              onClick={() => openLightbox(im.url)}
-              className="max-h-64 cursor-zoom-in rounded-lg object-cover"
-            />
+            <SavableImage key={i} src={im.url} name={im.name} className="max-h-64 cursor-zoom-in rounded-lg object-cover" />
           ))}
         </div>
       )}
       {video && video.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
           {video.map((v, i) => (
-            <video key={i} src={v.url} controls className="max-h-72 rounded-lg" />
+            <SavableVideo key={i} src={v.url} name={v.name} className="max-h-72 rounded-lg" />
           ))}
         </div>
       )}

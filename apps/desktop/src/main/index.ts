@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { registerIpc } from "./ipc.ts";
+import { registerContextMenu } from "./contextMenu.ts";
 
 const electron = createRequire(import.meta.url)("electron") as typeof import("electron");
 const { app, BrowserWindow, screen } = electron;
@@ -48,6 +49,7 @@ function createWindow(): void {
     },
   });
 
+  registerContextMenu(electron, win);
   win.once("ready-to-show", () => win.show());
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(ZOOM));
 

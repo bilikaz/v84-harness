@@ -234,7 +234,7 @@ export async function send(
 export function runAgent(
   agent: { name: string; system: string; user: string },
   cfg: ModelConfig,
-  opts: { images?: ImageRef[]; files?: FileAttachment[]; validate?: Validate } = {},
+  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; validate?: Validate } = {},
 ): void {
   createSession({ title: agent.name, system: agent.system });
   void send(agent.user, cfg, { ...opts, autoName: false });

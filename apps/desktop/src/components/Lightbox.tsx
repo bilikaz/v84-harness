@@ -5,7 +5,7 @@ import { closeLightbox, useLightbox } from "../lib/ui.ts";
 import { harness, isElectron } from "../lib/harness.ts";
 
 // Full-screen image viewer. Opened via openLightbox(url) from any thumbnail;
-// dismissed by clicking the backdrop, the close button, or Escape.
+// dismissed by clicking the backdrop, the image, the close button, or Escape.
 export function Lightbox() {
   const url = useLightbox();
 
@@ -29,7 +29,8 @@ export function Lightbox() {
     } else {
       const a = document.createElement("a");
       a.href = url;
-      a.download = "generated.png";
+      const ext = /^data:image\/([\w.+-]+)/.exec(url)?.[1];
+      a.download = `generated.${ext === "jpeg" ? "jpg" : (ext ?? "png")}`;
       a.click();
     }
   }
@@ -57,12 +58,13 @@ export function Lightbox() {
           <X size={20} />
         </button>
       </div>
-      {/* Stop propagation so clicking the image itself doesn't dismiss. */}
+      {/* Clicking the image dismisses too (back to its original size on the
+          page) — same as the backdrop. */}
       <img
         src={url}
         alt=""
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-full max-w-full rounded-lg object-contain shadow-2xl"
+        onClick={closeLightbox}
+        className="max-h-full max-w-full cursor-zoom-out rounded-lg object-contain shadow-2xl"
       />
     </div>
   );

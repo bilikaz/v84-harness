@@ -30,6 +30,9 @@ export interface HarnessApi {
   // Save a data-URL image to disk via a native Save dialog. Resolves to the
   // written path, or null if cancelled.
   saveImage(dataUrl: string): Promise<string | null>;
+  // Save a data-URL video to disk via a native Save dialog. Resolves to the
+  // written path, or null if cancelled.
+  saveVideo(dataUrl: string): Promise<string | null>;
 }
 
 // IPC channel names — one source of truth for main + preload.
@@ -39,4 +42,5 @@ export const IPC = {
   toolsExec: "harness:tools:exec",
   mediaModels: "harness:media:models",
   saveImage: "harness:saveImage",
+  saveVideo: "harness:saveVideo",
 } as const;
