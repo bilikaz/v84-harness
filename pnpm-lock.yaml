@@ -8,9 +8,9 @@ importers:
 
   .:
     devDependencies:
-      '@reviewer/cli':
-        specifier: github:bilikaz/code-reviewer#v0.1.1
-        version: https://codeload.github.com/bilikaz/code-reviewer/tar.gz/ef8338f329d79cacdd6ee9a1f28986e506114f97
+      '@bilikaz/code-reviewer':
+        specifier: ^0.1.2
+        version: 0.1.2
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.3
@@ -75,12 +75,6 @@ importers:
       vite:
         specifier: ^5.4.10
         version: 5.4.21(@types/node@24.12.3)(lightningcss@1.32.0)
-
-  packages/core:
-    dependencies:
-      '@reviewer/cli':
-        specifier: github:bilikaz/code-reviewer#v0.1.1
-        version: https://codeload.github.com/bilikaz/code-reviewer/tar.gz/ef8338f329d79cacdd6ee9a1f28986e506114f97
 
 packages:
 
@@ -176,6 +170,11 @@ packages:
   '@babel/types@7.29.0':
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
+
+  '@bilikaz/code-reviewer@0.1.2':
+    resolution: {integrity: sha512-NYZ6YJrN4uvOi/nxPVe9nGS9CciV3sXZY32YM6Ks2X9CJkAoXedRuDUVjQfynwpGkp6W9i61x1jRzx/YUGXcUA==}
+    engines: {node: '>=24'}
+    hasBin: true
 
   '@electron/get@5.0.0':
     resolution: {integrity: sha512-pjoBpru1KdEtcExBnuHAP1cAc/5faoedw0hzJkL3o4/IJp7HNF1+fbrdxT3gMYRX2oJfvnA/WXeCTVQpYYxyJA==}
@@ -548,12 +547,6 @@ packages:
 
   '@octokit/types@14.1.0':
     resolution: {integrity: sha512-1y6DgTy8Jomcpu33N+p5w58l6xyt55Ar2I91RPiIA0xCJBXyUAhXCcmZaDWSANiha7R9a6qJJ2CRomGPZ6f46g==}
-
-  '@reviewer/cli@https://codeload.github.com/bilikaz/code-reviewer/tar.gz/ef8338f329d79cacdd6ee9a1f28986e506114f97':
-    resolution: {tarball: https://codeload.github.com/bilikaz/code-reviewer/tar.gz/ef8338f329d79cacdd6ee9a1f28986e506114f97}
-    version: 0.1.1
-    engines: {node: '>=24'}
-    hasBin: true
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
@@ -1683,6 +1676,12 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
+  '@bilikaz/code-reviewer@0.1.2':
+    dependencies:
+      '@octokit/rest': 21.1.1
+      ajv: 8.20.0
+      yaml: 2.8.4
+
   '@electron/get@5.0.0':
     dependencies:
       debug: 4.4.3
@@ -1929,12 +1928,6 @@ snapshots:
   '@octokit/types@14.1.0':
     dependencies:
       '@octokit/openapi-types': 25.1.0
-
-  '@reviewer/cli@https://codeload.github.com/bilikaz/code-reviewer/tar.gz/ef8338f329d79cacdd6ee9a1f28986e506114f97':
-    dependencies:
-      '@octokit/rest': 21.1.1
-      ajv: 8.20.0
-      yaml: 2.8.4
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 

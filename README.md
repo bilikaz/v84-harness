@@ -42,7 +42,7 @@ vLLM endpoint, e.g. `https://llm.v84.eu:2083/v1`).
 - **Providers** — OpenAI-compatible (incl. vLLM thinking: `enable_thinking` +
   `thinking_token_budget`), Anthropic, Gemini. Multimodal images + file
   attachments in the composer.
-- **Reviewer gate (CI)** — `@reviewer/cli` (pinned `v0.1.1`) runs on PRs via
+- **Reviewer gate (CI)** — `@bilikaz/code-reviewer` (npm `^0.1.2`) runs on PRs via
   `.github/workflows/review.yml`.
 
 ## Architecture

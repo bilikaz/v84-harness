@@ -15,7 +15,7 @@
     "build:desktop:electron": "pnpm --filter @v84-harness/desktop build:electron"
   },
   "devDependencies": {
-    "@reviewer/cli": "github:bilikaz/code-reviewer#v0.1.1",
+    "@bilikaz/code-reviewer": "^0.1.2",
     "@types/node": "^24.0.0",
     "typescript": "^5.7.0"
   }
