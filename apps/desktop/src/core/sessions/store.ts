@@ -2,6 +2,7 @@ import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "../../lib/types.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
+import { idbGet, idbSet } from "../../lib/idb.ts";
 
 // Session store — the single source of truth for multi-session state (sidebar
 // list, chat view, right-panel progress). Plain external store; React binds via
@@ -89,12 +90,39 @@ export function notify(): void {
   for (const l of listeners) l();
 }
 export function persist(): void {
+  const data = JSON.stringify({ sessions, activeId });
+  // localStorage is a fast cache for the instant first paint, but it's capped at
+  // ~5 MB — image data-URLs may not fit, and that's fine.
   try {
-    localStorage.setItem(KEY, JSON.stringify({ sessions, activeId }));
+    localStorage.setItem(KEY, data);
   } catch {
-    /* ignore quota / private-mode errors */
+    /* quota / private mode — IndexedDB below is the source of truth */
   }
+  // IndexedDB holds the FULL state (large quota), so images survive a reload.
+  void idbSet(KEY, data).catch(() => {});
 }
+
+// Hydrate from IndexedDB — the authoritative store. localStorage (loaded above)
+// gives an instant first paint but may be missing images that didn't fit; IDB
+// replaces it once read. On the first run after this upgrade, IDB is empty, so
+// we seed it from whatever localStorage had (migration).
+void (async () => {
+  try {
+    const raw = await idbGet(KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { sessions: Partial<Session>[]; activeId: string };
+      if (parsed.sessions?.length) {
+        sessions = parsed.sessions.map(normalize);
+        activeId = sessions.some((s) => s.id === parsed.activeId) ? parsed.activeId : sessions[0].id;
+        notify();
+        return;
+      }
+    }
+    await idbSet(KEY, JSON.stringify({ sessions, activeId }));
+  } catch {
+    /* IndexedDB unavailable — stay on the localStorage-loaded state */
+  }
+})();
 export function subscribe(l: () => void): () => void {
   listeners.add(l);
   return () => {
