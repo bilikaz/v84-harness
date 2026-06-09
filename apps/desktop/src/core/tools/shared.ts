@@ -19,10 +19,34 @@ export interface ToolCallRequest {
   arguments: string; // raw JSON string, as the model emitted it
 }
 
-// What a tool returns; `output` is the string fed back to the model.
+// What a tool returns; `output` is the string fed back to the model. `images`
+// (optional) are media a tool produced — surfaced in the UI and, for a vision
+// model, fed back so the agent can inspect the result (see GenerateImage).
 export interface ToolResult {
   ok: boolean;
   output: string;
+  images?: GeneratedImage[];
+}
+
+// An image a tool generated. `url` is a data: URL — it rides on the message
+// (inline display + model feedback) and persists to localStorage like any
+// attached image. No file is written.
+export interface GeneratedImage {
+  url: string;
+  mime: string;
+  name: string;
+}
+
+// The media-generation provider a workspace points at (Cosmos container, etc).
+// Threaded into the tool via ToolCtx by the renderer — main never reads the
+// renderer's settings store. One provider for now; the access path (a resolver
+// in lib/media.ts) leaves room for more later.
+export interface MediaProviderConfig {
+  baseUrl: string; // generation endpoint base, e.g. http://localhost:8000/v1
+  apiKey?: string;
+  model?: string;
+  maxSize?: string; // largest WxH the model supports — guidance to the model + the fallback size
+  models?: string[]; // detected model ids (picker cache; filled by the Detect button)
 }
 
 // Per-call context handed to every tool. `cwd` is the session's workspace root.
@@ -42,6 +66,7 @@ export interface ToolResult {
 // the gated tool.
 export interface ToolCtx {
   cwd: string;
+  media?: MediaProviderConfig; // generation endpoint for the media tools (GenerateImage)
 }
 
 // Each tool exposes its own schema and an execute method. The dispatcher in
@@ -56,14 +81,24 @@ export interface Tool {
 //   0 = disabled  (withheld from the advertised schemas)
 //   1 = enabled   (available, but each call asks for approval)
 //   2 = auto      (available, runs without a prompt)
-export type ToolName = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash";
+// Gated tools: configured per-workspace via the 0/1/2 policy + the workspace UI.
+export type GatedTool = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash";
+// The full tool vocabulary. Permissionless tools (below) extend it but aren't
+// part of the per-workspace policy.
+export type ToolName = GatedTool | "GenerateImage";
 export type ToolMode = 0 | 1 | 2;
 
-export const ALL_TOOLS: readonly ToolName[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash"];
+export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash"];
+
+// Permissionless tools: always advertised, auto-run (no approval prompt), and
+// usable without a bound workspace. They must not REQUIRE ctx.cwd — GenerateImage
+// saves to the workspace when one is present but still returns the image without
+// it. Not shown in the per-workspace tool UI and not in DEFAULT_TOOL_POLICY.
+export const PERMISSIONLESS_TOOLS: readonly ToolName[] = ["GenerateImage"];
 
 // Defaults: read + path-confined writes auto-run (confinement is the safety);
 // Bash is the only gated tool by default since a shell escapes confinement.
-export const DEFAULT_TOOL_POLICY: Record<ToolName, ToolMode> = {
+export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
   Read: 2,
   List: 2,
   Grep: 2,

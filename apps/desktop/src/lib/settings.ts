@@ -18,6 +18,7 @@ const DEFAULTS: ModelConfig = {
   reasoningEffort: "off",
   maxTokens: 30000,
   models: [],
+  input: { image: true }, // image attachments work by default; video/audio off until a model declares them
 };
 
 function read(): ModelConfig {

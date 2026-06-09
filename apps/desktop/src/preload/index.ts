@@ -8,7 +8,7 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type HarnessApi, type ToolCallRequest, type ToolCtx } from "../bridge.ts";
+import { IPC, type HarnessApi, type ToolCallRequest, type ToolCtx, type MediaProviderConfig } from "../bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
@@ -18,6 +18,9 @@ const api: HarnessApi = {
   tools: {
     schemas: () => ipcRenderer.invoke(IPC.toolsSchemas),
     exec: (call: ToolCallRequest, ctx: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
+  },
+  media: {
+    models: (cfg: MediaProviderConfig) => ipcRenderer.invoke(IPC.mediaModels, cfg),
   },
 };
 

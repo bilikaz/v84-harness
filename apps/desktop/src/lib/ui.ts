@@ -50,3 +50,23 @@ export function useRightPanel(): boolean {
     () => state.rightPanel,
   );
 }
+
+// Lightbox — the image URL currently shown enlarged, or null. Transient (not
+// persisted): clicking an image opens it; Escape / clicking the backdrop closes.
+let lightbox: string | null = null;
+export function openLightbox(url: string): void {
+  lightbox = url;
+  for (const l of listeners) l();
+}
+export function closeLightbox(): void {
+  if (lightbox === null) return;
+  lightbox = null;
+  for (const l of listeners) l();
+}
+export function useLightbox(): string | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => lightbox,
+    () => lightbox,
+  );
+}

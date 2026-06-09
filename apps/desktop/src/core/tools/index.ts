@@ -17,6 +17,9 @@ import { editTool } from "./edit.ts";
 import { createFolderTool } from "./createFolder.ts";
 import { bashTool } from "./bash.ts";
 
+// NOTE: media tools (e.g. GenerateImage) are NOT here — they're self-contained
+// renderer tools (see core/tools/renderer.ts), so they don't go through the
+// main process dispatcher. Only the fs/Bash tools that need Node live here.
 const TOOLS: Tool[] = [readTool, listTool, grepTool, writeTool, editTool, createFolderTool, bashTool];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.schema.function.name, t]));

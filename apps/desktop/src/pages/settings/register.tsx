@@ -1,8 +1,9 @@
-import { UserCircle, Plug, Wrench } from "lucide-react";
+import { UserCircle, Plug, Image, Wrench } from "lucide-react";
 
 import { register } from "../../lib/registry.ts";
 import { AccountSection } from "./AccountSection.tsx";
 import { ProviderSection } from "./ProviderSection.tsx";
+import { MediaSection } from "./MediaSection.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";
 
 register(
@@ -26,11 +27,20 @@ register(
   },
   {
     region: "settings",
+    id: "media",
+    title: "Image generation",
+    icon: Image,
+    route: "settings/media",
+    order: 2,
+    render: () => <MediaSection />,
+  },
+  {
+    region: "settings",
     id: "developer",
     title: "Developer",
     icon: Wrench,
     route: "settings/developer",
-    order: 2,
+    order: 3,
     render: () => <DeveloperSection />,
   },
 );

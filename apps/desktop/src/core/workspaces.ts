@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { DEFAULT_TOOL_POLICY, type ToolMode, type ToolName } from "./tools/shared.ts";
+import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/shared.ts";
 
 // Workspace store — a workspace is a first-class record: a folder (the agent's
 // root) + name + per-workspace settings. Sessions LINK to a workspace via
@@ -10,7 +10,7 @@ import { DEFAULT_TOOL_POLICY, type ToolMode, type ToolName } from "./tools/share
 // SQLite via the core/IPC layer later, same surface.
 const KEY = "v84-harness:workspaces";
 
-export type { ToolMode, ToolName };
+export type { GatedTool, ToolMode, ToolName };
 
 export type Isolation = "worktree" | "direct";
 
@@ -21,7 +21,7 @@ export interface Workspace {
   defaultModelId?: string; // which model new sessions here default to
   isolation: Isolation; // worktree-per-session vs. work directly in the folder
   instructions?: string; // optional per-project system prompt
-  tools: Record<ToolName, ToolMode>; // the 0/1/2 permission map
+  tools: Record<GatedTool, ToolMode>; // the 0/1/2 permission map (gated tools only)
 }
 
 // A new workspace's settings before the user tweaks them.

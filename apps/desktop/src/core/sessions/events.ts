@@ -51,15 +51,29 @@ export interface ToolCalls {
   sessionId: string;
   calls: ToolCall[];
 }
-// A tool returned → append a tool-result message answering that call.
+// A tool returned → append a tool-result message answering that call. `images`
+// are media the tool produced (e.g. GenerateImage) — shown in its tool card.
 export interface ToolResultEvt {
   sessionId: string;
   toolCallId: string;
   output: string;
+  images?: ImageRef[];
+}
+// Tool-produced images fed back as a hidden user turn so a vision agent can
+// inspect its own output.
+export interface ImageFeedback {
+  sessionId: string;
+  images: ImageRef[];
 }
 // Open a fresh assistant message for the next model turn in the loop.
 export interface AssistantOpen {
   sessionId: string;
+}
+// A validation heal fired → inject a hidden correction turn and let the model
+// retry into a fresh assistant message.
+export interface Heal {
+  sessionId: string;
+  correction: string;
 }
 
 declare module "../../lib/bus.ts" {
@@ -75,6 +89,8 @@ declare module "../../lib/bus.ts" {
     "session:tool:calls": ToolCalls;
     "session:tool:result": ToolResultEvt;
     "session:assistant:open": AssistantOpen;
+    "session:heal": Heal;
+    "session:imageFeedback": ImageFeedback;
   }
 }
 

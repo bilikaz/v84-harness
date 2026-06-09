@@ -17,45 +17,10 @@ import {
 import { detectModels, useProvider } from "../../lib/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { navigate } from "../../lib/router.ts";
-import { toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
+import { openLightbox, toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
+import { readAttachments } from "../../lib/attachments.ts";
 import { cn } from "../../lib/cn.ts";
 import type { FileAttachment, ImageRef, Role, ToolCall } from "../../lib/types.ts";
-
-const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context
-
-// Read picked files: images → data-URL attachments (multimodal), everything
-// else → text attachments folded into the message.
-function readAttachments(list: FileList): Promise<{ images: ImageRef[]; files: FileAttachment[] }> {
-  const images: ImageRef[] = [];
-  const files: FileAttachment[] = [];
-  return Promise.all(
-    Array.from(list).map(
-      (f) =>
-        new Promise<void>((resolve) => {
-          const r = new FileReader();
-          if (f.type.startsWith("image/")) {
-            r.onload = () => {
-              images.push({ url: String(r.result), mime: f.type, name: f.name });
-              resolve();
-            };
-            r.readAsDataURL(f);
-          } else {
-            r.onload = () => {
-              const full = String(r.result);
-              const text =
-                full.length > FILE_TEXT_CAP
-                  ? full.slice(0, FILE_TEXT_CAP) + `\n\n[...truncated; ${full.length - FILE_TEXT_CAP} more bytes]`
-                  : full;
-              files.push({ name: f.name, text, bytes: full.length });
-              resolve();
-            };
-            r.onerror = () => resolve();
-            r.readAsText(f);
-          }
-        }),
-    ),
-  ).then(() => ({ images, files }));
-}
 
 // The main center: active session transcript + the composer (model selector,
 // detect button, send). Reads the session + provider stores.
@@ -68,6 +33,7 @@ export function SessionView() {
   const [input, setInput] = useState("");
   const [images, setImages] = useState<ImageRef[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
+  const [attachNote, setAttachNote] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -86,7 +52,13 @@ export function SessionView() {
   // Map each tool call's id → its result text, so the assistant's tool card can
   // show the OUT next to the IN.
   const toolResults = new Map<string, string>();
-  for (const m of session.messages) if (m.role === "tool" && m.toolCallId) toolResults.set(m.toolCallId, m.text);
+  const toolImages = new Map<string, ImageRef[]>();
+  for (const m of session.messages) {
+    if (m.role === "tool" && m.toolCallId) {
+      toolResults.set(m.toolCallId, m.text);
+      if (m.images?.length) toolImages.set(m.toolCallId, m.images);
+    }
+  }
 
   // Close the title menu on outside click.
   useEffect(() => {
@@ -122,7 +94,14 @@ export function SessionView() {
     const el = e.target;
     if (el.files?.length) {
       const { images: imgs, files: fs } = await readAttachments(el.files);
-      if (imgs.length) setImages((prev) => [...prev, ...imgs]);
+      // Guardrail: drop image attachments when the model doesn't accept images.
+      if (imgs.length) {
+        if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
+        else {
+          setImages((prev) => [...prev, ...imgs]);
+          setAttachNote("");
+        }
+      }
       if (fs.length) setFiles((prev) => [...prev, ...fs]);
     }
     el.value = ""; // allow re-picking the same file
@@ -213,8 +192,9 @@ export function SessionView() {
         <div className="mx-auto max-w-3xl space-y-6">
           {session.messages.map((m, i) =>
             // Tool-result messages are folded into the assistant's tool card (by
-            // toolCallId); compaction summaries are hidden (sent to the model only).
-            m.role === "tool" || m.summary ? null : (
+            // toolCallId); compaction summaries + heal corrections are hidden
+            // (sent to the model only).
+            m.role === "tool" || m.summary || m.hidden ? null : (
               <Message
                 key={m.id}
                 role={m.role}
@@ -224,6 +204,7 @@ export function SessionView() {
                 files={m.files}
                 toolCalls={m.toolCalls}
                 results={toolResults}
+                toolImages={toolImages}
                 streaming={streaming && i === session.messages.length - 1}
               />
             ),
@@ -281,6 +262,7 @@ export function SessionView() {
               ))}
             </div>
           )}
+          {attachNote && <p className="mb-1 px-1 text-xs text-amber-600">{attachNote}</p>}
           <textarea
             rows={1}
             value={input}
@@ -342,6 +324,7 @@ function Message({
   files,
   toolCalls,
   results,
+  toolImages,
   streaming,
 }: {
   role: Role;
@@ -351,6 +334,7 @@ function Message({
   files?: FileAttachment[];
   toolCalls?: ToolCall[];
   results?: Map<string, string>;
+  toolImages?: Map<string, ImageRef[]>;
   streaming: boolean;
 }) {
   if (role === "user") {
@@ -360,7 +344,13 @@ function Message({
           {images && images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {images.map((im, i) => (
-                <img key={i} src={im.url} alt={im.name ?? ""} className="max-h-48 rounded-xl object-cover" />
+                <img
+                  key={i}
+                  src={im.url}
+                  alt={im.name ?? ""}
+                  onClick={() => openLightbox(im.url)}
+                  className="max-h-48 cursor-zoom-in rounded-xl object-cover"
+                />
               ))}
             </div>
           )}
@@ -394,14 +384,14 @@ function Message({
           {streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-neutral-400 align-middle" />}
         </div>
       )}
-      {toolCalls?.map((c) => <ToolCard key={c.id} call={c} output={results?.get(c.id)} />)}
+      {toolCalls?.map((c) => <ToolCard key={c.id} call={c} output={results?.get(c.id)} images={toolImages?.get(c.id)} />)}
     </div>
   );
 }
 
 // A tool call rendered as a card: the tool name on top, then IN (the call's
 // arguments) and OUT (the result, once it arrives). Collapsed by default.
-function ToolCard({ call, output }: { call: ToolCall; output?: string }) {
+function ToolCard({ call, output, images }: { call: ToolCall; output?: string; images?: ImageRef[] }) {
   const [open, setOpen] = useState(false);
   let args: Record<string, unknown> = {};
   try {
@@ -426,6 +416,19 @@ function ToolCard({ call, output }: { call: ToolCall; output?: string }) {
         {output === undefined && <RefreshCw size={12} className="ml-auto animate-spin text-neutral-300" />}
         <ChevronDown size={14} className={cn("text-neutral-400 transition-transform", output === undefined ? "" : "ml-auto", open && "rotate-180")} />
       </button>
+      {images && images.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
+          {images.map((im, i) => (
+            <img
+              key={i}
+              src={im.url}
+              alt={im.name ?? ""}
+              onClick={() => openLightbox(im.url)}
+              className="max-h-64 cursor-zoom-in rounded-lg object-cover"
+            />
+          ))}
+        </div>
+      )}
       {open && (
         <div className="border-t border-neutral-200">
           <IO label="IN" body={inText} />

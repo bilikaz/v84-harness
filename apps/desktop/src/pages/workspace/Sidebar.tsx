@@ -180,7 +180,7 @@ export function Sidebar() {
                   type="button"
                   onClick={() => {
                     setActive(s.id);
-                    navigate(""); // leave Procedures/Settings → back to the chat
+                    navigate(""); // leave Agents/Settings → back to the chat
                   }}
                   className={cn(
                     "flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left text-sm",

@@ -7,6 +7,8 @@ import {
   notify,
   persist,
   pushAssistant,
+  pushHeal,
+  pushImageFeedback,
   pushToolResult,
   pushTurn,
   setLastToolCalls,
@@ -31,8 +33,10 @@ const offs: Array<() => void> = [
   // Tool loop — attach the model's tool calls, append each result, then open a
   // fresh assistant message for the next model turn.
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
-  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output)),
+  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
+  bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),
+  bus.on("imageFeedback", (e) => pushImageFeedback(e.sessionId, e.images)),
 
   // Usage meter — count input + output (normalized to include thinking).
   bus.on("usage", (e) => addUsage(e.sessionId, (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0))),
