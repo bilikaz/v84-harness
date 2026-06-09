@@ -5,6 +5,7 @@ import {
   getActive,
   getActiveId,
   getCompacting,
+  getHydrated,
   getSessions,
   getStreaming,
   getStreamingIds,
@@ -30,4 +31,9 @@ export function useCompacting(): boolean {
 }
 export function useStreamingIds(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, getStreamingIds, getStreamingIds);
+}
+// True once IndexedDB hydration finishes — gate UI on this to avoid the brief
+// stale-localStorage flash on first paint if needed.
+export function useHydrated(): boolean {
+  return useSyncExternalStore(subscribe, getHydrated, getHydrated);
 }

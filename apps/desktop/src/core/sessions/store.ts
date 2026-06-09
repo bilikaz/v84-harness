@@ -2,6 +2,7 @@ import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "../../lib/types.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
+import { idbGet, idbSet } from "../../lib/idb.ts";
 
 // Session store — the single source of truth for multi-session state (sidebar
 // list, chat view, right-panel progress). Plain external store; React binds via
@@ -47,6 +48,7 @@ function normalize(s: Partial<Session> & { messages?: Partial<Message>[] }): Ses
       toolCalls: m.toolCalls,
       toolCallId: m.toolCallId,
       summary: m.summary,
+      hidden: m.hidden,
     })),
   };
 }
@@ -78,6 +80,11 @@ let streamingIds: Set<string> = new Set();
 // Sessions currently being summarized/compacted (separate from streaming so the
 // UI can show a distinct "summarizing" state).
 let compactingIds: Set<string> = new Set();
+// False until the async IndexedDB hydration below finishes. The first paint uses
+// localStorage (instant, but may lag on large image data); flips true once IDB
+// has replaced the in-memory state. Consumers can gate on useHydrated() to avoid
+// the brief stale flash if they need to.
+let hydrated = false;
 
 // Reserve kept free below the model's context window: "full" triggers at
 // contextLength − this, leaving headroom for the response (and for the summary
@@ -89,12 +96,48 @@ export function notify(): void {
   for (const l of listeners) l();
 }
 export function persist(): void {
+  const data = JSON.stringify({ sessions, activeId });
+  // localStorage is a fast cache for the instant first paint, but it's capped at
+  // ~5 MB — image data-URLs may not fit, and that's fine.
   try {
-    localStorage.setItem(KEY, JSON.stringify({ sessions, activeId }));
+    localStorage.setItem(KEY, data);
   } catch {
-    /* ignore quota / private-mode errors */
+    /* quota / private mode — IndexedDB below is the source of truth */
   }
+  // IndexedDB holds the FULL state (large quota), so images survive a reload.
+  void idbSet(KEY, data).catch((e) =>
+    console.warn("[sessions] IndexedDB write failed — state (incl. images) may not survive a reload.", e),
+  );
 }
+
+// Hydrate from IndexedDB — the authoritative store. localStorage (loaded above)
+// gives an instant first paint but may be missing images that didn't fit; IDB
+// replaces it once read. On the first run after this upgrade, IDB is empty, so
+// we seed it from whatever localStorage had (migration).
+void (async () => {
+  try {
+    const raw = await idbGet(KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { sessions: Partial<Session>[]; activeId: string };
+      if (parsed.sessions?.length) {
+        sessions = parsed.sessions.map(normalize);
+        activeId = sessions.some((s) => s.id === parsed.activeId) ? parsed.activeId : sessions[0].id;
+        return;
+      }
+    }
+    await idbSet(KEY, JSON.stringify({ sessions, activeId }));
+  } catch (e) {
+    // Don't lose data silently: if IDB is unavailable we stay on the
+    // localStorage-loaded state, which may be stale/missing images.
+    console.warn(
+      "[sessions] IndexedDB unavailable — falling back to localStorage; recent large data (e.g. images) may be missing.",
+      e,
+    );
+  } finally {
+    hydrated = true;
+    notify(); // re-render with the IDB state and flip useHydrated()
+  }
+})();
 export function subscribe(l: () => void): () => void {
   listeners.add(l);
   return () => {
@@ -108,6 +151,10 @@ export function getSessions(): Session[] {
 }
 export function getActiveId(): string {
   return activeId;
+}
+// True once IndexedDB hydration has completed (success or fallback).
+export function getHydrated(): boolean {
+  return hydrated;
 }
 export function getActive(): Session {
   return sessions.find((s) => s.id === activeId) ?? sessions[0];

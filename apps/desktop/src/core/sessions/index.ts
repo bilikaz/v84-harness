@@ -24,4 +24,5 @@ export {
   useStreaming,
   useCompacting,
   useStreamingIds,
+  useHydrated,
 } from "./hooks.ts";
