@@ -48,6 +48,7 @@ function normalize(s: Partial<Session> & { messages?: Partial<Message>[] }): Ses
       toolCalls: m.toolCalls,
       toolCallId: m.toolCallId,
       summary: m.summary,
+      hidden: m.hidden,
     })),
   };
 }
@@ -99,7 +100,9 @@ export function persist(): void {
     /* quota / private mode — IndexedDB below is the source of truth */
   }
   // IndexedDB holds the FULL state (large quota), so images survive a reload.
-  void idbSet(KEY, data).catch(() => {});
+  void idbSet(KEY, data).catch((e) =>
+    console.warn("[sessions] IndexedDB write failed — state (incl. images) may not survive a reload.", e),
+  );
 }
 
 // Hydrate from IndexedDB — the authoritative store. localStorage (loaded above)
@@ -119,8 +122,13 @@ void (async () => {
       }
     }
     await idbSet(KEY, JSON.stringify({ sessions, activeId }));
-  } catch {
-    /* IndexedDB unavailable — stay on the localStorage-loaded state */
+  } catch (e) {
+    // Don't lose data silently: if IDB is unavailable we stay on the
+    // localStorage-loaded state, which may be stale/missing images.
+    console.warn(
+      "[sessions] IndexedDB unavailable — falling back to localStorage; recent large data (e.g. images) may be missing.",
+      e,
+    );
   }
 })();
 export function subscribe(l: () => void): () => void {
