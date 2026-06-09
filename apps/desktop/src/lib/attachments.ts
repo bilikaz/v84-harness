@@ -2,11 +2,12 @@ import type { FileAttachment, ImageRef } from "./types.ts";
 
 const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context
 
-// Read picked files: images → data-URL attachments (multimodal), everything
-// else → text attachments folded into the message. Shared by the session
-// composer and the agent runner.
-export function readAttachments(list: FileList): Promise<{ images: ImageRef[]; files: FileAttachment[] }> {
+// Read picked files: images & video → data-URL attachments (multimodal),
+// everything else → text attachments folded into the message. Shared by the
+// session composer and the agent runner.
+export function readAttachments(list: FileList): Promise<{ images: ImageRef[]; video: ImageRef[]; files: FileAttachment[] }> {
   const images: ImageRef[] = [];
+  const video: ImageRef[] = [];
   const files: FileAttachment[] = [];
   return Promise.all(
     Array.from(list).map(
@@ -16,6 +17,12 @@ export function readAttachments(list: FileList): Promise<{ images: ImageRef[]; f
           if (f.type.startsWith("image/")) {
             r.onload = () => {
               images.push({ url: String(r.result), mime: f.type, name: f.name });
+              resolve();
+            };
+            r.readAsDataURL(f);
+          } else if (f.type.startsWith("video/")) {
+            r.onload = () => {
+              video.push({ url: String(r.result), mime: f.type, name: f.name });
               resolve();
             };
             r.readAsDataURL(f);
@@ -34,5 +41,5 @@ export function readAttachments(list: FileList): Promise<{ images: ImageRef[]; f
           }
         }),
     ),
-  ).then(() => ({ images, files }));
+  ).then(() => ({ images, video, files }));
 }

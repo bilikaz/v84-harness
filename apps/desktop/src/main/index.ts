@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { registerIpc } from "./ipc.ts";
+import { registerContextMenu } from "./contextMenu.ts";
 
 const electron = createRequire(import.meta.url)("electron") as typeof import("electron");
 const { app, BrowserWindow, screen } = electron;
@@ -40,9 +41,15 @@ function createWindow(): void {
       preload: path.join(dirname, "../preload/index.mjs"),
       sandbox: false,
       contextIsolation: true,
+      // Keep the renderer running at full speed when the window is hidden,
+      // occluded, or inactive. Chromium throttles background renderers by
+      // default — timers get clamped — which stalls long-running work like the
+      // video-generation poll loop until the window is focused again.
+      backgroundThrottling: false,
     },
   });
 
+  registerContextMenu(electron, win);
   win.once("ready-to-show", () => win.show());
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(ZOOM));
 

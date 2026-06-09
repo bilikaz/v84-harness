@@ -11,6 +11,7 @@ export interface TurnStart {
   sessionId: string;
   text: string;
   images?: ImageRef[];
+  video?: ImageRef[];
   files?: FileAttachment[];
 }
 export interface TextDelta {
@@ -58,6 +59,7 @@ export interface ToolResultEvt {
   toolCallId: string;
   output: string;
   images?: ImageRef[];
+  video?: ImageRef[];
 }
 // Tool-produced images fed back as a hidden user turn so a vision agent can
 // inspect its own output.

@@ -5,6 +5,7 @@
 
 import { IPC, type ToolCallRequest, type ToolCtx, type MediaProviderConfig, type MediaModelsResult } from "../bridge.ts";
 import { execTool, TOOL_SCHEMAS } from "../core/tools/index.ts";
+import { saveDataUrl } from "./saveMedia.ts";
 
 type Electron = typeof import("electron");
 
@@ -44,4 +45,9 @@ export function registerIpc(electron: Electron): void {
       return { ok: false, models: [], error: (e as Error).message };
     }
   });
+
+  // Save a data-URL image/video to disk via a native Save dialog. Returns the
+  // path written, or null if the user cancelled / the input wasn't a data URL.
+  ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string) => saveDataUrl(dialog, dataUrl));
+  ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string) => saveDataUrl(dialog, dataUrl));
 }

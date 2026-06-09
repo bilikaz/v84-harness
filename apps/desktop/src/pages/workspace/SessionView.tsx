@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, ChevronDown, FileText, PanelRight, Pencil, Plus, RefreshCw, Sparkles, Terminal, Trash2, Wrench, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Download, FileText, PanelRight, Pencil, Plus, RefreshCw, Sparkles, Square, Terminal, Trash2, Wrench, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -10,10 +10,12 @@ import {
   isFull,
   renameSession,
   send,
+  stopTurn,
   useActiveSession,
   useCompacting,
   useStreaming,
 } from "../../core/sessions/index.ts";
+import { harness, isElectron } from "../../lib/harness.ts";
 import { detectModels, useProvider } from "../../lib/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { navigate } from "../../lib/router.ts";
@@ -32,6 +34,7 @@ export function SessionView() {
   const provider = useProvider();
   const [input, setInput] = useState("");
   const [images, setImages] = useState<ImageRef[]>([]);
+  const [videos, setVideos] = useState<ImageRef[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [attachNote, setAttachNote] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -40,10 +43,14 @@ export function SessionView() {
   const [titleDraft, setTitleDraft] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const rightPanel = useRightPanel();
   const full = isFull(provider, session);
   const canSend =
-    (input.trim().length > 0 || images.length > 0 || files.length > 0) && !streaming && !compacting && !full;
+    (input.trim().length > 0 || images.length > 0 || videos.length > 0 || files.length > 0) &&
+    !streaming &&
+    !compacting &&
+    !full;
 
   // Usable context budget (window − reserve) for the composer's "full" notice.
   const ctxLimit = contextLimit(provider);
@@ -53,10 +60,12 @@ export function SessionView() {
   // show the OUT next to the IN.
   const toolResults = new Map<string, string>();
   const toolImages = new Map<string, ImageRef[]>();
+  const toolVideo = new Map<string, ImageRef[]>();
   for (const m of session.messages) {
     if (m.role === "tool" && m.toolCallId) {
       toolResults.set(m.toolCallId, m.text);
       if (m.images?.length) toolImages.set(m.toolCallId, m.images);
+      if (m.video?.length) toolVideo.set(m.toolCallId, m.video);
     }
   }
 
@@ -69,6 +78,48 @@ export function SessionView() {
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [menuOpen]);
+
+  // Auto-grow the composer with its content, up to the textarea's max-height
+  // (then it scrolls). Runs on every input change, incl. the reset after submit.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
+  // ── Transcript scrolling ─────────────────────────────────────────────────
+  // Stick to the bottom as messages stream IN — but only while the user is
+  // already at the bottom. If they've scrolled up to read, leave them be. On
+  // switching chats, restore the position they were last at (bottom on first
+  // open), so you're not dumped at the top.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const positionsRef = useRef<Record<string, number>>({});
+  const BOTTOM_PX = 80; // "at bottom" tolerance
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    positionsRef.current[session.id] = el.scrollTop;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_PX;
+  }
+
+  // Restore scroll position on chat switch (before paint, to avoid a flash).
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const saved = positionsRef.current[session.id];
+    el.scrollTop = saved ?? el.scrollHeight; // unseen chat → bottom
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_PX;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id]);
+
+  // Follow new/streaming content only when pinned to the bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [session.messages]);
 
   function startRename() {
     setTitleDraft(session.title);
@@ -90,32 +141,61 @@ export function SessionView() {
     }
   }
 
+  // Turn a FileList (picked, dropped, or pasted) into composer attachments,
+  // dropping media the model can't accept. Images default on; video requires
+  // the model to explicitly declare video input.
+  async function addAttachments(list: FileList) {
+    const { images: imgs, video: vids, files: fs } = await readAttachments(list);
+    if (imgs.length) {
+      if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
+      else {
+        setImages((prev) => [...prev, ...imgs]);
+        setAttachNote("");
+      }
+    }
+    if (vids.length) {
+      if (!provider.input?.video) setAttachNote(t("session.noVideoSupport"));
+      else {
+        setVideos((prev) => [...prev, ...vids]);
+        setAttachNote("");
+      }
+    }
+    if (fs.length) setFiles((prev) => [...prev, ...fs]);
+  }
+
   async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const el = e.target;
-    if (el.files?.length) {
-      const { images: imgs, files: fs } = await readAttachments(el.files);
-      // Guardrail: drop image attachments when the model doesn't accept images.
-      if (imgs.length) {
-        if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
-        else {
-          setImages((prev) => [...prev, ...imgs]);
-          setAttachNote("");
-        }
-      }
-      if (fs.length) setFiles((prev) => [...prev, ...fs]);
-    }
+    if (el.files?.length) await addAttachments(el.files);
     el.value = ""; // allow re-picking the same file
+  }
+
+  // Paste an image/video straight from the clipboard (e.g. a screenshot) as an
+  // attachment. Only intercept when the clipboard actually carries media —
+  // otherwise let the normal text paste through.
+  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const list = e.clipboardData?.files;
+    if (!list?.length) return;
+    const hasMedia = Array.from(list).some((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    if (!hasMedia) return;
+    e.preventDefault();
+    void addAttachments(list);
   }
 
   function submit() {
     if (!canSend) return;
     const t = input.trim();
     const imgs = images;
+    const vids = videos;
     const fs = files;
     setInput("");
     setImages([]);
+    setVideos([]);
     setFiles([]);
-    void send(t, provider, { images: imgs.length ? imgs : undefined, files: fs.length ? fs : undefined });
+    void send(t, provider, {
+      images: imgs.length ? imgs : undefined,
+      video: vids.length ? vids : undefined,
+      files: fs.length ? fs : undefined,
+    });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -188,7 +268,7 @@ export function SessionView() {
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-6 py-8">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-3xl space-y-6">
           {session.messages.map((m, i) =>
             // Tool-result messages are folded into the assistant's tool card (by
@@ -201,10 +281,12 @@ export function SessionView() {
                 text={m.text}
                 thinking={m.thinking}
                 images={m.images}
+                video={m.video}
                 files={m.files}
                 toolCalls={m.toolCalls}
                 results={toolResults}
                 toolImages={toolImages}
+                toolVideo={toolVideo}
                 streaming={streaming && i === session.messages.length - 1}
               />
             ),
@@ -242,6 +324,22 @@ export function SessionView() {
               ))}
             </div>
           )}
+          {videos.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2 px-1">
+              {videos.map((v, i) => (
+                <div key={i} className="relative">
+                  <video src={v.url} className="h-16 w-24 rounded-lg object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setVideos((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute -right-1.5 -top-1.5 rounded-full bg-neutral-800 p-0.5 text-white hover:bg-neutral-600"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {files.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2 px-1">
               {files.map((f, i) => (
@@ -264,12 +362,15 @@ export function SessionView() {
           )}
           {attachNote && <p className="mb-1 px-1 text-xs text-amber-600">{attachNote}</p>}
           <textarea
+            ref={inputRef}
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             placeholder={t("session.placeholder")}
-            className="w-full resize-none px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
+            style={{ maxHeight: "6rem" }}
+            className="w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
           />
           <input ref={fileRef} type="file" multiple hidden onChange={onPickFiles} />
           <div className="mt-2 flex items-center gap-2">
@@ -300,14 +401,25 @@ export function SessionView() {
             >
               <RefreshCw size={18} className={detecting ? "animate-spin" : ""} />
             </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!canSend}
-              className="rounded-md bg-neutral-900 p-1.5 text-white hover:bg-neutral-700 disabled:opacity-30"
-            >
-              <ArrowUp size={18} />
-            </button>
+            {streaming ? (
+              <button
+                type="button"
+                onClick={() => stopTurn(session.id)}
+                title="Stop"
+                className="rounded-md bg-neutral-900 p-1.5 text-white hover:bg-neutral-700"
+              >
+                <Square size={16} className="fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!canSend}
+                className="rounded-md bg-neutral-900 p-1.5 text-white hover:bg-neutral-700 disabled:opacity-30"
+              >
+                <ArrowUp size={18} />
+              </button>
+            )}
           </div>
         </div>
         <p className="mt-2 text-center text-xs text-neutral-400">{t("session.disclaimer")}</p>
@@ -321,20 +433,24 @@ function Message({
   text,
   thinking,
   images,
+  video,
   files,
   toolCalls,
   results,
   toolImages,
+  toolVideo,
   streaming,
 }: {
   role: Role;
   text: string;
   thinking?: string;
   images?: ImageRef[];
+  video?: ImageRef[];
   files?: FileAttachment[];
   toolCalls?: ToolCall[];
   results?: Map<string, string>;
   toolImages?: Map<string, ImageRef[]>;
+  toolVideo?: Map<string, ImageRef[]>;
   streaming: boolean;
 }) {
   if (role === "user") {
@@ -344,13 +460,14 @@ function Message({
           {images && images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {images.map((im, i) => (
-                <img
-                  key={i}
-                  src={im.url}
-                  alt={im.name ?? ""}
-                  onClick={() => openLightbox(im.url)}
-                  className="max-h-48 cursor-zoom-in rounded-xl object-cover"
-                />
+                <SavableImage key={i} src={im.url} name={im.name} className="max-h-48 cursor-zoom-in rounded-xl object-cover" />
+              ))}
+            </div>
+          )}
+          {video && video.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {video.map((v, i) => (
+                <SavableVideo key={i} src={v.url} name={v.name} className="max-h-48 rounded-xl" />
               ))}
             </div>
           )}
@@ -384,14 +501,76 @@ function Message({
           {streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-neutral-400 align-middle" />}
         </div>
       )}
-      {toolCalls?.map((c) => <ToolCard key={c.id} call={c} output={results?.get(c.id)} images={toolImages?.get(c.id)} />)}
+      {toolCalls?.map((c) => (
+        <ToolCard key={c.id} call={c} output={results?.get(c.id)} images={toolImages?.get(c.id)} video={toolVideo?.get(c.id)} />
+      ))}
     </div>
   );
 }
 
 // A tool call rendered as a card: the tool name on top, then IN (the call's
 // arguments) and OUT (the result, once it arrives). Collapsed by default.
-function ToolCard({ call, output, images }: { call: ToolCall; output?: string; images?: ImageRef[] }) {
+// A thumbnail with a Save button overlaid in the top corner. Clicking the
+// image still opens the lightbox; the button saves directly (native dialog in
+// Electron, browser download on the web) without the extra popup hop.
+function SavableImage({ src, name, className }: { src: string; name?: string; className?: string }) {
+  async function save(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (isElectron()) {
+      await harness!.saveImage(src);
+    } else {
+      const a = document.createElement("a");
+      a.href = src;
+      a.download = name ?? "generated.png";
+      a.click();
+    }
+  }
+  return (
+    <div className="group relative inline-block">
+      <img src={src} alt={name ?? ""} onClick={() => openLightbox(src)} className={className} />
+      <button
+        type="button"
+        onClick={save}
+        title="Save image"
+        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+      >
+        <Download size={16} />
+      </button>
+    </div>
+  );
+}
+
+// A generated-video player with a Save button overlaid in the top corner —
+// kept out of the way of the native controls bar along the bottom. Saves via
+// the native dialog in Electron, a browser download on the web.
+function SavableVideo({ src, name, className }: { src: string; name?: string; className?: string }) {
+  async function save(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (isElectron()) {
+      await harness!.saveVideo(src);
+    } else {
+      const a = document.createElement("a");
+      a.href = src;
+      a.download = name ?? "generated.mp4";
+      a.click();
+    }
+  }
+  return (
+    <div className="group relative inline-block">
+      <video src={src} controls className={className} />
+      <button
+        type="button"
+        onClick={save}
+        title="Save video"
+        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+      >
+        <Download size={16} />
+      </button>
+    </div>
+  );
+}
+
+function ToolCard({ call, output, images, video }: { call: ToolCall; output?: string; images?: ImageRef[]; video?: ImageRef[] }) {
   const [open, setOpen] = useState(false);
   let args: Record<string, unknown> = {};
   try {
@@ -419,13 +598,14 @@ function ToolCard({ call, output, images }: { call: ToolCall; output?: string; i
       {images && images.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
           {images.map((im, i) => (
-            <img
-              key={i}
-              src={im.url}
-              alt={im.name ?? ""}
-              onClick={() => openLightbox(im.url)}
-              className="max-h-64 cursor-zoom-in rounded-lg object-cover"
-            />
+            <SavableImage key={i} src={im.url} name={im.name} className="max-h-64 cursor-zoom-in rounded-lg object-cover" />
+          ))}
+        </div>
+      )}
+      {video && video.length > 0 && (
+        <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
+          {video.map((v, i) => (
+            <SavableVideo key={i} src={v.url} name={v.name} className="max-h-72 rounded-lg" />
           ))}
         </div>
       )}

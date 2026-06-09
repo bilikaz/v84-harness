@@ -28,12 +28,13 @@ function toOpenAIMessages(messages: ChatMessage[], system?: string): unknown[] {
           function: { name: tc.name, arguments: tc.arguments },
         })),
       });
-    } else if (m.images?.length) {
+    } else if (m.images?.length || m.video?.length) {
       out.push({
         role: m.role,
         content: [
           ...(m.content ? [{ type: "text", text: m.content }] : []),
-          ...m.images.map((im) => ({ type: "image_url", image_url: { url: im.url } })),
+          ...(m.images ?? []).map((im) => ({ type: "image_url", image_url: { url: im.url } })),
+          ...(m.video ?? []).map((v) => ({ type: "video_url", video_url: { url: v.url } })),
         ],
       });
     } else {

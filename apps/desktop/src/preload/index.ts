@@ -22,6 +22,8 @@ const api: HarnessApi = {
   media: {
     models: (cfg: MediaProviderConfig) => ipcRenderer.invoke(IPC.mediaModels, cfg),
   },
+  saveImage: (dataUrl: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl),
+  saveVideo: (dataUrl: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl),
 };
 
 contextBridge.exposeInMainWorld("harness", api);

@@ -25,6 +25,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   images?: ChatImage[];
+  video?: ChatImage[]; // video inputs (url/data-URL) — sent as video parts to vision/omni models
   toolCalls?: ToolCall[]; // on an assistant message: tools to call
   toolCallId?: string; // on a tool message: which call this result answers
 }

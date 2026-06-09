@@ -26,12 +26,21 @@ export interface ToolResult {
   ok: boolean;
   output: string;
   images?: GeneratedImage[];
+  video?: GeneratedMedia[]; // generated video — shown in the tool card (no model feedback)
 }
 
 // An image a tool generated. `url` is a data: URL — it rides on the message
 // (inline display + model feedback) and persists to localStorage like any
 // attached image. No file is written.
 export interface GeneratedImage {
+  url: string;
+  mime: string;
+  name: string;
+}
+
+// Non-image generated media (video/audio) — a data: URL that rides on the
+// message for display only (not fed back to the model).
+export interface GeneratedMedia {
   url: string;
   mime: string;
   name: string;
@@ -85,7 +94,7 @@ export interface Tool {
 export type GatedTool = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash";
 // The full tool vocabulary. Permissionless tools (below) extend it but aren't
 // part of the per-workspace policy.
-export type ToolName = GatedTool | "GenerateImage";
+export type ToolName = GatedTool | "GenerateImage" | "GenerateVideo";
 export type ToolMode = 0 | 1 | 2;
 
 export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash"];
@@ -94,7 +103,7 @@ export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write",
 // usable without a bound workspace. They must not REQUIRE ctx.cwd — GenerateImage
 // saves to the workspace when one is present but still returns the image without
 // it. Not shown in the per-workspace tool UI and not in DEFAULT_TOOL_POLICY.
-export const PERMISSIONLESS_TOOLS: readonly ToolName[] = ["GenerateImage"];
+export const PERMISSIONLESS_TOOLS: readonly ToolName[] = ["GenerateImage", "GenerateVideo"];
 
 // Defaults: read + path-confined writes auto-run (confinement is the safety);
 // Bash is the only gated tool by default since a shell escapes confinement.

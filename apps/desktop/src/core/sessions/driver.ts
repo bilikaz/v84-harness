@@ -25,6 +25,16 @@ export type Validate = (text: string) => void;
 
 const MAX_STEPS = 50; // runaway guard for the tool loop
 
+// In-flight turns by session, so the UI can abort a specific chat's run. The
+// AbortController's signal is threaded into streamModel; aborting ends the
+// stream and stops the tool loop. See stopTurn().
+const inflight = new Map<string, AbortController>();
+
+// Stop a session's running turn (the Send button becomes Stop while streaming).
+export function stopTurn(sid: string): void {
+  inflight.get(sid)?.abort();
+}
+
 // The tool schemas to advertise. With a workspace, the dispatcher's full set
 // filtered to what that workspace enables (mode !== 0). With no workspace, only
 // the workspace-optional tools (e.g. GenerateImage) — so a plain session can
@@ -56,13 +66,13 @@ async function runTurn(
   sid: string,
   cfg: ModelConfig,
   userText: string,
-  opts: { images?: ImageRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate },
+  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate },
 ): Promise<void> {
   const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
   const autoName = opts.autoName !== false;
 
   // turn:start appends the user + assistant placeholder; then we read history.
-  bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, files: opts.files });
+  bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, video: opts.video, files: opts.files });
 
   const ws = getWorkspace(getSession(sid)?.workspaceId);
   // ctx for the bridge (main) tool path — present only in Electron. The media
@@ -79,8 +89,10 @@ async function runTurn(
   let healAttempts = 0;
 
   const controller = new AbortController();
+  inflight.set(sid, controller);
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (controller.signal.aborted) break;
       const history = toChatMessages(getSession(sid)?.messages ?? []);
       const system = getSession(sid)?.system || ws?.instructions || undefined;
       let text = "";
@@ -112,7 +124,7 @@ async function runTurn(
       if (thinking && !thinkingDone) bus.emit("thinking:done", { sessionId: sid });
       finalText = text;
       finalThinking = thinking;
-      if (errored) break;
+      if (errored || controller.signal.aborted) break;
 
       // No tool calls → the model is done. If the caller gave a validator, heal:
       // on a rejected final turn, inject a hidden correction and re-stream, up to
@@ -173,7 +185,9 @@ async function runTurn(
         const output = result.output;
         // GeneratedImage → ImageRef for display + model feedback.
         const images = result.images?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
-        bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images });
+        // Generated video → display only (not fed back to the model).
+        const video = result.video?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
+        bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, video });
         if (images?.length) fedImages.push(...images);
       }
       // Feed any generated images back as a hidden user turn so a vision agent
@@ -187,9 +201,14 @@ async function runTurn(
       bus.emit("assistant:open", { sessionId: sid });
     }
   } catch (e) {
-    errored = true;
-    bus.emit("turn:error", { sessionId: sid, message: (e as Error).message });
+    // A user Stop aborts the controller → the stream throws here; that's a clean
+    // stop, not an error.
+    if (!controller.signal.aborted) {
+      errored = true;
+      bus.emit("turn:error", { sessionId: sid, message: (e as Error).message });
+    }
   } finally {
+    inflight.delete(sid);
     bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, cfg, userText });
     bus.emit("turn:end", { sessionId: sid, errored });
   }
@@ -198,13 +217,13 @@ async function runTurn(
 export async function send(
   text: string,
   cfg: ModelConfig,
-  opts: { images?: ImageRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate } = {},
+  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate } = {},
 ): Promise<void> {
   const t = text.trim();
   const sid = getActiveId();
   // Per-session guard: only block if THIS session is already streaming. Allow a
-  // message with no text as long as there's at least one image or file.
-  if ((!t && !opts.images?.length && !opts.files?.length) || getStreamingIds().has(sid) || isFull(cfg)) return;
+  // message with no text as long as there's at least one attachment.
+  if ((!t && !opts.images?.length && !opts.video?.length && !opts.files?.length) || getStreamingIds().has(sid) || isFull(cfg)) return;
   await runTurn(sid, cfg, t, opts);
 }
 
@@ -215,7 +234,7 @@ export async function send(
 export function runAgent(
   agent: { name: string; system: string; user: string },
   cfg: ModelConfig,
-  opts: { images?: ImageRef[]; files?: FileAttachment[]; validate?: Validate } = {},
+  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; validate?: Validate } = {},
 ): void {
   createSession({ title: agent.name, system: agent.system });
   void send(agent.user, cfg, { ...opts, autoName: false });

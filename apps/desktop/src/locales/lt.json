@@ -114,6 +114,7 @@
   "session": {
     "placeholder": "Rašykite žinutę…",
     "noImageSupport": "Šis modelis nepriima vaizdų — įjunkite vaizdo įvestį Nustatymai → Tiekėjas, kad galėtumėte pridėti.",
+    "noVideoSupport": "Šis modelis nepriima vaizdo įrašų — įjunkite vaizdo įrašų įvestį Nustatymai → Tiekėjas.",
     "attach": "Pridėti paveikslėlį",
     "disclaimer": "Agentai gali klysti. Peržiūrėkite jų rezultatus.",
     "selectModel": "Pasirinkti modelį",

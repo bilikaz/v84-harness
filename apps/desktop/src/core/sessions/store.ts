@@ -44,6 +44,7 @@ function normalize(s: Partial<Session> & { messages?: Partial<Message>[] }): Ses
       text: m.text ?? "",
       thinking: m.thinking,
       images: m.images,
+      video: m.video,
       files: m.files,
       toolCalls: m.toolCalls,
       toolCallId: m.toolCallId,
@@ -245,8 +246,8 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
-export function pushTurn(sid: string, userText: string, images?: ImageRef[], files?: FileAttachment[]): void {
-  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, files };
+export function pushTurn(sid: string, userText: string, images?: ImageRef[], files?: FileAttachment[], video?: ImageRef[]): void {
+  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
@@ -280,8 +281,8 @@ export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
 
 // Append a tool-result message answering a specific call. `images` are shown in
 // the tool card (display only — toChatMessages drops tool-role images).
-export function pushToolResult(sid: string, toolCallId: string, output: string, images?: ImageRef[]): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images };
+export function pushToolResult(sid: string, toolCallId: string, output: string, images?: ImageRef[], video?: ImageRef[]): void {
+  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
@@ -373,10 +374,12 @@ export function toChatMessages(messages: Message[]): ChatMessage[] {
       content: m.summary
         ? `Summary of the earlier conversation (older messages were compacted to save context):\n\n${m.text}`
         : withFiles(m.text, m.files),
-      // Tool-role images are display-only (shown in the tool card) — many chat
-      // APIs reject images on a tool message, so they're never sent. Vision
+      // Tool-role images/video are display-only (shown in the tool card) — many
+      // chat APIs reject media on a tool message, so they're never sent. Vision
       // feedback goes through the hidden user turn (pushImageFeedback) instead.
+      // User-uploaded images/video ARE sent so the model can review them.
       images: m.role === "tool" ? undefined : m.images?.map((im) => ({ url: im.url, mime: im.mime })),
+      video: m.role === "tool" ? undefined : m.video?.map((v) => ({ url: v.url, mime: v.mime })),
       toolCalls: m.toolCalls,
       toolCallId: m.toolCallId,
     }));
