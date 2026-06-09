@@ -80,6 +80,11 @@ let streamingIds: Set<string> = new Set();
 // Sessions currently being summarized/compacted (separate from streaming so the
 // UI can show a distinct "summarizing" state).
 let compactingIds: Set<string> = new Set();
+// False until the async IndexedDB hydration below finishes. The first paint uses
+// localStorage (instant, but may lag on large image data); flips true once IDB
+// has replaced the in-memory state. Consumers can gate on useHydrated() to avoid
+// the brief stale flash if they need to.
+let hydrated = false;
 
 // Reserve kept free below the model's context window: "full" triggers at
 // contextLength − this, leaving headroom for the response (and for the summary
@@ -117,7 +122,6 @@ void (async () => {
       if (parsed.sessions?.length) {
         sessions = parsed.sessions.map(normalize);
         activeId = sessions.some((s) => s.id === parsed.activeId) ? parsed.activeId : sessions[0].id;
-        notify();
         return;
       }
     }
@@ -129,6 +133,9 @@ void (async () => {
       "[sessions] IndexedDB unavailable — falling back to localStorage; recent large data (e.g. images) may be missing.",
       e,
     );
+  } finally {
+    hydrated = true;
+    notify(); // re-render with the IDB state and flip useHydrated()
   }
 })();
 export function subscribe(l: () => void): () => void {
@@ -144,6 +151,10 @@ export function getSessions(): Session[] {
 }
 export function getActiveId(): string {
   return activeId;
+}
+// True once IndexedDB hydration has completed (success or fallback).
+export function getHydrated(): boolean {
+  return hydrated;
 }
 export function getActive(): Session {
   return sessions.find((s) => s.id === activeId) ?? sessions[0];
