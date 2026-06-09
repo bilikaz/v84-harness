@@ -207,6 +207,18 @@ export function pushTurn(sid: string, userText: string, images?: ImageRef[], fil
   notify();
 }
 
+// Inject a heal correction: a hidden user message (skipped in the UI, sent to
+// the model) carrying the validation error, then a fresh assistant placeholder
+// for the retry. Mirrors a turn without showing the churn in the transcript.
+export function pushHeal(sid: string, correction: string): void {
+  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: correction, hidden: true };
+  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
+  sessions = sessions.map((s) =>
+    s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
+  );
+  notify();
+}
+
 // Attach tool calls to the most recent assistant message (the one just streamed).
 export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
   sessions = sessions.map((s) => {
@@ -219,9 +231,25 @@ export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
   notify();
 }
 
-// Append a tool-result message answering a specific call.
-export function pushToolResult(sid: string, toolCallId: string, output: string): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId };
+// Append a tool-result message answering a specific call. `images` are shown in
+// the tool card (display only — toChatMessages drops tool-role images).
+export function pushToolResult(sid: string, toolCallId: string, output: string, images?: ImageRef[]): void {
+  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images };
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
+  notify();
+}
+
+// Feed tool-produced images back to the model as a hidden user turn (skipped in
+// the UI — the images already show in the tool card; this just lets a vision
+// agent see them on its next turn).
+export function pushImageFeedback(sid: string, images: ImageRef[]): void {
+  const msg: Message = {
+    id: crypto.randomUUID(),
+    role: "user",
+    text: "Generated image(s) attached above for your review.",
+    images,
+    hidden: true,
+  };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
@@ -298,7 +326,10 @@ export function toChatMessages(messages: Message[]): ChatMessage[] {
       content: m.summary
         ? `Summary of the earlier conversation (older messages were compacted to save context):\n\n${m.text}`
         : withFiles(m.text, m.files),
-      images: m.images?.map((im) => ({ url: im.url, mime: im.mime })),
+      // Tool-role images are display-only (shown in the tool card) — many chat
+      // APIs reject images on a tool message, so they're never sent. Vision
+      // feedback goes through the hidden user turn (pushImageFeedback) instead.
+      images: m.role === "tool" ? undefined : m.images?.map((im) => ({ url: im.url, mime: im.mime })),
       toolCalls: m.toolCalls,
       toolCallId: m.toolCallId,
     }));

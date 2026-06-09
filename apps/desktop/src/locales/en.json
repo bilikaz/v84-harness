@@ -7,25 +7,34 @@
     "delete": "Delete"
   },
   "nav": {
-    "procedures": "Procedures"
+    "agents": "Agents"
   },
-  "procedures": {
-    "title": "Procedures",
-    "new": "New procedure",
-    "untitled": "Untitled procedure",
-    "namePlaceholder": "Procedure name",
+  "agents": {
+    "title": "Agents",
+    "new": "New agent",
+    "untitled": "Untitled agent",
+    "namePlaceholder": "Agent name",
+    "description": "Description",
+    "descriptionHelp": "A short summary of what this agent does — shown here and used when one agent runs another.",
+    "descriptionPlaceholder": "Reviews a diff and reports findings by severity…",
     "system": "System",
     "systemHelp": "Standing instructions — how the model should behave.",
     "systemPlaceholder": "# Role\\n\\nYou are…",
     "user": "User",
-    "userHelp": "The task to run when this procedure is executed.",
+    "userHelp": "The task to run when this agent is executed.",
     "userPlaceholder": "Do the following…",
+    "attach": "Attach images or files",
+    "requireJson": "Require JSON output",
+    "outputHelp": "When on, the agent's final answer must validate; if it doesn't, the model is automatically re-prompted (up to 3 times) before failing.",
+    "requiredKeys": "Required keys",
+    "requiredKeysPlaceholder": "subjects, resolution",
+    "requiredKeysHelp": "Comma-separated top-level keys the JSON object must contain. Leave empty to only require valid JSON.",
     "run": "Run",
     "edit": "Edit",
     "delete": "Delete",
     "cancel": "Cancel",
-    "confirmDelete": "Delete this procedure?",
-    "empty": "Select or create a procedure."
+    "confirmDelete": "Delete this agent?",
+    "empty": "Select or create an agent."
   },
   "menu": {
     "settings": "Settings",
@@ -65,6 +74,10 @@
     "found_other": "Found {{count}} models.",
     "failed": "Failed: {{error}}",
     "contextWindow": "Context window: {{tokens}} tokens. Max output below is the per-response cap.",
+    "inputModalities": "Accepts",
+    "image": "Image",
+    "video": "Video",
+    "audio": "Audio",
     "reasoning": "Reasoning effort",
     "off": "Off",
     "low": "Low",
@@ -78,9 +91,32 @@
     "apiKey": "API key",
     "apiKeyPlaceholder": "leave blank if none"
   },
+  "media": {
+    "title": "Image generation",
+    "subtitle": "The image model the GenerateImage tool posts to. Leave the base URL blank to disable it.",
+    "baseUrl": "Base URL",
+    "detect": "Detect",
+    "detectHint": "Check the endpoint is reachable and list its models",
+    "electronOnly": "Available in the desktop app only",
+    "found": "Connected — {{count}} model.",
+    "found_other": "Connected — {{count}} models.",
+    "failed": "Failed: {{error}}",
+    "model": "Model",
+    "modelDefault": "endpoint default",
+    "modelPlaceholder": "leave blank for the endpoint default",
+    "maxSize": "Max size",
+    "steps": "Inference steps",
+    "guidance": "Guidance scale",
+    "flowShift": "Flow shift",
+    "recaption": "Prompt upsampling",
+    "cot": "Chain-of-thought",
+    "apiKey": "API key",
+    "apiKeyPlaceholder": "leave blank if none"
+  },
   "session": {
     "placeholder": "Write a message…",
     "attach": "Attach image",
+    "noImageSupport": "This model doesn't accept images — enable image input in Settings → Provider to attach them.",
     "disclaimer": "Agents can make mistakes. Review their output.",
     "selectModel": "Select model",
     "contextFull": "Context full — {{used}} / {{total}} tokens used. Start a new session to continue."

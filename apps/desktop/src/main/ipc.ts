@@ -3,7 +3,7 @@
 // the renderer/model. The `electron` module is passed in (index.ts already
 // loaded it via createRequire) to avoid a second require.
 
-import { IPC, type ToolCallRequest, type ToolCtx } from "../bridge.ts";
+import { IPC, type ToolCallRequest, type ToolCtx, type MediaProviderConfig, type MediaModelsResult } from "../bridge.ts";
 import { execTool, TOOL_SCHEMAS } from "../core/tools/index.ts";
 
 type Electron = typeof import("electron");
@@ -26,5 +26,22 @@ export function registerIpc(electron: Electron): void {
   // Execute one tool call against the session's workspace cwd.
   ipcMain.handle(IPC.toolsExec, async (_e: unknown, call: ToolCallRequest, ctx: ToolCtx) => {
     return execTool(call, ctx);
+  });
+
+  // List the media endpoint's models from main (no CORS) — used as a connection
+  // test + to populate the model picker. Never throws; returns {ok:false} on error.
+  ipcMain.handle(IPC.mediaModels, async (_e: unknown, cfg: MediaProviderConfig): Promise<MediaModelsResult> => {
+    try {
+      if (!cfg?.baseUrl) return { ok: false, models: [], error: "no base URL set" };
+      const res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/models`, {
+        headers: cfg.apiKey ? { authorization: `Bearer ${cfg.apiKey}` } : {},
+      });
+      if (!res.ok) return { ok: false, models: [], error: `${res.status} ${res.statusText}` };
+      const data = (await res.json()) as { data?: Array<{ id?: string }> };
+      const models = (data.data ?? []).map((m) => m.id).filter((id): id is string => !!id);
+      return { ok: true, models };
+    } catch (e) {
+      return { ok: false, models: [], error: (e as Error).message };
+    }
   });
 }

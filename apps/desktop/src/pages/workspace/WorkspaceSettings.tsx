@@ -10,7 +10,7 @@ import {
   updateWorkspace,
   type Workspace,
 } from "../../core/workspaces.ts";
-import { ALL_TOOLS, type ToolMode, type ToolName } from "../../core/tools/shared.ts";
+import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/shared.ts";
 
 // Add/edit popup for a workspace. Opened from the sidebar after the folder
 // picker (new) or from a workspace row (edit). Self-contained form over a local
@@ -28,7 +28,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
 
   const set = <K extends keyof Workspace>(key: K, value: Workspace[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
-  const setTool = (tool: ToolName, mode: ToolMode) =>
+  const setTool = (tool: GatedTool, mode: ToolMode) =>
     setDraft((d) => ({ ...d, tools: { ...d.tools, [tool]: mode } }));
 
   function save() {

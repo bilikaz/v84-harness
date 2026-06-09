@@ -15,7 +15,7 @@ export {
   deleteSession,
   getSessionsForWorkspace,
 } from "./store.ts";
-export { send, runProcedure } from "./driver.ts";
+export { send, runAgent } from "./driver.ts";
 export { compact } from "./compaction.ts";
 export {
   useSessions,

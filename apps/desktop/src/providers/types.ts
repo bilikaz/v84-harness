@@ -37,6 +37,12 @@ export interface ModelConfig {
   model: string;
   apiKey: string;
   extra?: string;
+  // Input modalities the model accepts (guardrail). When a modality is off, the
+  // app withholds that media from the model — generated images aren't fed back
+  // for the agent to inspect, and image attachments are blocked in the composer
+  // — instead of letting the endpoint reject the request. Video/audio are
+  // recorded for the generation tools that will feed those back later.
+  input?: { image?: boolean; video?: boolean; audio?: boolean };
   // Generation params (optional; sent when set). Surfaced once a model is picked.
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;

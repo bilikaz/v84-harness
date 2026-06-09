@@ -1,5 +1,6 @@
 import { Slot } from "./components/Slot.tsx";
 import { ApprovalModal } from "./components/ApprovalModal.tsx";
+import { Lightbox } from "./components/Lightbox.tsx";
 import { Sidebar } from "./pages/workspace/Sidebar.tsx";
 import { SessionView } from "./pages/workspace/SessionView.tsx";
 import { SettingsModal } from "./pages/settings/SettingsModal.tsx";
@@ -37,6 +38,7 @@ export default function App() {
 
       <SettingsModal />
       <ApprovalModal />
+      <Lightbox />
     </div>
   );
 }

@@ -40,6 +40,7 @@ export interface Message {
   toolCalls?: ToolCall[]; // assistant: tools the model asked to call
   toolCallId?: string; // tool: which call this result answers
   summary?: boolean; // a compaction summary — hidden in the UI, resent to the model as a user message
+  hidden?: boolean; // injected by the engine (e.g. a heal correction) — sent to the model, skipped in the UI
 }
 
 // A tool available to a session. Execution is a later feature — this is just

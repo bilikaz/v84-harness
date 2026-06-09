@@ -96,6 +96,21 @@ export function ProviderSection() {
         </p>
       )}
 
+      <Row label={t("provider.inputModalities")}>
+        <div className="flex w-72 items-center gap-4">
+          {(["image", "video", "audio"] as const).map((m) => (
+            <label key={m} className="flex items-center gap-1.5 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                checked={!!cfg.input?.[m]}
+                onChange={(e) => saveProvider({ input: { ...cfg.input, [m]: e.target.checked } })}
+              />
+              {t(`provider.${m}`)}
+            </label>
+          ))}
+        </div>
+      </Row>
+
       <Row label={t("provider.reasoning")}>
         <select
           value={cfg.reasoningEffort ?? "off"}
