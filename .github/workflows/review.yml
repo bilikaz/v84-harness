@@ -1,5 +1,5 @@
-# LLM-driven PR review, powered by @reviewer/cli (github:bilikaz/code-reviewer#v0.1.1),
-# a root devDependency of this workspace. Adapted from the reviewer's shipped
+# LLM-driven PR review, powered by @bilikaz/code-reviewer (npm), a root
+# devDependency of this workspace. Adapted from the reviewer's shipped
 # examples/review.yml for this pnpm monorepo.
 #
 # Set in Settings -> Secrets and variables -> Actions:
@@ -46,5 +46,5 @@ jobs:
           LLM_URL:      ${{ secrets.LLM_URL }}
           LLM_KEY:      ${{ secrets.LLM_KEY }}
           LLM_MODEL:    ${{ vars.LLM_MODEL }}
-        # @reviewer/cli is a root devDependency, so its bin resolves from the workspace root.
+        # @bilikaz/code-reviewer is a root devDependency; its `reviewer` bin resolves from the workspace root.
         run: pnpm exec reviewer run --pr "${{ github.event.pull_request.html_url }}"
