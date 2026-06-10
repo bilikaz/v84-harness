@@ -2,7 +2,7 @@
 
 This repo documents itself in three layers (see [docs/conventions/documentation.md](docs/conventions/documentation.md)):
 
-- **Map** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): where things are, present tense.
+- **Map** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (hub) + [docs/architecture/](docs/architecture/) (area docs): where things are, present tense.
 - **Rules** — [docs/conventions/](docs/conventions/): portable engineering rules, one topic per file.
 - **Decisions** — [docs/adr/](docs/adr/): dated decision log, Proposed → Accepted → Superseded.
 
@@ -13,10 +13,12 @@ Check the current branch first. Starting from `main`/`master` is the normal case
 whether working on it is intended — they may have forgotten to switch back after
 a merge.
 
-Read the docs: ARCHITECTURE.md for the area you're touching, the conventions
-index ([docs/conventions/README.md](docs/conventions/README.md)), and any ADRs near
-your change ([docs/adr/README.md](docs/adr/README.md)). Subagents get the same
-instruction — point them at the specific files relevant to their task.
+Read the docs: the ARCHITECTURE.md hub, then the
+[docs/architecture/](docs/architecture/) area doc for the area you're touching,
+the conventions index ([docs/conventions/README.md](docs/conventions/README.md)),
+and any ADRs near your change ([docs/adr/README.md](docs/adr/README.md)).
+Subagents get the same instruction — point them at the specific area doc and
+files relevant to their task.
 
 ## While working
 
@@ -45,7 +47,11 @@ This step runs only on the user's signal, at the end of a session:
    architectural decisions only — bug fixes don't get ADRs (commit message +
    regression test + why-comment), and process changes amend this file instead.
 3. **Add or amend conventions** for patterns discovered this session (new topic
-   file, or an addition to an existing one).
+   file, or an addition to an existing one — the qualifying bar is in
+   [docs/conventions/README.md](docs/conventions/README.md)). State the
+   candidates considered explicitly — "considered, none qualified" is a valid
+   outcome; silently skipping the question is not. The set only grows when the
+   question is actually asked, and sessions have skipped it before.
 4. **Ask the user to confirm** the new ADRs and conventions. Confirmed → mark
    Accepted. Corrected → settle the corrected version, mark it Accepted, and apply
    it to the session's work so code and docs agree.
