@@ -8,7 +8,12 @@ This repo documents itself in three layers (see [docs/conventions/documentation.
 
 ## Before starting work
 
-Read the docs first: ARCHITECTURE.md for the area you're touching, the conventions
+Check the current branch first. Starting from `main`/`master` is the normal case
+(a feature branch gets created at commit time). On any other branch, ask the user
+whether working on it is intended — they may have forgotten to switch back after
+a merge.
+
+Read the docs: ARCHITECTURE.md for the area you're touching, the conventions
 index ([docs/conventions/README.md](docs/conventions/README.md)), and any ADRs near
 your change ([docs/adr/README.md](docs/adr/README.md)). Subagents get the same
 instruction — point them at the specific files relevant to their task.

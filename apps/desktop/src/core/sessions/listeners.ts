@@ -4,7 +4,7 @@ import {
   getActiveId,
   markUnread,
   notify,
-  persist,
+  persistSession,
   pushAssistant,
   pushHeal,
   pushMediaFeedback,
@@ -44,17 +44,19 @@ const offs: Array<() => void> = [
   // occupancy (input already includes the whole history), so set, don't add.
   bus.on("usage", (e) => setUsage(e.sessionId, (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0))),
 
-  // Streaming state + persistence + unread.
+  // Streaming state + persistence + unread. Persistence happens at COMPLETION
+  // only (turn:end, ADR-0020) and writes only the turn's session (ADR-0021) —
+  // never at turn:start, never per delta. A crash mid-turn loses just that
+  // in-flight turn.
   bus.on("turn:start", (e) => {
     setStreaming(e.sessionId, true);
-    persist();
     notify();
   }),
   bus.on("turn:end", (e) => {
     setStreaming(e.sessionId, false);
     // Finished while the user was looking elsewhere → unread (green dot).
     if (e.sessionId !== getActiveId()) markUnread(e.sessionId);
-    persist();
+    persistSession(e.sessionId); // writes THIS session's rows + the index — nothing else
     notify();
   }),
 ];

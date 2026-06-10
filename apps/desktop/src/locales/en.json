@@ -131,7 +131,8 @@
     "compacting": "Summarizing earlier messages to free context…",
     "thinking": "Thinking…",
     "thoughts": "Thoughts",
-    "running": "running…"
+    "running": "running…",
+    "loading": "Loading conversation…"
   },
   "progress": {
     "progress": "Progress",

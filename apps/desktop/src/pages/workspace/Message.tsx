@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { FileText } from "lucide-react";
 
 import { Markdown } from "../../components/Markdown.tsx";
@@ -9,7 +10,12 @@ import type { FileAttachment, ImageRef, Role, ToolCall } from "../../lib/types.t
 // One transcript entry. User messages render right-aligned with their
 // attachments; assistant messages render thinking, markdown text, and a tool
 // card per call (the matching results/media are passed in by id).
-export function Message({
+//
+// Memoized with a custom comparator (sameMessage below): the store keeps
+// settled messages reference-stable, so during streaming only the live message
+// re-renders. The tool maps are rebuilt by the parent every render (fresh
+// identity), so they're compared by THIS message's entries, not by reference.
+function MessageImpl({
   role,
   text,
   thinking,
@@ -87,3 +93,30 @@ export function Message({
     </div>
   );
 }
+
+type MessageProps = Parameters<typeof MessageImpl>[0];
+
+// Reference-compare everything except the tool maps; for those, only the
+// entries this message's calls read can affect its output.
+function sameMessage(prev: MessageProps, next: MessageProps): boolean {
+  if (
+    prev.role !== next.role ||
+    prev.text !== next.text ||
+    prev.thinking !== next.thinking ||
+    prev.images !== next.images ||
+    prev.video !== next.video ||
+    prev.files !== next.files ||
+    prev.toolCalls !== next.toolCalls ||
+    prev.streaming !== next.streaming
+  ) {
+    return false;
+  }
+  return (next.toolCalls ?? []).every(
+    (c) =>
+      prev.results?.get(c.id) === next.results?.get(c.id) &&
+      prev.toolImages?.get(c.id) === next.toolImages?.get(c.id) &&
+      prev.toolVideo?.get(c.id) === next.toolVideo?.get(c.id),
+  );
+}
+
+export const Message = memo(MessageImpl, sameMessage);

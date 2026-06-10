@@ -22,4 +22,12 @@ export class LocalStorage implements Storage {
   async del(key: string): Promise<void> {
     localStorage.removeItem(key);
   }
+  async keys(prefix: string): Promise<string[]> {
+    const out: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(prefix)) out.push(k);
+    }
+    return out;
+  }
 }

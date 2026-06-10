@@ -32,9 +32,11 @@ the generation endpoint in **Settings → Media**.
   step run concurrently, results are linked by call id.
 - **Tools** — gated fs/shell tools run in Electron **main** (Node
   `fs`/`child_process`): `Read`, `List`, `Grep`, `Write`, `Edit`,
-  `CreateFolder`, `Bash`. Permissionless media tools run in the renderer and
-  work everywhere (browser build included): `GenerateImage`, `GenerateVideo`.
-  Tool output is capped at 64 KB per result.
+  `CreateFolder`, `Bash`, plus the media loaders `LoadImage`/`LoadVideo`
+  (advertised only when the model declares the matching image/video input).
+  Permissionless media tools run in the renderer and work everywhere (browser
+  build included): `GenerateImage`, `GenerateVideo`. Tool output is capped at
+  64 KB per result.
 - **Per-tool permissions (`0/1/2`)** — disabled / ask / auto, set per
   workspace. fs tools default to auto (confinement is the safety); `Bash` asks
   by default via an approval dialog (a queue — concurrent sessions and parallel
@@ -46,9 +48,10 @@ the generation endpoint in **Settings → Media**.
 - **Media generation** — `GenerateImage` (quality presets, aspect ratios,
   negative prompt) and `GenerateVideo` (duration up to 10s) POST to the media
   endpoint and return data-URLs. Prompts are upsampled into the provider's
-  JSON schema by the chat model through a validate→heal loop. Generated images
-  are fed back to vision models as a hidden turn so the agent can inspect its
-  own output; save/copy/paste via native dialogs.
+  JSON schema by the chat model through a validate→heal loop. Tool-produced
+  media — generated or loaded from the workspace — is fed back to the model as
+  a hidden turn (images and video, each only when the model's declared inputs
+  accept it) so the agent can inspect it; save/copy/paste via native dialogs.
 - **Auto-compaction** — when a session crosses its usable budget
   (context window − reserve), the conversation is summarized in the background
   and replaced with a single hidden summary. Manual "Summarize" in the context
@@ -57,8 +60,10 @@ the generation endpoint in **Settings → Media**.
 - **Stored agents** — reusable playbooks (system MD + user MD + optional JSON
   output contract with required keys). Running one spins up a session whose
   output is validated and healed against the contract.
-- **Persistence** — localStorage for instant first paint + IndexedDB for full
-  state (large images/videos). No cloud; everything is local.
+- **Persistence** — a detected durable tier (SQLite in Electron > IndexedDB >
+  localStorage) holding granular rows: a session index, per-session messages,
+  and media blobs written once at creation. Boot loads the index + active
+  session; the rest lazy-loads. No cloud; everything is local.
 - **Reviewer gate (CI)** — `@bilikaz/code-reviewer` runs on PRs via
   `.github/workflows/review.yml`.
 
@@ -111,7 +116,18 @@ src/
     workspaces.ts, approvals.ts
   providers/   the LLM layer (see above)
   pages/, components/, lib/   the React renderer (browser-runnable)
+docs/
+  ARCHITECTURE.md     the map: structure, patterns, flows
+  STORAGE.md          the storage chart: key scheme, shapes, accessor surface
+  conventions/        portable engineering rules (naming, types placement, …)
+  adr/                dated architecture decision records (scope: ADR-0000)
 ```
+
+Documentation is layered: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is this
+repo's map, [docs/conventions/](docs/conventions/) holds the portable rule set,
+and [docs/adr/](docs/adr/) is the decision log. The working procedure that
+maintains these layers is the root [CLAUDE.md](CLAUDE.md) — agent sessions read
+it on start.
 
 - **Trust boundary is `main`** — gated tools execute there; the renderer
   reaches them only through `window.harness`. Dependency direction is one-way:
@@ -143,4 +159,4 @@ task-builder (cloud: RAG + ingest + API)
   into a plain-array runner, with the driver becoming a thin bus/store adapter.
 - Gemini can reject unsupported JSON-Schema keywords in tool `parameters`; a
   schema sanitizer may be needed in its mapper.
-- SQLite-backed session storage, `packages/core` lift, cloud sync — later.
+- `packages/core` lift, cloud sync — later.

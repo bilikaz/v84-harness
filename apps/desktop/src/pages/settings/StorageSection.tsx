@@ -12,10 +12,11 @@ import { useWorkspaces } from "../../core/workspaces.ts";
 import { detectStorage } from "../../lib/storage/index.ts";
 import { fmtBytes } from "../../lib/format.ts";
 
-// Approximate persisted footprint: the JSON the store writes, per session.
-// Data-URLs dominate, so string length ≈ bytes is close enough for a meter.
+// Approximate persisted footprint per session. `bytes` is set by the store at
+// persist/migration time (messages json + media blobs); the stringify fallback
+// only covers sessions never persisted since the granular tier landed.
 function sessionBytes(s: Session): number {
-  return JSON.stringify(s).length;
+  return s.bytes ?? JSON.stringify(s).length;
 }
 
 export function StorageSection() {

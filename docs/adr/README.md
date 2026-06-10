@@ -1,7 +1,9 @@
 # Architecture Decision Records
 
 Dated, immutable log (see [conventions/documentation.md](../conventions/documentation.md)).
-One decision per ADR; supersede, don't rewrite. The map of current structure is
+One decision per ADR; supersede, don't rewrite. Scope is gated by
+[ADR-0000](0000-adr-scope.md): architectural decisions only — bug fixes and
+procedures don't land here. The map of current structure is
 [../ARCHITECTURE.md](../ARCHITECTURE.md); portable rules are
 [../conventions/](../conventions/).
 
@@ -19,13 +21,16 @@ One decision per ADR; supersede, don't rewrite. The map of current structure is
 | [0009](0009-i18n.md) | i18n via i18next, en/lt key parity | accepted |
 | [0010](0010-adopt-shared-conventions.md) | Adopt the shared conventions set (with recorded deviations) | accepted |
 | [0011](0011-contribute-ui-conventions.md) | Contribute UI-layer conventions to the shared set | accepted |
-| [0012](0012-sessions-dual-tier-persistence.md) | Sessions dual-tier persistence (localStorage + IDB) | accepted |
+| [0012](0012-sessions-dual-tier-persistence.md) | Sessions dual-tier persistence (localStorage + IDB) | superseded by 0021 |
 | [0013](0013-approval-promise-bridge.md) | Approval Promise bridge driver ↔ UI | accepted |
 | [0014](0014-stop-semantics-and-tool-cancellation.md) | Stop semantics + tool cancellation over IPC | accepted |
 | [0015](0015-prompt-assets.md) | Prompt assets: English-only `pt()` catalog, outside i18n | accepted |
 | [0016](0016-workspace-isolation-field.md) | Workspace isolation field (`worktree` \| `direct`) | **debatable — no concept yet** |
 | [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted |
 | [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted |
+| [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
+| [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
+| [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | accepted |
 
 ## Needs review / important missing parts
 

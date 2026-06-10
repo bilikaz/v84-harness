@@ -10,7 +10,7 @@ import { getWorkspace, type Workspace } from "../workspaces.ts";
 import { PERMISSIONLESS_TOOLS, type GatedTool, type ToolName, type ToolMode, type ToolResult } from "../tools/types.ts";
 import { RENDERER_TOOLS, RENDERER_TOOL_SCHEMAS } from "../tools/renderer.ts";
 import { sessionBus as bus } from "./events.ts";
-import { createSession, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
+import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
 // A validator for the model's final (no-tool) turn. Throws to reject — the
@@ -303,6 +303,9 @@ export async function send(
   // Per-session guard: only block if THIS session is already streaming. Allow a
   // message with no text as long as there's at least one attachment.
   if ((!t && !opts.images?.length && !opts.video?.length && !opts.files?.length) || getStreamingIds().has(sid) || isFull(cfg)) return;
+  // Sessions lazy-load (ADR-0021) — make sure the history is in memory before
+  // the turn reads it, or the model would see an empty conversation.
+  await ensureLoaded(sid);
   await runTurn(sid, cfg, t, opts);
 }
 

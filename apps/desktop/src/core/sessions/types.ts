@@ -15,10 +15,14 @@ export interface Step {
 }
 
 // An attached image. `url` is a `data:` URL (local attachment) or an http(s) URL.
+// `id` is stamped the first time the ref is persisted — it keys the media blob
+// in the durable tier so the bytes are written once, not on every persist (and
+// messages sharing the ref object — e.g. the media-feedback turn — share the blob).
 export interface ImageRef {
   url: string;
   mime?: string;
   name?: string;
+  id?: string;
 }
 
 // A non-image file attached to a user message. Its `text` is read at attach
@@ -63,4 +67,6 @@ export interface Session {
   // running totals / flags
   usedTokens?: number; // context occupancy: latest request's input + output tokens
   unread?: boolean; // finished output not yet opened → green dot
+  bytes?: number; // approximate persisted footprint (messages + media) — set on persist/load
+  loaded?: boolean; // false until this session's messages are read from the durable tier (lazy)
 }
