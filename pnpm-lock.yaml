@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@bilikaz/code-reviewer':
-        specifier: ^0.1.2
-        version: 0.1.2
+        specifier: ^0.2.1
+        version: 0.2.1
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.3
@@ -180,8 +180,8 @@ packages:
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
 
-  '@bilikaz/code-reviewer@0.1.2':
-    resolution: {integrity: sha512-NYZ6YJrN4uvOi/nxPVe9nGS9CciV3sXZY32YM6Ks2X9CJkAoXedRuDUVjQfynwpGkp6W9i61x1jRzx/YUGXcUA==}
+  '@bilikaz/code-reviewer@0.2.1':
+    resolution: {integrity: sha512-ZHNfzvSBterL8qETOt8HC+pjzAPBxjx9jovGnmcGn+/lB9PRrOsC3AHCXtvYUsArE9d/MEfaYmdRQ2oblQxdfA==}
     engines: {node: '>=24'}
     hasBin: true
 
@@ -2749,7 +2749,7 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@bilikaz/code-reviewer@0.1.2':
+  '@bilikaz/code-reviewer@0.2.1':
     dependencies:
       '@octokit/rest': 21.1.1
       ajv: 8.20.0
