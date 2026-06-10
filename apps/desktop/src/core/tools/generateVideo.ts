@@ -1,7 +1,8 @@
-import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedMedia } from "./shared.ts";
+import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedMedia } from "./types.ts";
 import { bytesToB64, mimeToExt } from "../../lib/dataUrl.ts";
 import { trimBase } from "../../lib/format.ts";
 import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt, type Quality } from "./media.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // Generate a short video from a prompt via the media provider (Cosmos /videos/sync,
 // form-data). Self-contained renderer tool (like GenerateImage): the prompt is
@@ -9,6 +10,8 @@ import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsampl
 // POSTed; the resulting clip rides on the message as a data-URL and renders in
 // the tool card. Generation is SLOW (~minutes per second of video).
 const FPS = 24;
+const POLL_INTERVAL_MS = 5_000;
+const GENERATION_TIMEOUT_MS = 30 * 60 * 1000; // generous — minutes per second of video
 
 const QUALITY: Record<Quality, { steps: number; guidance: number }> = {
   low: { steps: 40, guidance: 6 },
@@ -76,6 +79,7 @@ export const generateVideoTool: Tool = {
       prompt,
       system: UPSAMPLE_SYSTEM,
       requiredKey: "temporal_caption",
+      signal: ctx.signal,
       finalize: (obj) => {
         obj.resolution = { H: h, W: w };
         obj.aspect_ratio = `${aw},${ah}`;
@@ -85,16 +89,17 @@ export const generateVideoTool: Tool = {
     });
 
     try {
-      const { b64, mime } = await generate(media, finalPrompt, { size: `${w}x${h}`, numFrames, q: QUALITY[quality] });
+      const { b64, mime } = await generate(media, finalPrompt, { size: `${w}x${h}`, numFrames, q: QUALITY[quality] }, ctx.signal);
       const video: GeneratedMedia = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
-        // The model can't see the video (not fed back) — don't imply it can.
-        output: `Generated a ${duration}s video; it is displayed to the user. You cannot view it yourself, so don't describe its visual quality — just confirm it was generated.`,
+        // Whether the model sees the video depends on its input capability (the
+        // driver feeds video back only then) — phrase for both cases.
+        output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
         video: [video],
       };
     } catch (e) {
-      return { ok: false, output: `GenerateVideo failed: ${(e as Error).message}` };
+      return { ok: false, output: `GenerateVideo failed: ${errorMessage(e)}` };
     }
   },
 };
@@ -107,6 +112,7 @@ async function generate(
   media: MediaProviderConfig,
   prompt: string,
   opts: { size: string; numFrames: number; q: { steps: number; guidance: number } },
+  signal?: AbortSignal,
 ): Promise<{ b64: string; mime: string }> {
   const base = trimBase(media.baseUrl);
   const headers: Record<string, string> = media.apiKey ? { authorization: `Bearer ${media.apiKey}` } : {};
@@ -122,27 +128,30 @@ async function generate(
   form.set("seed", String(randomSeed()));
 
   // 1. Submit the job (returns immediately).
-  const res = await fetch(`${base}/videos`, { method: "POST", headers, body: form });
+  const res = await fetch(`${base}/videos`, { method: "POST", headers, body: form, signal });
   if (!res.ok) throw new Error(`video submit ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 300)}`);
   let job = (await res.json()) as { id?: string; status?: string; error?: unknown };
   if (!job.id) throw new Error("video submit returned no job id");
 
   // 2. Poll until completed/failed (short requests — no long-held connection).
   // Generation can run many minutes, so the cap is generous.
-  const deadline = Date.now() + 30 * 60 * 1000; // 30-minute cap
+  const deadline = Date.now() + GENERATION_TIMEOUT_MS;
   while (job.status !== "completed") {
     if (job.status === "failed") {
       throw new Error(`video generation failed: ${typeof job.error === "string" ? job.error : JSON.stringify(job.error)}`);
     }
-    if (Date.now() > deadline) throw new Error("video generation timed out after 30 minutes");
-    await new Promise((r) => setTimeout(r, 5000));
-    const p = await fetch(`${base}/videos/${job.id}`, { headers });
+    if (Date.now() > deadline) throw new Error(`video generation timed out after ${GENERATION_TIMEOUT_MS / 60_000} minutes`);
+    // Stop ends the POLLING — the server job keeps running (no cancel API; ADR-0014).
+    if (signal?.aborted) throw new Error("cancelled by the user");
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    if (signal?.aborted) throw new Error("cancelled by the user");
+    const p = await fetch(`${base}/videos/${job.id}`, { headers, signal });
     if (!p.ok) throw new Error(`video poll ${p.status} ${p.statusText}`);
     job = (await p.json()) as typeof job;
   }
 
   // 3. Download the finished video.
-  const c = await fetch(`${base}/videos/${job.id}/content`, { headers });
+  const c = await fetch(`${base}/videos/${job.id}/content`, { headers, signal });
   if (!c.ok) throw new Error(`video content ${c.status} ${c.statusText}`);
   const ct = c.headers.get("content-type") || "";
   return { b64: bytesToB64(new Uint8Array(await c.arrayBuffer())), mime: ct.includes("video") ? ct : "video/mp4" };

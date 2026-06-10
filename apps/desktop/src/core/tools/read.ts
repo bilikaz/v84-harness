@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-import { cap, type Tool } from "./shared.ts";
+import { type Tool } from "./types.ts";
+import { cap } from "./shared.ts";
 import { toReal } from "./paths.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 const MAX_LINES = 300;
 
@@ -31,7 +33,7 @@ export const readTool: Tool = {
       const content = await readFile(toReal(ctx.cwd, p), "utf-8");
       return { ok: true, output: cap(format(p, content)) };
     } catch (e) {
-      return { ok: false, output: `error reading ${p}: ${(e as Error).message}. Try List or Bash to check the path.` };
+      return { ok: false, output: `error reading ${p}: ${errorMessage(e)}. Try List or Bash to check the path.` };
     }
   },
 };

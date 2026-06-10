@@ -1,5 +1,5 @@
 import { createStore } from "../lib/store.ts";
-import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/shared.ts";
+import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/types.ts";
 
 // Workspace store — a workspace is a first-class record: a folder (the agent's
 // root) + name + per-workspace settings. Sessions LINK to a workspace via

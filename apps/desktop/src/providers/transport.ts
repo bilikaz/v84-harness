@@ -10,7 +10,8 @@
 // exists but is wrong, by injecting a correction turn.
 
 import type { StreamEvent } from "./types.ts";
-import { dlog } from "./debug.ts";
+import { llmLog } from "./debug.ts";
+import { errorMessage } from "../lib/errors.ts";
 
 export class HttpError extends Error {
   constructor(
@@ -29,7 +30,7 @@ export async function sseRequest(tag: string, url: string, init: RequestInit): P
   const res = await fetch(url, init);
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    dlog(`${tag} ✗`, res.status, res.statusText, errText);
+    llmLog.debug("http_error", { tag, status: res.status, statusText: res.statusText, body: errText });
     const ra = res.headers.get("retry-after")?.trim();
     const retryAfterMs = ra && /^\d+$/.test(ra) ? Number(ra) * 1000 : undefined;
     throw new HttpError(res.status, `${res.status} ${res.statusText} ${errText}`.trim(), retryAfterMs);
@@ -88,13 +89,13 @@ export async function* withRetry(
       return;
     } catch (e) {
       if (signal.aborted) throw e;
-      const msg = (e as Error).message || String(e);
+      const msg = errorMessage(e);
       if (attempt >= MAX_TRANSPORT_RETRIES || !isRetryable(e)) {
         yield { type: "error", message: msg };
         return;
       }
       const delay = retryDelay(e, attempt);
-      dlog("transport ↻", `attempt ${attempt + 1} failed (${msg}) — retrying in ${Math.round(delay)}ms`);
+      llmLog.debug("retry", { attempt: attempt + 1, message: msg, delayMs: Math.round(delay) });
       yield { type: "retry", message: msg };
       await sleep(delay, signal);
     }

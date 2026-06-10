@@ -20,6 +20,8 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Bump the whole UI a notch (~10%); "a bit bigger" without restyling everything.
 const ZOOM = 1.1;
+const MIN_WIDTH = 900;
+const MIN_HEIGHT = 600;
 
 function createWindow(): void {
   // Size to the screen: ~2/3 of the work-area width, a tall-ish height. `screen`
@@ -31,8 +33,8 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width,
     height,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     show: false,
     icon: path.join(dirname, "../../build/icon.png"), // V84 mark (rendered from src/logo.svg)
     webPreferences: {

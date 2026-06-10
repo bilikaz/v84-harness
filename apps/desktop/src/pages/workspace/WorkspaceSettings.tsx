@@ -1,29 +1,32 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { FolderClosed, Trash2 } from "lucide-react";
 
 import { Modal } from "../../components/Modal.tsx";
 import { fieldInputFull } from "../settings/Field.tsx";
 import { cn } from "../../lib/cn.ts";
-import { useProvider } from "../../lib/settings.ts";
+import { useProvider } from "../../core/settings.ts";
 import {
   addWorkspace,
   deleteWorkspace,
   updateWorkspace,
   type Workspace,
 } from "../../core/workspaces.ts";
-import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/shared.ts";
+import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/types.ts";
 
 // Add/edit popup for a workspace. Opened from the sidebar after the folder
 // picker (new) or from a workspace row (edit). Self-contained form over a local
 // copy of the draft; Save commits to the store.
-const MODES: { value: ToolMode; label: string; hint: string }[] = [
-  { value: 0, label: "Off", hint: "withheld from the agent" },
-  { value: 1, label: "Ask", hint: "asks before each call" },
-  { value: 2, label: "Auto", hint: "runs without asking" },
+// i18n keys, translated at render (the module-level constant can't call t()).
+const MODES: { value: ToolMode; labelKey: string; hintKey: string }[] = [
+  { value: 0, labelKey: "workspace.modeOff", hintKey: "workspace.modeOffHint" },
+  { value: 1, labelKey: "workspace.modeAsk", hintKey: "workspace.modeAskHint" },
+  { value: 2, labelKey: "workspace.modeAuto", hintKey: "workspace.modeAutoHint" },
 ];
 
 export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean; onClose: () => void }) {
   const { workspace, isNew, onClose } = props;
+  const { t } = useTranslation();
   const provider = useProvider();
   const [draft, setDraft] = useState<Workspace>(workspace);
 
@@ -47,7 +50,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
   return (
     <Modal open onClose={onClose} className="flex max-h-[88vh] w-[min(560px,92vw)] flex-col overflow-hidden">
       <div className="border-b border-neutral-200 px-6 py-4">
-        <h2 className="text-lg font-semibold text-neutral-900">{isNew ? "Add workspace" : "Workspace settings"}</h2>
+        <h2 className="text-lg font-semibold text-neutral-900">{isNew ? t("workspace.addTitle") : t("workspace.editTitle")}</h2>
         <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-neutral-500">
           <FolderClosed size={13} className="shrink-0" />
           {draft.root}
@@ -55,7 +58,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        <Field label="Name">
+        <Field label={t("workspace.name")}>
           <input
             autoFocus
             value={draft.name}
@@ -65,13 +68,13 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
           />
         </Field>
 
-        <Field label="Default model" hint="Model new sessions in this workspace use.">
+        <Field label={t("workspace.defaultModel")} hint={t("workspace.defaultModelHint")}>
           <select
             value={draft.defaultModelId ?? ""}
             onChange={(e) => set("defaultModelId", e.target.value || undefined)}
             className={fieldInputFull}
           >
-            <option value="">Provider default ({provider.model || "unset"})</option>
+            <option value="">{t("workspace.providerDefault", { model: provider.model || t("workspace.unset") })}</option>
             {(provider.models ?? []).map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -80,32 +83,30 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
           </select>
         </Field>
 
-        <Field label="Isolation" hint="A git worktree per session keeps parallel agents from clobbering files.">
+        <Field label={t("workspace.isolation")} hint={t("workspace.isolationHint")}>
           <select
             value={draft.isolation}
             onChange={(e) => set("isolation", e.target.value as Workspace["isolation"])}
             className={fieldInputFull}
           >
-            <option value="worktree">Worktree per session</option>
-            <option value="direct">Work directly in the folder</option>
+            <option value="worktree">{t("workspace.worktree")}</option>
+            <option value="direct">{t("workspace.direct")}</option>
           </select>
         </Field>
 
-        <Field label="Instructions" hint="Optional standing system prompt for agents in this workspace.">
+        <Field label={t("workspace.instructions")} hint={t("workspace.instructionsHint")}>
           <textarea
             value={draft.instructions ?? ""}
             onChange={(e) => set("instructions", e.target.value || undefined)}
             rows={3}
-            placeholder="e.g. This is a pnpm monorepo; run typecheck before finishing."
+            placeholder={t("workspace.instructionsPlaceholder")}
             className={`${fieldInputFull} resize-y`}
           />
         </Field>
 
         <div className="mt-5">
-          <div className="text-sm font-medium text-neutral-700">Tools</div>
-          <p className="mb-2 text-xs text-neutral-500">
-            File tools are confined to this folder; only Bash can step outside, so it asks by default.
-          </p>
+          <div className="text-sm font-medium text-neutral-700">{t("workspace.tools")}</div>
+          <p className="mb-2 text-xs text-neutral-500">{t("workspace.toolsHint")}</p>
           <div className="space-y-1">
             {ALL_TOOLS.map((tool) => (
               <div key={tool} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-neutral-50">
@@ -126,7 +127,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
             onClick={remove}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-red-600 hover:bg-red-50"
           >
-            <Trash2 size={15} /> Remove
+            <Trash2 size={15} /> {t("common.remove")}
           </button>
         )}
         <div className="flex gap-2">
@@ -135,14 +136,14 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
             onClick={onClose}
             className="rounded-lg px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
             onClick={save}
             className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
           >
-            {isNew ? "Add" : "Save"}
+            {isNew ? t("common.add") : t("common.save")}
           </button>
         </div>
       </div>
@@ -161,13 +162,14 @@ function Field(props: { label: string; hint?: string; children: ReactNode }) {
 }
 
 function Segmented(props: { value: ToolMode; onChange: (m: ToolMode) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex overflow-hidden rounded-lg border border-neutral-200">
       {MODES.map((m) => (
         <button
           key={m.value}
           type="button"
-          title={m.hint}
+          title={t(m.hintKey)}
           onClick={() => props.onChange(m.value)}
           className={cn(
             "px-2.5 py-1 text-xs",
@@ -176,7 +178,7 @@ function Segmented(props: { value: ToolMode; onChange: (m: ToolMode) => void }) 
               : "bg-white text-neutral-600 hover:bg-neutral-100",
           )}
         >
-          {m.label}
+          {t(m.labelKey)}
         </button>
       ))}
     </div>

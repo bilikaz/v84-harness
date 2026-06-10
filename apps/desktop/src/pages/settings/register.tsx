@@ -1,9 +1,13 @@
-import { UserCircle, Plug, Image, Wrench } from "lucide-react";
+// Settings feature registration: contributes one section per concern to the
+// "settings" region. Nav labels are translated by id (`<id>.title`) in
+// SettingsModal; the `title` here is only the untranslated fallback.
+import { UserCircle, Plug, Image, Database, Wrench } from "lucide-react";
 
 import { register } from "../../lib/registry.ts";
 import { AccountSection } from "./AccountSection.tsx";
 import { ProviderSection } from "./ProviderSection.tsx";
 import { MediaSection } from "./MediaSection.tsx";
+import { StorageSection } from "./StorageSection.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";
 
 register(
@@ -36,11 +40,20 @@ register(
   },
   {
     region: "settings",
+    id: "storage",
+    title: "Storage",
+    icon: Database,
+    route: "settings/storage",
+    order: 3,
+    render: () => <StorageSection />,
+  },
+  {
+    region: "settings",
     id: "developer",
     title: "Developer",
     icon: Wrench,
     route: "settings/developer",
-    order: 3,
+    order: 4,
     render: () => <DeveloperSection />,
   },
 );

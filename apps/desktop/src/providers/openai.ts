@@ -1,12 +1,13 @@
 import type { ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
 import { parseSSE } from "./sse.ts";
 import { sseRequest } from "./transport.ts";
-import { dlog } from "./debug.ts";
+import { baseWithPrefix, expectOk } from "./util.ts";
+import { llmLog } from "./debug.ts";
 
+// No fallback host: an empty base intentionally yields relative "/v1/…" URLs
+// (the web dev proxy case). "/openai/v1" bases also pass the endsWith check.
 function joinUrl(base: string, path: string): string {
-  const b = base.replace(/\/+$/, "");
-  if (b.endsWith("/v1") || b.endsWith("/openai/v1")) return `${b}${path}`;
-  return `${b}/v1${path}`;
+  return `${baseWithPrefix(base, "", "/v1")}${path}`;
 }
 
 // Map the conversation to OpenAI chat messages. This IS the normalized shape, so
@@ -81,7 +82,7 @@ export async function* streamOpenAI(
     ...reasoningFields(cfg),
     ...(tools?.length ? { tools, tool_choice: "auto" } : {}),
   };
-  dlog("openai →", url, body);
+  llmLog.debug("openai.request", { url, body });
   const res = await sseRequest("openai", url, {
     method: "POST",
     signal,
@@ -155,10 +156,9 @@ export async function listOpenAIModelInfos(
   cfg: Pick<ModelConfig, "baseUrl" | "apiKey">,
 ): Promise<{ id: string; maxModelLen?: number }[]> {
   const url = joinUrl(cfg.baseUrl, "/models");
-  const res = await fetch(url, {
-    headers: { ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const res = await expectOk(
+    await fetch(url, { headers: { ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) } }),
+  );
   const data = await res.json();
   const list: any[] = data.data ?? data.models ?? [];
   return list

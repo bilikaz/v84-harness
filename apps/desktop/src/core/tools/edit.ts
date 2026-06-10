@@ -1,7 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 
-import { type Tool } from "./shared.ts";
+import { type Tool } from "./types.ts";
 import { toReal } from "./paths.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // Exact string-replace in a file. `old_string` must be unique unless
 // `replace_all` is set — mirrors the Claude-Code Edit contract.
@@ -43,7 +44,7 @@ export const editTool: Tool = {
       await writeFile(real, updated, "utf-8");
       return { ok: true, output: `edited ${p} (${count} replacement${count === 1 ? "" : "s"})` };
     } catch (e) {
-      return { ok: false, output: `error editing ${p}: ${(e as Error).message}` };
+      return { ok: false, output: `error editing ${p}: ${errorMessage(e)}` };
     }
   },
 };

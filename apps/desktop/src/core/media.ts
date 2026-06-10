@@ -1,10 +1,11 @@
-import type { MediaProviderConfig } from "../core/tools/shared.ts";
-import { trimBase } from "./format.ts";
-import { harness } from "./harness.ts";
-import { createStore } from "./store.ts";
+import type { MediaProviderConfig } from "./tools/types.ts";
+import { trimBase } from "../lib/format.ts";
+import { harness } from "../lib/harness.ts";
+import { createStore } from "../lib/store.ts";
+import { errorMessage } from "../lib/errors.ts";
 
 // Media-generation provider config (the image/video container, e.g. Cosmos).
-// Separate from the chat provider (lib/settings.ts) — different API shape.
+// Separate from the chat provider (core/settings.ts) — different API shape.
 // One provider today; the `resolveMediaProvider` accessor is the seam for
 // selecting among several later.
 const KEY = "v84-harness:media";
@@ -48,7 +49,7 @@ export async function detectMediaModels(): Promise<{ ok: boolean; count: number;
     saveMediaConfig({ models, model: current.model || models[0] || "" });
     return { ok: true, count: models.length };
   } catch (e) {
-    return { ok: false, count: 0, error: (e as Error).message };
+    return { ok: false, count: 0, error: errorMessage(e) };
   }
 }
 

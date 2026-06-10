@@ -260,6 +260,7 @@ function WorkspaceRow(props: {
   onSettings?: () => void;
 }) {
   const { icon: Icon, label, active, onSelect, onSettings } = props;
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -282,7 +283,7 @@ function WorkspaceRow(props: {
         <button
           type="button"
           onClick={onSettings}
-          title="Workspace settings"
+          title={t("workspace.editTitle")}
           className="shrink-0 rounded-md p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100"
         >
           <Settings size={13} />

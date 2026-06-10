@@ -1,5 +1,6 @@
-import { stripFences } from "./format.ts";
-import { createStore } from "./store.ts";
+import { stripFences } from "../lib/format.ts";
+import { createStore } from "../lib/store.ts";
+import { errorMessage } from "../lib/errors.ts";
 
 // Agents store — reusable playbooks. Each is a name + description plus a pair of
 // markdown documents: a `system` (how to behave / standing instructions) and a
@@ -12,7 +13,7 @@ const LEGACY_KEY = "v84-harness:procedures"; // pre-rename storage; migrated on 
 
 // Optional output contract. When set, the chat engine validates the agent's
 // final turn against it and heals (re-prompts) on failure — see the heal layer
-// in providers/index.ts + the `validate` path in core/sessions/driver.ts.
+// in providers/client.ts + the `validate` path in core/sessions/driver.ts.
 // Lightweight by design (no JSON Schema dependency): require valid JSON,
 // optionally with given top-level keys.
 export interface AgentOutput {
@@ -66,7 +67,7 @@ export function buildValidator(output?: AgentOutput): ((text: string) => void) |
     try {
       parsed = JSON.parse(stripFences(text));
     } catch (e) {
-      throw new Error(`output is not valid JSON: ${(e as Error).message}`);
+      throw new Error(`output is not valid JSON: ${errorMessage(e)}`);
     }
     if (required.length) {
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {

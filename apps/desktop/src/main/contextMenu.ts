@@ -3,7 +3,7 @@
 // quicker than save-then-attach, so this complements the in-renderer save
 // buttons. Lives in main because the clipboard + Save dialog are main-only.
 
-import { saveDataUrl } from "./saveMedia.ts";
+import { saveDataUrl } from "./saveDataUrl.ts";
 
 type Electron = typeof import("electron");
 type BrowserWindow = InstanceType<Electron["BrowserWindow"]>;

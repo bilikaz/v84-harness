@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { DetectButton, Row, fieldInput, fieldInputFlex } from "./Field.tsx";
-import { detectMediaModels, saveMediaConfig, useMediaConfig } from "../../lib/media.ts";
+import { detectMediaModels, saveMediaConfig, useMediaConfig } from "../../core/media.ts";
 import { useDetection } from "../../lib/hooks.ts";
 
 // Image-generation provider settings (the container the GenerateImage tool

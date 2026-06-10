@@ -2,6 +2,8 @@
 // `setLlmDebug(true/false)` (persists to localStorage) or in the console via
 // `localStorage["v84-harness:llm-debug"] = "1" | "0"`. Gated so production stays
 // quiet unless explicitly turned on.
+import { ConsoleLogger } from "../lib/logger/index.ts";
+
 const KEY = "v84-harness:llm-debug";
 
 function initial(): boolean {
@@ -29,10 +31,6 @@ export function llmDebugEnabled(): boolean {
   return enabled;
 }
 
-// Log an LLM event when debug is on. `label` is the provider + phase, e.g.
-// "openai →" / "openai ✗".
-export function dlog(label: string, ...args: unknown[]): void {
-  // console.log (not console.debug) so it shows at the DevTools default level —
-  // console.debug is hidden unless "Verbose" is enabled.
-  if (enabled) console.log(`[llm] ${label}`, ...args);
-}
+// The LLM layer's logger — `debug` events are gated by the flag above, so
+// request/response dumps stay quiet unless LLM debug logging is on.
+export const llmLog = new ConsoleLogger("llm", { isDebugEnabled: llmDebugEnabled });

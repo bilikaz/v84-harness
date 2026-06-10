@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Row } from "./Field.tsx";
 import { llmDebugEnabled, setLlmDebug } from "../../providers/debug.ts";
 import { cn } from "../../lib/cn.ts";
 
 export function DeveloperSection() {
+  const { t } = useTranslation();
   const [debug, setDebug] = useState(llmDebugEnabled());
 
   function toggle() {
@@ -15,10 +17,10 @@ export function DeveloperSection() {
 
   return (
     <div className="max-w-xl">
-      <h2 className="text-lg font-semibold text-neutral-900">Developer</h2>
-      <p className="mt-1 text-sm text-neutral-500">Diagnostics, logs, and feature flags.</p>
+      <h2 className="text-lg font-semibold text-neutral-900">{t("developer.title")}</h2>
+      <p className="mt-1 text-sm text-neutral-500">{t("developer.subtitle")}</p>
 
-      <Row label="LLM debug logging">
+      <Row label={t("developer.llmDebug")}>
         <button
           type="button"
           role="switch"
@@ -37,9 +39,7 @@ export function DeveloperSection() {
           />
         </button>
       </Row>
-      <p className="pb-2 text-xs text-neutral-400">
-        Logs every model request/response to the console (prefixed <code>[llm]</code>). On by default in dev.
-      </p>
+      <p className="pb-2 text-xs text-neutral-400">{t("developer.llmDebugHint")}</p>
     </div>
   );
 }

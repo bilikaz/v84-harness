@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { DetectButton, Row, fieldInput, fieldInputBare, fieldInputFlex } from "./Field.tsx";
-import { detectModels, saveProvider, useProvider } from "../../lib/settings.ts";
+import { detectModels, saveProvider, useProvider } from "../../core/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { useDetection } from "../../lib/hooks.ts";
 import type { ProviderKind, ReasoningEffort } from "../../providers/types.ts";
@@ -99,10 +99,14 @@ export function ProviderSection() {
           <option value="low">{t("provider.low")}</option>
           <option value="medium">{t("provider.medium")}</option>
           <option value="high">{t("provider.high")}</option>
+          <option value="xhigh">{t("provider.xhigh")}</option>
+          <option value="max">{t("provider.max")}</option>
         </select>
       </Row>
 
-      {cfg.reasoningEffort && cfg.reasoningEffort !== "off" && (
+      {/* Token budget applies to OpenAI-compatible (vLLM) and Gemini; Anthropic
+          uses effort + adaptive thinking and ignores it (ADR-0006). */}
+      {cfg.reasoningEffort && cfg.reasoningEffort !== "off" && cfg.provider !== "anthropic" && (
         <Row label={t("provider.thinkingBudget")}>
           <input
             type="number"

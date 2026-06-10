@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { ChevronRight, RefreshCw, Shrink } from "lucide-react";
 
 import { compact, contextLimit, useActiveSession, useCompacting } from "../../core/sessions/index.ts";
-import { useProvider } from "../../lib/settings.ts";
+import { useProvider } from "../../core/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import type { ModelConfig } from "../../providers/types.ts";
 import { cn } from "../../lib/cn.ts";
@@ -74,7 +74,7 @@ function ContextWindow({
         />
       </div>
       <p className="mt-1.5 text-[11px] text-neutral-400">
-        {fmtTokens(reserve)} system reserved · {fmtTokens(total)} window
+        {t("progress.reserved", { reserve: fmtTokens(reserve), total: fmtTokens(total) })}
       </p>
     </Card>
   );
@@ -83,6 +83,7 @@ function ContextWindow({
 // Summarize = compact the conversation to free context. Gray under 70% usage,
 // red above. Click opens a dialog explaining what it does before confirming.
 function SummarizeControl({ sid, cfg, ratio }: { sid: string; cfg: ModelConfig; ratio: number }) {
+  const { t } = useTranslation();
   const compacting = useCompacting();
   const [confirm, setConfirm] = useState(false);
   const hot = ratio >= 0.7;
@@ -92,28 +93,26 @@ function SummarizeControl({ sid, cfg, ratio }: { sid: string; cfg: ModelConfig; 
         type="button"
         onClick={() => setConfirm(true)}
         disabled={compacting}
-        title="Summarize conversation to free context"
+        title={t("progress.summarizeHint")}
         className={cn(
           "-my-1 flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-neutral-100 disabled:opacity-50",
           hot ? "text-red-600" : "text-neutral-400",
         )}
       >
         {compacting ? <RefreshCw size={14} className="animate-spin" /> : <Shrink size={14} />}
-        {compacting ? "Summarizing…" : "Summarize"}
+        {compacting ? t("progress.summarizing") : t("progress.summarize")}
       </button>
       {confirm && (
         <Modal open onClose={() => setConfirm(false)} className="w-[min(480px,92vw)]">
           <div className="px-6 py-5">
-            <h2 className="text-base font-semibold text-neutral-900">Summarize conversation</h2>
+            <h2 className="text-base font-semibold text-neutral-900">{t("progress.summarizeTitle")}</h2>
             <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-              This compresses the entire conversation into a short summary and <b>drops the full history</b>{" "}
-              (including attached images and files) to free up the context window. The model keeps the summary
-              and continues from it. This can’t be undone.
+              <Trans i18nKey="progress.summarizeBody" components={{ b: <b /> }} />
             </p>
             <ConfirmActions
               className="mt-5 flex justify-end gap-2"
-              cancelLabel="Cancel"
-              confirmLabel="Summarize"
+              cancelLabel={t("common.cancel")}
+              confirmLabel={t("progress.summarize")}
               onCancel={() => setConfirm(false)}
               onConfirm={() => {
                 setConfirm(false);

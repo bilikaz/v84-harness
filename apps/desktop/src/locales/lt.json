@@ -83,6 +83,8 @@
     "low": "Žemas",
     "medium": "Vidutinis",
     "high": "Aukštas",
+    "xhigh": "Ypač aukštas",
+    "max": "Maksimalus",
     "thinkingBudget": "Mąstymo biudžetas",
     "noBudget": "be ribos (žetonai)",
     "maxOutput": "Maks. išvesties žetonų",
@@ -107,6 +109,8 @@
     "maxSize": "Maks. dydis",
     "steps": "Inferencijos žingsniai",
     "guidance": "Vedimo skalė",
+    "flowShift": "Srauto poslinkis",
+    "recaption": "Užklausos praturtinimas",
     "cot": "Minčių grandinė",
     "apiKey": "API raktas",
     "apiKeyPlaceholder": "palikite tuščią, jei nėra"
@@ -118,7 +122,16 @@
     "attach": "Pridėti paveikslėlį",
     "disclaimer": "Agentai gali klysti. Peržiūrėkite jų rezultatus.",
     "selectModel": "Pasirinkti modelį",
-    "contextFull": "Kontekstas pilnas — sunaudota {{used}} / {{total}} žetonų. Pradėkite naują sesiją."
+    "contextFull": "Kontekstas pilnas — sunaudota {{used}} / {{total}} žetonų. Pradėkite naują sesiją.",
+    "hidePanel": "Slėpti skydelį",
+    "showPanel": "Rodyti skydelį",
+    "changeModel": "Keisti tiekėją / modelį",
+    "detectModels": "Aptikti galimus modelius",
+    "stop": "Stabdyti",
+    "compacting": "Ankstesnės žinutės apibendrinamos, kad atsilaisvintų kontekstas…",
+    "thinking": "Mąsto…",
+    "thoughts": "Mintys",
+    "running": "vykdoma…"
   },
   "progress": {
     "progress": "Eiga",
@@ -129,6 +142,63 @@
     "used": "Sunaudota {{used}} / {{total}}",
     "left": "Liko {{tokens}}",
     "full": "pilnas",
-    "noModel": "Sunaudota {{used}} — aptikite modelį, kad matytumėte lango dydį."
+    "noModel": "Sunaudota {{used}} — aptikite modelį, kad matytumėte lango dydį.",
+    "reserved": "{{reserve}} sistemos rezervas · {{total}} langas",
+    "summarize": "Apibendrinti",
+    "summarizing": "Apibendrinama…",
+    "summarizeHint": "Apibendrinti pokalbį, kad atsilaisvintų kontekstas",
+    "summarizeTitle": "Apibendrinti pokalbį",
+    "summarizeBody": "Visas pokalbis suspaudžiamas į trumpą santrauką, o <b>visa istorija pašalinama</b> (įskaitant pridėtus paveikslėlius ir failus), kad atsilaisvintų konteksto langas. Modelis išsaugo santrauką ir tęsia nuo jos. To atšaukti negalima."
+  },
+  "workspace": {
+    "addTitle": "Pridėti darbo sritį",
+    "editTitle": "Darbo srities nustatymai",
+    "name": "Pavadinimas",
+    "defaultModel": "Numatytasis modelis",
+    "defaultModelHint": "Modelis, kurį naudoja naujos šios darbo srities sesijos.",
+    "providerDefault": "Tiekėjo numatytasis ({{model}})",
+    "unset": "nenustatyta",
+    "isolation": "Izoliacija",
+    "isolationHint": "Atskiras git worktree kiekvienai sesijai apsaugo failus nuo lygiagrečių agentų konfliktų.",
+    "worktree": "Worktree kiekvienai sesijai",
+    "direct": "Dirbti tiesiogiai aplanke",
+    "instructions": "Instrukcijos",
+    "instructionsHint": "Neprivalomas nuolatinis sisteminis nurodymas šios darbo srities agentams.",
+    "instructionsPlaceholder": "pvz., tai pnpm monorepo; prieš baigiant paleisk typecheck.",
+    "tools": "Įrankiai",
+    "toolsHint": "Failų įrankiai apriboti šiuo aplanku; tik Bash gali išeiti už jo ribų, todėl pagal numatytuosius nustatymus klausia.",
+    "modeOff": "Išjungta",
+    "modeOffHint": "agentui nepateikiamas",
+    "modeAsk": "Klausti",
+    "modeAskHint": "klausia prieš kiekvieną iškvietimą",
+    "modeAuto": "Automatiškai",
+    "modeAutoHint": "vykdomas neklausiant"
+  },
+  "storage": {
+    "title": "Saugykla",
+    "subtitle": "Kiek vietos užima pokalbių istorija ir kur ji saugoma. Ištrinkite sesijas, kad atlaisvintumėte vietos.",
+    "backend": "Saugyklos tipas",
+    "backend_sqlite": "SQLite (darbalaukis)",
+    "backend_idb": "IndexedDB (naršyklė)",
+    "backend_local": "localStorage (ribota, ~5 MB)",
+    "totalUsed": "Iš viso sesijos (apytiksliai)",
+    "noWorkspace": "Pokalbiai (be darbo srities)",
+    "deleteAll": "Ištrinti visas"
+  },
+  "developer": {
+    "title": "Kūrėjams",
+    "subtitle": "Diagnostika, žurnalai ir funkcijų jungikliai.",
+    "llmDebug": "LLM derinimo žurnalas",
+    "llmDebugHint": "Registruoja kiekvieną modelio užklausą/atsakymą konsolėje (su prefiksu [llm]). Dev režime įjungta pagal numatytuosius nustatymus."
+  },
+  "common": {
+    "cancel": "Atšaukti",
+    "save": "Išsaugoti",
+    "add": "Pridėti",
+    "remove": "Pašalinti",
+    "close": "Užverti",
+    "closeEsc": "Užverti (Esc)",
+    "saveImage": "Išsaugoti paveikslėlį",
+    "saveVideo": "Išsaugoti vaizdo įrašą"
   }
 }

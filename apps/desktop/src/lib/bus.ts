@@ -9,6 +9,11 @@
 // transport layer — see providers/ `StreamEvent` — which the session driver
 // consumes and re-publishes as "session:*" events.
 
+import { errorMessage } from "./errors.ts";
+import { rootLog } from "./logger/index.ts";
+
+const log = rootLog.child("bus");
+
 // Augmented per-domain (declaration merging). Empty here on purpose.
 export interface BusEvents {}
 
@@ -27,9 +32,19 @@ export function on<K extends BusEventType>(type: K, handler: Handler<K>): () => 
 }
 
 // Fire an event to that type's subscribers (synchronous, registration order).
+// Each handler is isolated: one throwing must not silence the handlers behind
+// it (the transcript listener still has to see the event a buggy service
+// crashed on).
 export function emit<K extends BusEventType>(type: K, payload: BusEvents[K]): void {
   const set = registry.get(type);
-  if (set) for (const h of set) (h as Handler<K>)(payload);
+  if (!set) return;
+  for (const h of set) {
+    try {
+      (h as Handler<K>)(payload);
+    } catch (e) {
+      log.error("handler_crashed", { event: String(type), error: errorMessage(e) });
+    }
+  }
 }
 
 // The sub-event names for a domain prefix P (the part after "<P>:"), derived

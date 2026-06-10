@@ -5,6 +5,14 @@ export function fmtTokens(n: number): string {
   return String(n);
 }
 
+// Human-readable byte sizes: 1024 → "1.0 KB", 12_582_912 → "12.0 MB".
+export function fmtBytes(n: number): string {
+  if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
 // Strip a leading ```json / ``` fence (and trailing ```), so a model that wraps
 // its JSON answer in a code block still parses.
 export function stripFences(text: string): string {

@@ -1,7 +1,9 @@
 import { readdir } from "node:fs/promises";
 
-import { cap, type Tool } from "./shared.ts";
+import { type Tool } from "./types.ts";
+import { cap } from "./shared.ts";
 import { toReal } from "./paths.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // List a directory's entries. Directories get a trailing "/". Paths stay
 // workspace-relative; "/" is the workspace root.
@@ -30,7 +32,7 @@ export const listTool: Tool = {
         .sort((a, b) => a.localeCompare(b));
       return { ok: true, output: cap(`# ${p}\n${lines.join("\n")}`) };
     } catch (e) {
-      return { ok: false, output: `error listing ${p}: ${(e as Error).message}` };
+      return { ok: false, output: `error listing ${p}: ${errorMessage(e)}` };
     }
   },
 };

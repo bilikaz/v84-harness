@@ -19,6 +19,23 @@ export function mimeToExt(mime: string): string {
   return mime.split("/")[1] || "png";
 }
 
+// MIME type for a media file extension — the inverse of mimeToExt, for tools
+// that load media from disk. Returns undefined for anything that isn't a
+// supported image/video type (the caller decides how to reject).
+const EXT_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+};
+export function extToMime(ext: string): string | undefined {
+  return EXT_MIME[ext.toLowerCase().replace(/^\./, "")];
+}
+
 // Portable base64 of binary (works in the renderer AND node, no Buffer
 // dependency in the browser) — chunked so large payloads (videos) don't blow
 // the call stack.

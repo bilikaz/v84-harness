@@ -1,6 +1,6 @@
 import { scope } from "../../lib/bus.ts";
 import type { ModelConfig, StreamUsage, ToolCall } from "../../providers/types.ts";
-import type { FileAttachment, ImageRef } from "../../lib/types.ts";
+import type { FileAttachment, ImageRef } from "./types.ts";
 
 // The session domain's events. Each "session:<sub>" key has a defined payload
 // type — "what is sent for what event". Registered on the bus via declaration
@@ -61,11 +61,13 @@ export interface ToolResultEvt {
   images?: ImageRef[];
   video?: ImageRef[];
 }
-// Tool-produced images fed back as a hidden user turn so a vision agent can
-// inspect its own output.
-export interface ImageFeedback {
+// Tool-produced media (generated or loaded) fed back as a hidden user turn so
+// a vision agent can inspect it. The driver only includes what the model's
+// declared input capabilities accept.
+export interface MediaFeedback {
   sessionId: string;
-  images: ImageRef[];
+  images?: ImageRef[];
+  video?: ImageRef[];
 }
 // Open a fresh assistant message for the next model turn in the loop.
 export interface AssistantOpen {
@@ -100,7 +102,7 @@ declare module "../../lib/bus.ts" {
     "session:assistant:open": AssistantOpen;
     "session:heal": Heal;
     "session:stream:retry": StreamRetry;
-    "session:imageFeedback": ImageFeedback;
+    "session:mediaFeedback": MediaFeedback;
   }
 }
 

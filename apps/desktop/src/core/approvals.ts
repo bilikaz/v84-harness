@@ -29,6 +29,29 @@ export function resolveApproval(id: string, ok: boolean): void {
   store.set(store.get().filter((p) => p.id !== id));
 }
 
+// Deny everything a session still has queued. Called on stop/delete — a Promise
+// nobody can answer anymore must settle, or the driver's await hangs forever.
+export function denyApprovalsForSession(sessionId: string): void {
+  const pending = store.get();
+  const mine = pending.filter((p) => p.sessionId === sessionId);
+  if (!mine.length) return;
+  mine.forEach((p) => p.resolve(false));
+  store.set(pending.filter((p) => p.sessionId !== sessionId));
+}
+
+export function getPendingApprovals(): PendingApproval[] {
+  return store.get();
+}
+
 export function usePendingApprovals(): PendingApproval[] {
   return store.use();
+}
+
+// HMR: settle (deny) anything pending — the resolvers belong to the old module
+// instance and would otherwise leak as forever-pending Promises.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    store.get().forEach((p) => p.resolve(false));
+    store.set([]);
+  });
 }

@@ -1,7 +1,9 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import { collectText } from "../../providers/index.ts";
-import { getProvider } from "../../lib/settings.ts";
+import { collectText } from "../../providers/client.ts";
+import { getProvider } from "../../core/settings.ts";
 import { sessionBus as bus } from "./events.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import { rootLog } from "../../lib/logger/index.ts";
 import {
   CONTEXT_RESERVE,
   contextLimit,
@@ -14,6 +16,8 @@ import {
   setCompacting,
   toChatMessages,
 } from "./store.ts";
+
+const log = rootLog.child("session.compaction");
 
 // Auto-compaction — when a session crosses its usable context budget (see
 // contextLimit / CONTEXT_RESERVE), summarize the whole conversation and replace
@@ -55,6 +59,13 @@ export async function compact(sid: string, cfg: ModelConfig): Promise<void> {
       maxTokens: reserve,
     };
     const { text, usage } = await collectText(compactCfg, messages, controller.signal, COMPACT_SYSTEM);
+    // The summary call takes a while — if the user started a new turn meanwhile,
+    // replacing the transcript now would clobber it. Drop this summary; the
+    // turn:end trigger fires again while the session is still over budget.
+    if (getStreamingIds().has(sid)) {
+      log.warn("skipped", { sid, hint: "session started streaming during compaction — summary discarded" });
+      return;
+    }
     const summary = text;
     const summaryTokens = (usage?.outputTokens ?? 0) - (usage?.thinkingTokens ?? 0);
     if (summary.trim()) {
@@ -64,7 +75,7 @@ export async function compact(sid: string, cfg: ModelConfig): Promise<void> {
       replaceWithSummary(sid, summary.trim(), tokens);
     }
   } catch (e) {
-    console.warn("[compaction] failed:", (e as Error).message);
+    log.warn("failed", { error: errorMessage(e) });
   } finally {
     setCompacting(sid, false);
     notify();

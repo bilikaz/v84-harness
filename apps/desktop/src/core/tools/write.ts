@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type Tool } from "./shared.ts";
+import { type Tool } from "./types.ts";
 import { toReal } from "./paths.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // Create or overwrite a file. Confined to the workspace (path can't escape), so
 // it auto-runs by default. Creates parent directories as needed.
@@ -35,7 +36,7 @@ export const writeTool: Tool = {
       await writeFile(real, args.content, "utf-8");
       return { ok: true, output: `wrote ${p} (${args.content.length} bytes)` };
     } catch (e) {
-      return { ok: false, output: `error writing ${p}: ${(e as Error).message}` };
+      return { ok: false, output: `error writing ${p}: ${errorMessage(e)}` };
     }
   },
 };

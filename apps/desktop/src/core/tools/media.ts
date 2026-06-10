@@ -1,6 +1,6 @@
-import { getProvider } from "../../lib/settings.ts";
+import { getProvider } from "../../core/settings.ts";
 import { stripFences } from "../../lib/format.ts";
-import { chatOnce, healLoop } from "../../providers/index.ts";
+import { chatOnce, healLoop } from "../../providers/client.ts";
 
 // Shared plumbing for the generation tools (GenerateImage / GenerateVideo):
 // argument coercion, the dimension math, and the prompt-upsampling loop. Each
@@ -73,13 +73,14 @@ export async function upsamplePrompt(opts: {
   system: string;
   requiredKey: string;
   finalize?: (obj: Record<string, unknown>) => void;
+  signal?: AbortSignal; // cancels the LLM call when the user stops the turn
 }): Promise<string> {
   const cfg = getProvider();
   if (!cfg.baseUrl || !cfg.model) return opts.prompt;
   try {
     const { value: obj } = await healLoop<Record<string, unknown>>({
       messages: [{ role: "user", content: opts.prompt }],
-      call: (msgs) => chatOnce(cfg, msgs, opts.system),
+      call: (msgs) => chatOnce(cfg, msgs, opts.system, opts.signal),
       validate: upsampleValidator(opts.requiredKey),
       maxAttempts: 3,
     });

@@ -1,7 +1,8 @@
-import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedImage } from "./shared.ts";
+import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedImage } from "./types.ts";
 import { bytesToB64, mimeToExt } from "../../lib/dataUrl.ts";
 import { trimBase } from "../../lib/format.ts";
 import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt, type Quality } from "./media.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // Generate an image from a prompt via the configured media provider (a local
 // container, e.g. Cosmos). A thin step: POST the prompt → get image bytes →
@@ -97,14 +98,19 @@ export const generateImageTool: Tool = {
     // Upsample the prompt into Cosmos's structured-JSON prompt with our main chat
     // LLM (the image endpoint can't — its chat returns images). It produces only
     // CONTENT — dimensions live solely in `size`. The tool owns this; core doesn't.
-    const finalPrompt = await upsamplePrompt({ prompt, system: UPSAMPLE_SYSTEM, requiredKey: "comprehensive_t2i_caption" });
+    const finalPrompt = await upsamplePrompt({ prompt, system: UPSAMPLE_SYSTEM, requiredKey: "comprehensive_t2i_caption", signal: ctx.signal });
 
     try {
-      const { b64, mime } = await generate(media, finalPrompt, {
-        size,
-        quality,
-        negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
-      });
+      const { b64, mime } = await generate(
+        media,
+        finalPrompt,
+        {
+          size,
+          quality,
+          negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
+        },
+        ctx.signal,
+      );
 
       // Return as a data-URL — it rides on the message and persists to
       // localStorage like any attached image. No files, no workspace.
@@ -115,7 +121,7 @@ export const generateImageTool: Tool = {
         images: [image],
       };
     } catch (e) {
-      return { ok: false, output: `GenerateImage failed: ${(e as Error).message}` };
+      return { ok: false, output: `GenerateImage failed: ${errorMessage(e)}` };
     }
   },
 };
@@ -128,10 +134,12 @@ async function generate(
   media: MediaProviderConfig,
   prompt: string,
   opts: { size?: string; quality: Quality; negativePrompt?: string },
+  signal?: AbortSignal,
 ): Promise<{ b64: string; mime: string }> {
   const q = QUALITY[opts.quality];
   const res = await fetch(`${trimBase(media.baseUrl)}/images/generations`, {
     method: "POST",
+    signal,
     headers: {
       "content-type": "application/json",
       ...(media.apiKey ? { authorization: `Bearer ${media.apiKey}` } : {}),
@@ -165,7 +173,7 @@ async function generate(
   }
   if (first?.url) {
     // Some servers return a URL instead of bytes — fetch and inline it.
-    const img = await fetch(first.url);
+    const img = await fetch(first.url, { signal });
     if (!img.ok) throw new Error(`fetching generated image URL failed: ${img.status}`);
     return { b64: bytesToB64(new Uint8Array(await img.arrayBuffer())), mime: img.headers.get("content-type") || "image/png" };
   }

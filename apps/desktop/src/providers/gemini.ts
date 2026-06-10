@@ -1,11 +1,30 @@
 import type { ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
 import { parseSSE } from "./sse.ts";
 import { sseRequest } from "./transport.ts";
-import { parseDataUrl, safeJson } from "./util.ts";
-import { dlog } from "./debug.ts";
+import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "./util.ts";
+import { llmLog } from "./debug.ts";
 
-function baseFor(cfg: ModelConfig): string {
-  return (cfg.baseUrl || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
+const FALLBACK_BASE = "https://generativelanguage.googleapis.com";
+
+function v1beta(cfg: Pick<ModelConfig, "baseUrl">): string {
+  return baseWithPrefix(cfg.baseUrl, FALLBACK_BASE, "/v1beta");
+}
+
+// Gemini auths via a query param; attach it only when a key is actually set.
+function keyParam(cfg: Pick<ModelConfig, "apiKey">, sep: "?" | "&"): string {
+  return cfg.apiKey ? `${sep}key=${encodeURIComponent(cfg.apiKey)}` : "";
+}
+
+// Thinking request fields. Gemini has no effort scale — it takes a token budget
+// (`thinkingConfig.thinkingBudget`; -1 = dynamic). Effort on → use the user's
+// budget when set, else dynamic; includeThoughts surfaces the thought parts our
+// stream parser already handles (p.thought). Effort off → omit the config and
+// let the model default (0 would 400 on models that can't disable thinking).
+function reasoningFields(cfg: ModelConfig): Record<string, unknown> {
+  const effort = cfg.reasoningEffort;
+  if (!effort || effort === "off") return {};
+  const budget = cfg.thinkingBudget && cfg.thinkingBudget > 0 ? cfg.thinkingBudget : -1;
+  return { generationConfig: { thinkingConfig: { thinkingBudget: budget, includeThoughts: true } } };
 }
 
 // Map to Gemini contents, wrapping the OpenAI-standard tool shape: assistant →
@@ -58,15 +77,16 @@ export async function* streamGemini(
   system?: string,
   tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
-  const url = `${baseFor(cfg)}/v1beta/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cfg.apiKey)}`;
+  const url = `${v1beta(cfg)}/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse${keyParam(cfg, "&")}`;
   const body = {
+    ...reasoningFields(cfg),
     ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
     // ToolSpec is the OpenAI function shape — Gemini's functionDeclarations use
     // the same {name, description, parameters} fields.
     ...(tools?.length ? { tools: [{ functionDeclarations: tools.map((t) => t.function) }] } : {}),
     contents: toGeminiContents(messages),
   };
-  dlog("gemini →", url.replace(/key=[^&]+/, "key=***"), body);
+  llmLog.debug("gemini.request", { url: url.replace(/key=[^&]+/, "key=***"), body });
   const res = await sseRequest("gemini", url, {
     method: "POST",
     signal,
@@ -119,9 +139,7 @@ export async function* streamGemini(
 }
 
 export async function listGeminiModels(cfg: Pick<ModelConfig, "baseUrl" | "apiKey">): Promise<string[]> {
-  const url = `${(cfg.baseUrl || "https://generativelanguage.googleapis.com").replace(/\/+$/, "")}/v1beta/models?key=${encodeURIComponent(cfg.apiKey)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const res = await expectOk(await fetch(`${v1beta(cfg)}/models${keyParam(cfg, "?")}`));
   const data = await res.json();
   return (data.models ?? [])
     .filter((m: any) => (m.supportedGenerationMethods ?? []).includes("generateContent"))

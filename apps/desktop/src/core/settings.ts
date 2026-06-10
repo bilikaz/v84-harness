@@ -1,6 +1,7 @@
 import type { ModelConfig } from "../providers/types.ts";
-import { listModelInfos } from "../providers/index.ts";
-import { createStore } from "./store.ts";
+import { listModelInfos } from "../providers/client.ts";
+import { createStore } from "../lib/store.ts";
+import { errorMessage } from "../lib/errors.ts";
 
 // Provider config store. baseUrl "/llm" routes through the Vite dev proxy to
 // the endpoint (avoids browser CORS).
@@ -42,7 +43,7 @@ export async function detectModels(): Promise<{ ok: boolean; count: number; erro
     saveProvider({ models, modelLimits, model, contextLength: modelLimits[model] });
     return { ok: true, count: models.length };
   } catch (e) {
-    return { ok: false, count: 0, error: (e as Error).message };
+    return { ok: false, count: 0, error: errorMessage(e) };
   }
 }
 

@@ -1,11 +1,39 @@
 import type { ChatImage, ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
 import { parseSSE } from "./sse.ts";
 import { sseRequest } from "./transport.ts";
-import { parseDataUrl, safeJson } from "./util.ts";
-import { dlog } from "./debug.ts";
+import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "./util.ts";
+import { llmLog } from "./debug.ts";
 
-function baseFor(cfg: ModelConfig): string {
-  return (cfg.baseUrl || "https://api.anthropic.com").replace(/\/+$/, "");
+const FALLBACK_BASE = "https://api.anthropic.com";
+
+// Anthropic requires max_tokens; this is the response cap when the user set none.
+const DEFAULT_MAX_TOKENS = 8192;
+
+function v1(cfg: Pick<ModelConfig, "baseUrl">): string {
+  return baseWithPrefix(cfg.baseUrl, FALLBACK_BASE, "/v1");
+}
+
+function authHeaders(cfg: Pick<ModelConfig, "apiKey">): Record<string, string> {
+  return {
+    ...(cfg.apiKey ? { "x-api-key": cfg.apiKey } : {}),
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+  };
+}
+
+// Thinking/effort request fields. Anthropic deprecated token budgets — current
+// models take adaptive thinking plus `output_config.effort` (low…max). With
+// effort off we omit `thinking` entirely (an explicit "disabled" 400s on some
+// models). `display: "summarized"` opts back into visible thinking text, which
+// Opus 4.7+ omits by default — our UI streams reasoning, so we want it.
+// cfg.thinkingBudget is intentionally ignored here (OpenAI/vLLM + Gemini only).
+function reasoningFields(cfg: ModelConfig): Record<string, unknown> {
+  const effort = cfg.reasoningEffort;
+  if (!effort || effort === "off") return {};
+  return {
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort },
+  };
 }
 
 function imageBlock(im: ChatImage): unknown {
@@ -58,11 +86,12 @@ export async function* streamAnthropic(
   system?: string,
   tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
-  const url = `${baseFor(cfg)}/v1/messages`;
+  const url = `${v1(cfg)}/messages`;
   const body = {
     model: cfg.model,
-    max_tokens: 8192,
+    max_tokens: DEFAULT_MAX_TOKENS,
     stream: true,
+    ...reasoningFields(cfg),
     ...(system ? { system } : {}),
     // ToolSpec is the OpenAI function shape — unwrap to Anthropic's.
     ...(tools?.length
@@ -70,16 +99,11 @@ export async function* streamAnthropic(
       : {}),
     messages: toAnthropicMessages(messages),
   };
-  dlog("anthropic →", url, body);
+  llmLog.debug("anthropic.request", { url, body });
   const res = await sseRequest("anthropic", url, {
     method: "POST",
     signal,
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(cfg) },
     body: JSON.stringify(body),
   });
 
@@ -145,15 +169,7 @@ export async function* streamAnthropic(
 }
 
 export async function listAnthropicModels(cfg: Pick<ModelConfig, "baseUrl" | "apiKey">): Promise<string[]> {
-  const url = `${(cfg.baseUrl || "https://api.anthropic.com").replace(/\/+$/, "")}/v1/models`;
-  const res = await fetch(url, {
-    headers: {
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const res = await expectOk(await fetch(`${v1(cfg)}/models`, { headers: authHeaders(cfg) }));
   const data = await res.json();
   return (data.data ?? []).map((m: any) => m.id).filter(Boolean);
 }
