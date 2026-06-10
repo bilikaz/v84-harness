@@ -1,33 +1,20 @@
-import { useTranslation } from "react-i18next";
-import { Bot } from "lucide-react";
-
+import { useRoute } from "../../lib/router.ts";
 import { register } from "../../lib/registry.ts";
-import { navigate, useRoute } from "../../lib/router.ts";
-import { cn } from "../../lib/cn.ts";
-import { AgentsView } from "./AgentsView.tsx";
+import { AgentsPanel } from "./AgentsPanel.tsx";
+import { AgentRunView } from "./AgentRunView.tsx";
+import { AgentEditView } from "./AgentEditView.tsx";
 
-// A menu entry that routes to the agents view (rendered in the "main" region),
-// and the view itself.
-function AgentsNav() {
-  const { t } = useTranslation();
+// Agents contribute the right-panel library list and the main-region routes:
+//   agents/<id>       — primed run page (a pseudo session; send materializes it)
+//   agents/<id>/edit  — the playbook editor
+function AgentsRoute() {
   const route = useRoute();
-  const active = route === "agents" || route.startsWith("agents/");
-  return (
-    <button
-      type="button"
-      onClick={() => navigate("agents")}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-neutral-200/50",
-        active ? "bg-neutral-200/60 text-neutral-900" : "text-neutral-700",
-      )}
-    >
-      <Bot size={17} />
-      {t("nav.agents")}
-    </button>
-  );
+  const [, id, mode] = route.split("/");
+  if (!id) return null; // bare "agents" — nothing selected; the panel is the entry point
+  return mode === "edit" ? <AgentEditView id={id} /> : <AgentRunView id={id} />;
 }
 
 register(
-  { region: "menu", id: "agents", order: 3, render: () => <AgentsNav /> },
-  { region: "main", id: "agents", route: "agents", render: () => <AgentsView /> },
+  { region: "right-panel", id: "agents", order: 1, render: () => <AgentsPanel /> },
+  { region: "main", id: "agents", route: "agents", render: () => <AgentsRoute /> },
 );

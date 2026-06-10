@@ -33,16 +33,28 @@ const log = rootLog.child("session.store");
 // The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017).
 const storageReady = detectStorage();
 
+// What a caller may set on a fresh session. agentId stamps an agent run (the
+// agent's output contract then applies to every turn); parentId marks a
+// sub-agent run spawned by another session's RunAgent call.
+export interface SessionInit {
+  title?: string;
+  system?: string;
+  workspaceId?: string | null;
+  agentId?: string;
+  parentId?: string;
+}
+
 // Build a fresh session. Used for "new session" and the empty-state. `loaded`
 // is true: a session born in memory has nothing to lazy-load.
-function makeSession(init: { title?: string; system?: string; workspaceId?: string | null } = {}): Session {
+function makeSession(init: SessionInit = {}): Session {
   return {
     id: crypto.randomUUID(),
     title: init.title ?? i18n.t("sidebar.newSession"),
     system: init.system ?? pt("defaultChat.system"),
     workspaceId: init.workspaceId ?? null,
+    agentId: init.agentId,
+    parentId: init.parentId,
     tools: [],
-    steps: [],
     messages: [],
     loaded: true,
   };
@@ -209,11 +221,13 @@ export function setActive(id: string): void {
   notify();
 }
 
-// Create an empty session, switch to it, return its id.
-export function createSession(init: { title?: string; system?: string; workspaceId?: string | null } = {}): string {
+// Create an empty session and return its id. Switches to it by default;
+// `activate: false` keeps the user where they are (sub-agent runs must not
+// steal focus from the parent chat).
+export function createSession(init: SessionInit = {}, opts: { activate?: boolean } = {}): string {
   const s = makeSession(init);
   sessions = [s, ...sessions];
-  activeId = s.id;
+  if (opts.activate !== false) activeId = s.id;
   persistIndex();
   notify();
   return s.id;
@@ -293,11 +307,33 @@ export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
 }
 
 // Append a tool-result message answering a specific call. `images` are shown in
-// the tool card (display only — toChatMessages drops tool-role images).
-export function pushToolResult(sid: string, toolCallId: string, output: string, images?: MediaRef[], video?: MediaRef[]): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video };
+// the tool card (display only — toChatMessages drops tool-role images);
+// `childSessionIds` are a RunAgent result's durable links to the runs it spawned.
+export function pushToolResult(
+  sid: string,
+  toolCallId: string,
+  output: string,
+  images?: MediaRef[],
+  video?: MediaRef[],
+  childSessionIds?: string[],
+): void {
+  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video, childSessionIds };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
+}
+
+// In-flight RunAgent calls: toolCallId → the child sessions it spawned (a
+// multi-run call appends one at a time). The LIVE half of the tool-card links
+// (the durable half rides the tool-result message once the call completes).
+// Transient by design — a reload mid-run loses only the links, never the
+// child sessions themselves.
+let childRuns: Record<string, string[]> = {};
+export function addChildRun(toolCallId: string, childSessionId: string): void {
+  childRuns = { ...childRuns, [toolCallId]: [...(childRuns[toolCallId] ?? []), childSessionId] };
+  notify();
+}
+export function getChildRuns(): Record<string, string[]> {
+  return childRuns;
 }
 
 // Feed tool-produced media (generated or loaded) back to the model as a hidden
@@ -395,23 +431,88 @@ function withFiles(text: string, files?: FileAttachment[]): string {
   return text ? `${text}\n\n${blocks}` : blocks;
 }
 
+// Media resend window. The whole transcript is resubmitted every request, so
+// without a bound every loaded/attached image rides EVERY later request —
+// browsing a photo folder balloons the body megabytes per step until the
+// transport (or the proxy in front of the endpoint) gives up. Only the most
+// recent items stay live, bounded BOTH by count (image tokens / prefill time)
+// and by payload bytes (request body / proxy limits); older ones are swapped
+// for a text stub the model can act on (re-load on demand). A resend policy
+// only — the transcript and UI keep everything.
+export const MAX_LIVE_MEDIA = 5;
+export const MAX_LIVE_MEDIA_BYTES = 8 * 1024 * 1024; // data-URL length as the measure
+
+// Decide, newest-first, how many of each message's media items stay live. An
+// item must fit BOTH remaining budgets — except the very newest item, which is
+// always sent: the model must never be blind to the media it was just given
+// (an oversized one then fails the turn loudly instead of silently vanishing).
+// Returns message id → kept counts; messages absent keep nothing (and carry no
+// media). Tool-role media never counts — it isn't resubmitted at all.
+function mediaWindow(messages: Message[]): Map<string, { images: number; video: number }> {
+  const keep = new Map<string, { images: number; video: number }>();
+  let count = MAX_LIVE_MEDIA;
+  let bytes = MAX_LIVE_MEDIA_BYTES;
+  let newest = true;
+  // Prefix take: stop at the first item that doesn't fit, so the kept count
+  // maps onto slice(0, n) in toChatMessages — never a gappy selection.
+  const takeWhileFits = (items: MediaRef[] | undefined): number => {
+    let n = 0;
+    for (const item of items ?? []) {
+      if (!newest && (count < 1 || item.url.length > bytes)) break;
+      newest = false;
+      count -= 1;
+      bytes -= item.url.length;
+      n += 1;
+    }
+    return n;
+  };
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "tool" || (!m.images?.length && !m.video?.length)) continue;
+    // Within a message, video first (rarer and deliberate), then images.
+    const video = takeWhileFits(m.video);
+    const images = takeWhileFits(m.images);
+    keep.set(m.id, { images, video });
+  }
+  return keep;
+}
+
+// The stub that replaces windowed-out media in the resubmitted content — names
+// what was here and how to get it back, so "compare with the earlier photo"
+// degrades to one extra Load call instead of silent amnesia.
+function droppedNote(dropped: MediaRef[]): string {
+  const names = dropped.map((d) => d.name || "unnamed").join(", ");
+  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use LoadImage/LoadVideo to view one again if needed.]`;
+}
+
 // Map stored messages to the provider-agnostic conversation we resubmit. Drops
-// empty placeholders (the trailing assistant) and thinking (not resent).
+// empty placeholders (the trailing assistant) and thinking (not resent);
+// media outside the resend window is swapped for a text stub.
 export function toChatMessages(messages: Message[]): ChatMessage[] {
+  const window = mediaWindow(messages);
   return messages
     .filter((m) => m.text || m.images?.length || m.video?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
-    .map((m) => ({
-      role: m.role,
-      content: m.summary
+    .map((m) => {
+      const keep = window.get(m.id) ?? { images: 0, video: 0 };
+      const images = m.role === "tool" ? undefined : m.images?.slice(0, keep.images);
+      const video = m.role === "tool" ? undefined : m.video?.slice(0, keep.video);
+      const dropped = m.role === "tool" ? [] : [...(m.images?.slice(keep.images) ?? []), ...(m.video?.slice(keep.video) ?? [])];
+      let content = m.summary
         ? `Summary of the earlier conversation (older messages were compacted to save context):\n\n${m.text}`
-        : withFiles(m.text, m.files),
-      // Tool-role images/video are display-only (shown in the tool card) — many
-      // chat APIs reject media on a tool message, so they're never sent. Vision
-      // feedback goes through the hidden user turn (pushMediaFeedback) instead.
-      // User-uploaded images/video ARE sent so the model can review them.
-      images: m.role === "tool" ? undefined : m.images?.map((im) => ({ url: im.url, mime: im.mime })),
-      video: m.role === "tool" ? undefined : m.video?.map((v) => ({ url: v.url, mime: v.mime })),
-      toolCalls: m.toolCalls,
-      toolCallId: m.toolCallId,
-    }));
+        : withFiles(m.text, m.files);
+      if (dropped.length) content = content ? `${content}\n\n${droppedNote(dropped)}` : droppedNote(dropped);
+      return {
+        role: m.role,
+        content,
+        // Tool-role images/video are display-only (shown in the tool card) — many
+        // chat APIs reject media on a tool message, so they're never sent. Vision
+        // feedback goes through the hidden user turn (pushMediaFeedback) instead.
+        // User-uploaded images/video ARE sent (within the window) so the model
+        // can review them.
+        images: images?.length ? images.map((im) => ({ url: im.url, mime: im.mime })) : undefined,
+        video: video?.length ? video.map((v) => ({ url: v.url, mime: v.mime })) : undefined,
+        toolCalls: m.toolCalls,
+        toolCallId: m.toolCallId,
+      };
+    });
 }

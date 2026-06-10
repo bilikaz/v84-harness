@@ -18,7 +18,11 @@ import { errorMessage } from "../../lib/errors.ts";
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
-const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+// 6 MB raw ≈ 8 MB as a data URL — one image can never exceed the session's
+// whole media resend budget (MAX_LIVE_MEDIA_BYTES in core/sessions/store.ts).
+// Video stays deliberately larger: a rare, single-item operation that the
+// window's newest-always rule delivers once and then retires.
+const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 
 function fmtMB(bytes: number): string {

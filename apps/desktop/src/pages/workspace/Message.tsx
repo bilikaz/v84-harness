@@ -26,6 +26,7 @@ function MessageImpl({
   results,
   toolImages,
   toolVideo,
+  toolChildren,
   streaming,
 }: {
   role: Role;
@@ -38,6 +39,7 @@ function MessageImpl({
   results?: Map<string, string>;
   toolImages?: Map<string, MediaRef[]>;
   toolVideo?: Map<string, MediaRef[]>;
+  toolChildren?: Map<string, string[]>; // toolCallId → sub-agent sessions (RunAgent's doors)
   streaming: boolean;
 }) {
   if (role === "user") {
@@ -88,7 +90,14 @@ function MessageImpl({
         </Markdown>
       )}
       {toolCalls?.map((c) => (
-        <ToolCard key={c.id} call={c} output={results?.get(c.id)} images={toolImages?.get(c.id)} video={toolVideo?.get(c.id)} />
+        <ToolCard
+          key={c.id}
+          call={c}
+          output={results?.get(c.id)}
+          images={toolImages?.get(c.id)}
+          video={toolVideo?.get(c.id)}
+          childSessionIds={toolChildren?.get(c.id)}
+        />
       ))}
     </div>
   );
@@ -115,7 +124,8 @@ function sameMessage(prev: MessageProps, next: MessageProps): boolean {
     (c) =>
       prev.results?.get(c.id) === next.results?.get(c.id) &&
       prev.toolImages?.get(c.id) === next.toolImages?.get(c.id) &&
-      prev.toolVideo?.get(c.id) === next.toolVideo?.get(c.id),
+      prev.toolVideo?.get(c.id) === next.toolVideo?.get(c.id) &&
+      prev.toolChildren?.get(c.id) === next.toolChildren?.get(c.id),
   );
 }
 

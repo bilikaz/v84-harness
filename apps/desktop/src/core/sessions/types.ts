@@ -6,13 +6,7 @@ import type { ToolCall } from "../../providers/types.ts";
 
 export type { ToolCall };
 
-export type StepStatus = "done" | "running" | "queued";
 export type Role = "user" | "assistant" | "tool";
-
-export interface Step {
-  name: string;
-  status: StepStatus;
-}
 
 // A media attachment, kind-agnostic (image/video today, audio when it arrives —
 // `mime` says what it is). `url` is a `data:` URL (local) or an http(s) URL.
@@ -45,6 +39,7 @@ export interface Message {
   files?: FileAttachment[]; // non-image attachments (user) — folded into content
   toolCalls?: ToolCall[]; // assistant: tools the model asked to call
   toolCallId?: string; // tool: which call this result answers
+  childSessionIds?: string[]; // tool: the sub-agent sessions a RunAgent call ran (display-only links)
   summary?: boolean; // a compaction summary — hidden in the UI, resent to the model as a user message
   hidden?: boolean; // injected by the engine (e.g. a heal correction) — sent to the model, skipped in the UI
 }
@@ -62,9 +57,10 @@ export interface Session {
   title: string;
   system: string; // system message for the whole session
   workspaceId?: string | null; // the workspace this session works in (null = pure chat, no tools/folder)
+  agentId?: string; // the stored agent this session runs (its output contract applies every turn)
+  parentId?: string; // set on a sub-agent run: the session whose RunAgent call spawned this one
   tools: Tool[]; // tools enabled for this session
   messages: Message[]; // the conversation, resubmitted each turn
-  steps: Step[]; // progress DAG (rendered in the right panel)
   // running totals / flags
   usedTokens?: number; // context occupancy: latest request's input + output tokens
   unread?: boolean; // finished output not yet opened → green dot
