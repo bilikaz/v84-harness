@@ -47,4 +47,12 @@ export class IdbStorage implements Storage {
       tx.onerror = () => reject(tx.error);
     });
   }
+
+  keys(prefix: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const r = this.db.transaction(STORE, "readonly").objectStore(STORE).getAllKeys();
+      r.onsuccess = () => resolve((r.result as string[]).filter((k) => k.startsWith(prefix)));
+      r.onerror = () => reject(r.error);
+    });
+  }
 }

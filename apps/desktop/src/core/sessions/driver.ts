@@ -2,7 +2,7 @@ import type { ModelConfig, ToolSpec } from "../../providers/client.ts";
 import type { ToolCall } from "../../providers/types.ts";
 import { MAX_HEAL_ATTEMPTS, healCorrection, streamModel } from "../../providers/client.ts";
 import { llmLog } from "../../providers/debug.ts";
-import type { FileAttachment, ImageRef } from "./types.ts";
+import type { FileAttachment, MediaRef } from "./types.ts";
 import { harness } from "../../lib/harness.ts";
 import { resolveMediaProvider } from "../../core/media.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
@@ -10,7 +10,7 @@ import { getWorkspace, type Workspace } from "../workspaces.ts";
 import { PERMISSIONLESS_TOOLS, type GatedTool, type ToolName, type ToolMode, type ToolResult } from "../tools/types.ts";
 import { RENDERER_TOOLS, RENDERER_TOOL_SCHEMAS } from "../tools/renderer.ts";
 import { sessionBus as bus } from "./events.ts";
-import { createSession, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
+import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
 // A validator for the model's final (no-tool) turn. Throws to reject — the
@@ -90,7 +90,7 @@ async function runTurn(
   sid: string,
   cfg: ModelConfig,
   userText: string,
-  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate },
+  opts: { images?: MediaRef[]; video?: MediaRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate },
 ): Promise<void> {
   const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
   const autoName = opts.autoName !== false;
@@ -187,8 +187,8 @@ async function runTurn(
       // doesn't matter. Approval-gated calls each queue a prompt; the modal
       // shows them one at a time while the auto-approved calls keep running.
       bus.emit("tool:calls", { sessionId: sid, calls });
-      const fedImages: ImageRef[] = []; // tool-produced images to show the vision agent this step
-      const fedVideo: ImageRef[] = []; // tool-produced video — fed back only when the model takes video input
+      const fedImages: MediaRef[] = []; // tool-produced images to show the vision agent this step
+      const fedVideo: MediaRef[] = []; // tool-produced video — fed back only when the model takes video input
       await Promise.all(
         calls.map(async (call) => {
           // A model can call a tool it wasn't advertised (hallucinated name from
@@ -246,7 +246,7 @@ async function runTurn(
             result = { ok: false, output: `tool execution failed: ${errorMessage(e)}` };
           }
           const output = result.output;
-          // Tool media → ImageRef for display + model feedback.
+          // Tool media → MediaRef for display + model feedback.
           const images = result.images?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
           const video = result.video?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
           bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, video });
@@ -296,13 +296,16 @@ async function runTurn(
 export async function send(
   text: string,
   cfg: ModelConfig,
-  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate } = {},
+  opts: { images?: MediaRef[]; video?: MediaRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate } = {},
 ): Promise<void> {
   const t = text.trim();
   const sid = getActiveId();
   // Per-session guard: only block if THIS session is already streaming. Allow a
   // message with no text as long as there's at least one attachment.
   if ((!t && !opts.images?.length && !opts.video?.length && !opts.files?.length) || getStreamingIds().has(sid) || isFull(cfg)) return;
+  // Sessions lazy-load (ADR-0021) — make sure the history is in memory before
+  // the turn reads it, or the model would see an empty conversation.
+  await ensureLoaded(sid);
   await runTurn(sid, cfg, t, opts);
 }
 
@@ -313,7 +316,7 @@ export async function send(
 export function runAgent(
   agent: { name: string; system: string; user: string },
   cfg: ModelConfig,
-  opts: { images?: ImageRef[]; video?: ImageRef[]; files?: FileAttachment[]; validate?: Validate } = {},
+  opts: { images?: MediaRef[]; video?: MediaRef[]; files?: FileAttachment[]; validate?: Validate } = {},
 ): void {
   createSession({ title: agent.name, system: agent.system });
   void send(agent.user, cfg, { ...opts, autoName: false });

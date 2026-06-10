@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, RefreshCw, Terminal, Wrench } from "lucide-react";
 
 import { SavableMedia } from "../../components/SavableMedia.tsx";
 import { cn } from "../../lib/cn.ts";
-import type { ImageRef, ToolCall } from "../../lib/types.ts";
+import type { MediaRef, ToolCall } from "../../lib/types.ts";
 
 // A tool call rendered as a card: the tool name on top, then IN (the call's
 // arguments) and OUT (the result, once it arrives). Collapsed by default.
-export function ToolCard({ call, output, images, video }: { call: ToolCall; output?: string; images?: ImageRef[]; video?: ImageRef[] }) {
+// Memoized — all props come from settled, reference-stable message objects, so
+// cards re-render only when their own result/media lands.
+export const ToolCard = memo(function ToolCard({ call, output, images, video }: { call: ToolCall; output?: string; images?: MediaRef[]; video?: MediaRef[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   let args: Record<string, unknown> = {};
@@ -56,7 +58,7 @@ export function ToolCard({ call, output, images, video }: { call: ToolCall; outp
       )}
     </div>
   );
-}
+});
 
 function IO({ label, body }: { label: string; body: string }) {
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Sparkles } from "lucide-react";
 
@@ -6,8 +6,9 @@ import { cn } from "../../lib/cn.ts";
 
 // Reasoning in a distinct color — muted violet, collapsible. Auto-expands while
 // the model is thinking, then collapses; the user can still toggle it after.
-// The whole block toggles (not just the header line).
-export function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
+// The whole block toggles (not just the header line). Memoized — settled
+// messages keep reference identity, so old thinking blocks skip re-rendering.
+export const Thinking = memo(function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(streaming);
   useEffect(() => {
@@ -30,4 +31,4 @@ export function Thinking({ text, streaming }: { text: string; streaming: boolean
       )}
     </div>
   );
-}
+});

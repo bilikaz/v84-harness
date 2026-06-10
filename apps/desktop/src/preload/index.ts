@@ -29,6 +29,7 @@ const api: HarnessApi = {
     get: (key: string) => ipcRenderer.invoke(IPC.storageGet, key),
     set: (key: string, value: string) => ipcRenderer.invoke(IPC.storageSet, key, value),
     del: (key: string) => ipcRenderer.invoke(IPC.storageDel, key),
+    keys: (prefix: string) => ipcRenderer.invoke(IPC.storageKeys, prefix),
   },
   saveImage: (dataUrl: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl),
   saveVideo: (dataUrl: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl),

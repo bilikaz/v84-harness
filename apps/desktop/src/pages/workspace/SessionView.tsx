@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, PanelRight, Pencil, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
 
@@ -23,7 +23,7 @@ import { InlineEdit } from "../../components/InlineEdit.tsx";
 import { Message } from "./Message.tsx";
 import { readAttachments } from "../../lib/attachments.ts";
 import { cn } from "../../lib/cn.ts";
-import type { FileAttachment, ImageRef } from "../../lib/types.ts";
+import type { FileAttachment, MediaRef } from "../../lib/types.ts";
 
 // The main center: active session transcript + the composer (model selector,
 // detect button, send). Reads the session + provider stores.
@@ -34,8 +34,8 @@ export function SessionView() {
   const compacting = useCompacting();
   const provider = useProvider();
   const [input, setInput] = useState("");
-  const [images, setImages] = useState<ImageRef[]>([]);
-  const [videos, setVideos] = useState<ImageRef[]>([]);
+  const [images, setImages] = useState<MediaRef[]>([]);
+  const [videos, setVideos] = useState<MediaRef[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [attachNote, setAttachNote] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -58,17 +58,21 @@ export function SessionView() {
   const used = session.usedTokens ?? 0;
 
   // Map each tool call's id → its result text, so the assistant's tool card can
-  // show the OUT next to the IN.
-  const toolResults = new Map<string, string>();
-  const toolImages = new Map<string, ImageRef[]>();
-  const toolVideo = new Map<string, ImageRef[]>();
-  for (const m of session.messages) {
-    if (m.role === "tool" && m.toolCallId) {
-      toolResults.set(m.toolCallId, m.text);
-      if (m.images?.length) toolImages.set(m.toolCallId, m.images);
-      if (m.video?.length) toolVideo.set(m.toolCallId, m.video);
+  // show the OUT next to the IN. Memoized on the messages array so renders
+  // caused by local state (composer input, menus) don't rebuild them.
+  const { toolResults, toolImages, toolVideo } = useMemo(() => {
+    const toolResults = new Map<string, string>();
+    const toolImages = new Map<string, MediaRef[]>();
+    const toolVideo = new Map<string, MediaRef[]>();
+    for (const m of session.messages) {
+      if (m.role === "tool" && m.toolCallId) {
+        toolResults.set(m.toolCallId, m.text);
+        if (m.images?.length) toolImages.set(m.toolCallId, m.images);
+        if (m.video?.length) toolVideo.set(m.toolCallId, m.video);
+      }
     }
-  }
+    return { toolResults, toolImages, toolVideo };
+  }, [session.messages]);
 
   // Close the title menu on outside click.
   useOutsideClick(menuOpen, headerRef, () => setMenuOpen(false));
@@ -260,6 +264,11 @@ export function SessionView() {
 
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-3xl space-y-6">
+          {session.loaded === false && (
+            <p className="flex items-center justify-center gap-1.5 py-8 text-xs text-neutral-400">
+              <RefreshCw size={12} className="animate-spin" /> {t("session.loading")}
+            </p>
+          )}
           {session.messages.map((m, i) =>
             // Tool-result messages are folded into the assistant's tool card (by
             // toolCallId); compaction summaries + heal corrections are hidden

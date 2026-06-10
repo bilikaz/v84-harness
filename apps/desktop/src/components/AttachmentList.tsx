@@ -1,13 +1,13 @@
 import { FileText, X } from "lucide-react";
 
 import { cn } from "../lib/cn.ts";
-import type { FileAttachment, ImageRef } from "../lib/types.ts";
+import type { FileAttachment, MediaRef } from "../lib/types.ts";
 
 // Composer attachment previews — image/video thumbnails + file chips, each
 // with a remove button. Shared by the chat composer and the agent runner.
 export function AttachmentList(props: {
-  images?: ImageRef[];
-  videos?: ImageRef[];
+  images?: MediaRef[];
+  videos?: MediaRef[];
   files?: FileAttachment[];
   onRemoveImage?: (i: number) => void;
   onRemoveVideo?: (i: number) => void;

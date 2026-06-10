@@ -14,4 +14,6 @@ export interface Storage {
   /** Throws on failure — the caller decides whether that's fatal or a warning. */
   set(key: string, value: string): Promise<void>;
   del(key: string): Promise<void>;
+  /** All stored keys starting with `prefix` — for namespace deletes/GC. */
+  keys(prefix: string): Promise<string[]>;
 }

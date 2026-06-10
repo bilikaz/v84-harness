@@ -38,6 +38,7 @@ export interface HarnessApi {
     get(key: string): Promise<string | null>;
     set(key: string, value: string): Promise<void>;
     del(key: string): Promise<void>;
+    keys(prefix: string): Promise<string[]>;
   };
   // Save a data-URL image to disk via a native Save dialog. Resolves to the
   // written path, or null if cancelled.
@@ -60,4 +61,5 @@ export const IPC = {
   storageGet: "harness:storage:get",
   storageSet: "harness:storage:set",
   storageDel: "harness:storage:del",
+  storageKeys: "harness:storage:keys",
 } as const;

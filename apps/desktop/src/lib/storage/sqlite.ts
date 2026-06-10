@@ -25,4 +25,7 @@ export class SqliteStorage implements Storage {
   del(key: string): Promise<void> {
     return this.api.del(key);
   }
+  keys(prefix: string): Promise<string[]> {
+    return this.api.keys(prefix);
+  }
 }

@@ -33,6 +33,14 @@ reach into store internals.
    nested function components (a card, a row, a block with its own state) ships
    them as their own files — nested definitions can't be reused or tested and
    re-create on every render of the parent.
+9. **Streaming/append-heavy lists memoize at the leaves.** When a store
+   updates immutably, objects the mutation didn't touch must keep reference
+   identity — that stability is load-bearing, not incidental: list leaves wrap
+   in `memo(function Name() { … })` (the sanctioned `const`-export exception to
+   rule 1) and bail by reference, so one item's change re-renders one item.
+   Cloning items "for safety" in a store mutation silently breaks every memo
+   below it; derived lookups a parent rebuilds per render are compared by the
+   entries a leaf reads, not by container identity.
 
 ## Why
 

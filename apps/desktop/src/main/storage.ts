@@ -11,6 +11,7 @@ export interface MainStorage {
   get(key: string): string | null;
   set(key: string, value: string): void;
   del(key: string): void;
+  keys(prefix: string): string[];
 }
 
 export function openStorage(userDataDir: string): MainStorage {
@@ -24,11 +25,15 @@ export function openStorage(userDataDir: string): MainStorage {
     const getStmt = db.prepare("SELECT value FROM kv WHERE key = ?");
     const setStmt = db.prepare("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
     const delStmt = db.prepare("DELETE FROM kv WHERE key = ?");
+    // ESCAPE so a literal % or _ in a prefix can't widen the match.
+    const keysStmt = db.prepare("SELECT key FROM kv WHERE key LIKE ? ESCAPE '\\'");
+    const likePrefix = (p: string): string => p.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
     return {
       available: true,
       get: (key) => (getStmt.get(key) as { value?: string } | undefined)?.value ?? null,
       set: (key, value) => void setStmt.run(key, value),
       del: (key) => void delStmt.run(key),
+      keys: (prefix) => (keysStmt.all(likePrefix(prefix)) as { key: string }[]).map((r) => r.key),
     };
   } catch (e) {
     // Bootstrap path — bare console is the recorded main-process exception.
@@ -40,6 +45,7 @@ export function openStorage(userDataDir: string): MainStorage {
         throw new Error("sqlite storage unavailable");
       },
       del: () => {},
+      keys: () => [],
     };
   }
 }

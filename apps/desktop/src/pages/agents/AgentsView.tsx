@@ -11,7 +11,7 @@ import { readAttachments } from "../../lib/attachments.ts";
 import { useProvider } from "../../core/settings.ts";
 import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
-import type { FileAttachment, ImageRef } from "../../lib/types.ts";
+import type { FileAttachment, MediaRef } from "../../lib/types.ts";
 
 // Agents: a library of reusable playbooks (name + description + system/user
 // markdown). Running one opens a fresh session and executes it against the
@@ -30,7 +30,7 @@ export function AgentsView() {
   // are saved back to the template only while editing. Images/files are runtime
   // input too: attached for this run, never saved to the playbook.
   const [userInput, setUserInput] = useState("");
-  const [images, setImages] = useState<ImageRef[]>([]);
+  const [images, setImages] = useState<MediaRef[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const selected = agents.find((a) => a.id === selectedId) ?? null;

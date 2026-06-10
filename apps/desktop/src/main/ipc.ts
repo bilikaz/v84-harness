@@ -21,6 +21,7 @@ export function registerIpc(electron: Electron): void {
   ipcMain.handle(IPC.storageGet, (_e: unknown, key: string) => storage.get(key));
   ipcMain.handle(IPC.storageSet, (_e: unknown, key: string, value: string) => storage.set(key, value));
   ipcMain.handle(IPC.storageDel, (_e: unknown, key: string) => storage.del(key));
+  ipcMain.handle(IPC.storageKeys, (_e: unknown, prefix: string) => storage.keys(prefix));
 
   // Native folder picker → a session's workspace root.
   ipcMain.handle(IPC.pickFolder, async () => {

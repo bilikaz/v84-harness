@@ -1,27 +1,40 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "./types.ts";
+import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
-import { detectStorage, IdbStorage, type Storage } from "../../lib/storage/index.ts";
+import { detectStorage } from "../../lib/storage/index.ts";
 import { createListeners } from "../../lib/store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
+import {
+  deleteSessionData,
+  loadIndex,
+  loadMessages,
+  normalize,
+  saveIndex,
+  saveMessages,
+  toMeta,
+  type SessionsIndex,
+} from "./persistence.ts";
 
 // Session store — the single source of truth for multi-session state (sidebar
 // list, chat view, right-panel progress). Plain external store; React binds via
-// ./hooks.ts. Persisted to localStorage for now; swaps to SQLite via the
-// core/IPC layer later (same surface, different backend).
+// ./hooks.ts.
+//
+// Persistence is GRANULAR (see ./persistence.ts): the index (metas + activeId)
+// and each session's messages are separate keys, media blobs separate again —
+// a write costs what changed, never the whole profile. Boot reads the index +
+// the active session; other sessions lazy-load on first open (ensureLoaded).
 //
 // This module owns STATE + the operations that change it. The turn loop lives
 // in ./driver.ts and the bus reactions in ./listeners.ts — they call in here.
-const KEY = "v84-harness:sessions";
 const log = rootLog.child("session.store");
 
-// The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017);
-// localStorage below stays the synchronous first-paint cache regardless.
+// The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017).
 const storageReady = detectStorage();
 
-// Build a fresh session. Used for "new session" and the empty-state.
+// Build a fresh session. Used for "new session" and the empty-state. `loaded`
+// is true: a session born in memory has nothing to lazy-load.
 function makeSession(init: { title?: string; system?: string; workspaceId?: string | null } = {}): Session {
   return {
     id: crypto.randomUUID(),
@@ -31,68 +44,25 @@ function makeSession(init: { title?: string; system?: string; workspaceId?: stri
     tools: [],
     steps: [],
     messages: [],
+    loaded: true,
   };
 }
 
-// Coerce a persisted (possibly older-shape) session into the current model, so
-// upgrades don't break existing localStorage data.
-function normalize(s: Partial<Session> & { messages?: Partial<Message>[] }): Session {
-  return {
-    id: s.id ?? crypto.randomUUID(),
-    title: s.title ?? "",
-    system: s.system ?? "",
-    workspaceId: s.workspaceId ?? null,
-    tools: Array.isArray(s.tools) ? s.tools : [],
-    steps: Array.isArray(s.steps) ? s.steps : [],
-    usedTokens: s.usedTokens,
-    unread: s.unread,
-    messages: (s.messages ?? []).map((m, i) => ({
-      id: m.id ?? `m${i}`,
-      role: m.role === "assistant" ? "assistant" : m.role === "tool" ? "tool" : "user",
-      text: m.text ?? "",
-      thinking: m.thinking,
-      images: m.images,
-      video: m.video,
-      files: m.files,
-      toolCalls: m.toolCalls,
-      toolCallId: m.toolCallId,
-      summary: m.summary,
-      hidden: m.hidden,
-    })),
-  };
-}
-
-function load(): { sessions: Session[]; activeId: string } {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as { sessions: Partial<Session>[]; activeId: string };
-      if (parsed.sessions?.length) {
-        const list = parsed.sessions.map(normalize);
-        const activeId = list.some((s) => s.id === parsed.activeId) ? parsed.activeId : list[0].id;
-        return { sessions: list, activeId };
-      }
-    }
-  } catch {
-    /* fall through to a fresh session */
-  }
-  const s = makeSession();
-  return { sessions: [s], activeId: s.id };
-}
-
-const initial = load();
-let sessions: Session[] = initial.sessions;
-let activeId: string = initial.activeId;
+// Until hydration completes the store holds one fresh placeholder session —
+// there is no synchronous cache anymore (the old localStorage first-paint
+// cache was permanently stale for big profiles and cost a sync multi-MB write
+// per persist; a one-frame skeleton behind useHydrated() replaces it).
+const placeholder = makeSession();
+let sessions: Session[] = [placeholder];
+let activeId: string = placeholder.id;
 // Sessions currently receiving a stream — multiple at once (per-session, not
 // global). A fresh Set on every change so useSyncExternalStore re-renders.
 let streamingIds: Set<string> = new Set();
 // Sessions currently being summarized/compacted (separate from streaming so the
 // UI can show a distinct "summarizing" state).
 let compactingIds: Set<string> = new Set();
-// False until the async IndexedDB hydration below finishes. The first paint uses
-// localStorage (instant, but may lag on large image data); flips true once IDB
-// has replaced the in-memory state. Consumers can gate on useHydrated() to avoid
-// the brief stale flash if they need to.
+// False until the async durable-tier hydration below finishes. Consumers gate
+// on useHydrated() to show a skeleton instead of the placeholder session.
 let hydrated = false;
 
 // Reserve kept free below the model's context window: "full" triggers at
@@ -103,62 +73,78 @@ export const CONTEXT_RESERVE = 50_000;
 const reg = createListeners();
 export const notify = reg.notify;
 export const subscribe = reg.subscribe;
-export function persist(): void {
-  const data = JSON.stringify({ sessions, activeId });
-  // localStorage is a fast cache for the instant first paint, but it's capped at
-  // ~5 MB — image data-URLs may not fit, and that's fine.
-  try {
-    localStorage.setItem(KEY, data);
-  } catch {
-    /* quota / private mode — the durable tier below is the source of truth */
-  }
-  // The durable tier holds the FULL state (large quota), so images survive a
-  // reload.
+// ── Persistence (granular — see ./persistence.ts) ───────────────────────────
+
+function currentIndex(): SessionsIndex {
+  return { activeId, sessions: sessions.map(toMeta) };
+}
+
+// Write the small index (metas + activeId). Fire-and-forget: persistence
+// failures are warnings, never UI errors.
+export function persistIndex(): void {
   void storageReady
-    .then((s) => s.set(KEY, data))
-    .catch((e) => log.warn("persist_failed", { hint: "state (incl. images) may not survive a reload", error: errorMessage(e) }));
+    .then((s) => saveIndex(s, currentIndex()))
+    .catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
 }
 
-// On a desktop build's first run with SQLite, the durable tier is empty while
-// the previous runs' data sits in IndexedDB — copy it over once (the legacy-
-// key migration recipe, applied across backends).
-async function migrateFromIdb(target: Storage): Promise<string | null> {
-  if (target.name === "idb") return null; // idb IS the selected tier
-  try {
-    const legacy = await IdbStorage.create();
-    const raw = await legacy.get(KEY);
-    if (raw) {
-      await target.set(KEY, raw);
-      log.info("migrated", { from: "idb", to: target.name });
-    }
-    return raw;
-  } catch {
-    return null; // no IndexedDB here — nothing to migrate
+// Write one session's messages (media extracted to blobs) + the index. Cost is
+// proportional to THAT session's text — never the whole profile (ADR-0021).
+export function persistSession(sid: string): void {
+  void storageReady
+    .then(async (storage) => {
+      const session = getSession(sid);
+      if (!session || session.loaded === false) return; // never clobber rows with an unloaded shell
+      const bytes = await saveMessages(storage, sid, session.messages);
+      sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
+      await saveIndex(storage, currentIndex());
+      notify(); // footprint shown in Settings → Storage
+    })
+    .catch((e) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(e) }));
+}
+
+// Lazy-load a session's messages on first open. In-flight loads are shared so
+// a double-click doesn't read twice.
+const loading = new Map<string, Promise<void>>();
+export function ensureLoaded(sid: string): Promise<void> {
+  const session = getSession(sid);
+  if (!session || session.loaded !== false) return Promise.resolve();
+  let p = loading.get(sid);
+  if (!p) {
+    p = (async () => {
+      const storage = await storageReady;
+      const messages = (await loadMessages(storage, sid)) ?? [];
+      sessions = sessions.map((s) => (s.id === sid ? { ...s, messages, loaded: true } : s));
+      notify();
+    })()
+      .catch((e) => {
+        log.warn("load_failed", { sid, error: errorMessage(e) });
+        // Mark loaded anyway — an empty transcript beats a load loop.
+        sessions = sessions.map((s) => (s.id === sid ? { ...s, loaded: true } : s));
+        notify();
+      })
+      .finally(() => loading.delete(sid));
+    loading.set(sid, p);
   }
+  return p;
 }
 
-// Hydrate from the durable tier — the authoritative store. localStorage
-// (loaded above) gives an instant first paint but may be missing images that
-// didn't fit; the durable tier replaces it once read. On the first run the
-// tier is empty, so seed it from whatever localStorage had (migration).
+// Hydrate from the durable tier — the authoritative store. Reads the INDEX and
+// the ACTIVE session's messages only; everything else lazy-loads via
+// ensureLoaded.
 void (async () => {
   try {
     const storage = await storageReady;
-    const raw = (await storage.get(KEY)) ?? (await migrateFromIdb(storage));
-    if (raw) {
-      const parsed = JSON.parse(raw) as { sessions: Partial<Session>[]; activeId: string };
-      if (parsed.sessions?.length) {
-        sessions = parsed.sessions.map(normalize);
-        activeId = sessions.some((s) => s.id === parsed.activeId) ? parsed.activeId : sessions[0].id;
-        return;
-      }
+    const index = await loadIndex(storage);
+    if (index) {
+      sessions = index.sessions.map((meta) => ({ ...normalize(meta), loaded: false }));
+      activeId = sessions.some((s) => s.id === index.activeId) ? index.activeId : sessions[0].id;
+      await ensureLoaded(activeId); // active transcript is part of first paint
+    } else {
+      await saveIndex(storage, currentIndex()); // first run — seed the index
     }
-    await storage.set(KEY, JSON.stringify({ sessions, activeId }));
   } catch (e) {
-    // Don't lose data silently: if the durable tier is unavailable we stay on
-    // the localStorage-loaded state, which may be stale/missing images.
     log.warn("hydrate_failed", {
-      hint: "falling back to localStorage; recent large data (e.g. images) may be missing",
+      hint: "starting from an empty profile; durable data is intact and retried next launch",
       error: errorMessage(e),
     });
   } finally {
@@ -218,7 +204,8 @@ export function setActive(id: string): void {
   activeId = id;
   // Opening a session marks it read (dot goes transparent).
   sessions = sessions.map((s) => (s.id === id && s.unread ? { ...s, unread: false } : s));
-  persist();
+  void ensureLoaded(id); // lazy-load its messages on first open
+  persistIndex();
   notify();
 }
 
@@ -227,7 +214,7 @@ export function createSession(init: { title?: string; system?: string; workspace
   const s = makeSession(init);
   sessions = [s, ...sessions];
   activeId = s.id;
-  persist();
+  persistIndex();
   notify();
   return s.id;
 }
@@ -239,18 +226,23 @@ export function newSession(): void {
 export function renameSession(id: string, title: string): void {
   const t = title.trim();
   sessions = sessions.map((s) => (s.id === id ? { ...s, title: t || s.title } : s));
-  persist();
+  persistIndex();
   notify();
 }
 
 export function deleteSession(id: string): void {
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";
+  // Drop the session's rows + media blobs from the durable tier.
+  void storageReady
+    .then((s) => deleteSessionData(s, id))
+    .catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
   if (sessions.length === 0) {
-    createSession(); // never leave the user with zero sessions
+    createSession(); // never leave the user with zero sessions (persists the index)
     return;
   }
-  persist();
+  if (activeId) void ensureLoaded(activeId);
+  persistIndex();
   notify();
 }
 
@@ -267,7 +259,7 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
-export function pushTurn(sid: string, userText: string, images?: ImageRef[], files?: FileAttachment[], video?: ImageRef[]): void {
+export function pushTurn(sid: string, userText: string, images?: MediaRef[], files?: FileAttachment[], video?: MediaRef[]): void {
   const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
   sessions = sessions.map((s) =>
@@ -302,7 +294,7 @@ export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
 
 // Append a tool-result message answering a specific call. `images` are shown in
 // the tool card (display only — toChatMessages drops tool-role images).
-export function pushToolResult(sid: string, toolCallId: string, output: string, images?: ImageRef[], video?: ImageRef[]): void {
+export function pushToolResult(sid: string, toolCallId: string, output: string, images?: MediaRef[], video?: MediaRef[]): void {
   const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
@@ -311,7 +303,7 @@ export function pushToolResult(sid: string, toolCallId: string, output: string, 
 // Feed tool-produced media (generated or loaded) back to the model as a hidden
 // user turn (skipped in the UI — it already shows in the tool card; this just
 // lets a vision agent see it on its next turn).
-export function pushMediaFeedback(sid: string, images?: ImageRef[], video?: ImageRef[]): void {
+export function pushMediaFeedback(sid: string, images?: MediaRef[], video?: MediaRef[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
     role: "user",
@@ -361,7 +353,7 @@ export function markUnread(sid: string): void {
 
 export function setTitle(id: string, title: string): void {
   sessions = sessions.map((s) => (s.id === id ? { ...s, title } : s));
-  persist();
+  persistIndex();
   notify();
 }
 
@@ -391,7 +383,7 @@ export function replaceWithSummary(sid: string, summary: string, usedTokens = 0)
       ? { ...s, messages: [{ id: crypto.randomUUID(), role: "user", text: summary, summary: true }], usedTokens }
       : s,
   );
-  persist();
+  persistSession(sid); // rewrites the rows; orphaned media blobs are GC'd there
   notify();
 }
 

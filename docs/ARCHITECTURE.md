@@ -4,7 +4,8 @@ This document is the map of the v84-harness desktop app (`apps/desktop`): struct
 as it is and the patterns the codebase commits to. Portable engineering rules live
 in [docs/conventions/](conventions/) (adopted by
 [ADR-0010](adr/0010-adopt-shared-conventions.md)); dated decisions and their
-trade-offs in [docs/adr/](adr/).
+trade-offs in [docs/adr/](adr/). The working procedure that maintains all three
+layers is the root [/CLAUDE.md](../CLAUDE.md) — agent sessions read it on start.
 
 ## Overview
 
@@ -87,11 +88,12 @@ Conventions ([ADR-0004](adr/0004-store-pattern.md)):
   Components consume hooks only — never the store object directly.
 - Mutations are immutable (spread/copy) and end with `notify()`.
 - `core/sessions/store.ts` is the one sanctioned deviation: it uses
-  `createListeners()` directly because of its dual-tier persistence
-  (localStorage for fast first paint; the durable tier selected by the storage
-  port — [ADR-0012](adr/0012-sessions-dual-tier-persistence.md),
+  `createListeners()` directly because its persistence is granular and async
+  (index / per-session messages / media blobs over the storage port —
+  [ADR-0021](adr/0021-granular-session-persistence.md),
   [ADR-0017](adr/0017-storage-port-with-detected-backends.md)). Don't copy that
-  shape for ordinary stores.
+  shape for ordinary stores. The full key scheme, shapes, and accessor surface
+  are charted in [docs/STORAGE.md](STORAGE.md).
 
 ## Event bus
 
@@ -115,7 +117,8 @@ The reference module shape for `core/` features:
 
 | File | Responsibility |
 |------|----------------|
-| `store.ts` | State, selectors, mutations, persistence |
+| `store.ts` | State, selectors, mutations; decides WHEN to persist |
+| `persistence.ts` | Granular durable IO: key scheme, media blob extract/reinflate, legacy migration |
 | `driver.ts` | Orchestration: the turn loop (`send` → `runTurn`) |
 | `events.ts` | Bus event interfaces + declaration merge + scoped bus |
 | `listeners.ts` | Bus → store reactions (transcript building, streaming flags, persistence) |
@@ -149,6 +152,19 @@ Turn loop highlights (`driver.ts`):
   input + output — never a sum across requests (each request's input already
   counts the whole transcript). Auto-compaction summarizes the session when that
   snapshot crosses the context limit.
+- **Message reference stability is a contract**: mutations replace only the
+  objects they touch (streaming swaps the last message; appends keep the rest),
+  and the transcript UI (`Message`/`Markdown`/`ToolCard`/`Thinking`) is
+  memoized to bail by reference — a streamed token re-renders one message, not
+  the transcript ([ADR-0019](adr/0019-reference-stable-transcript.md)).
+- **Persistence is granular and runs at turn completion**: the index (metas +
+  activeId), each session's messages, and each media blob are separate keys in
+  the durable tier — a turn's persist writes that session's text, a media blob
+  is written once at creation, and boot reads the index + active session with
+  the rest lazy-loading via `ensureLoaded`
+  ([ADR-0021](adr/0021-granular-session-persistence.md),
+  [ADR-0020](adr/0020-persist-at-turn-completion.md)). There is no localStorage
+  cache; localStorage survives only as the port's last-resort backend.
 
 ## Tool system (`core/tools/`)
 
