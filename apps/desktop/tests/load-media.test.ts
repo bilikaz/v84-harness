@@ -18,7 +18,7 @@ beforeAll(async () => {
   await writeFile(path.join(root, "assets", "pic.png"), PNG_BYTES);
   await writeFile(path.join(root, "assets", "clip.mp4"), Buffer.from("not-really-a-video"));
   await writeFile(path.join(root, "notes.txt"), "text");
-  await writeFile(path.join(root, "big.png"), Buffer.alloc(10 * 1024 * 1024 + 1));
+  await writeFile(path.join(root, "big.png"), Buffer.alloc(6 * 1024 * 1024 + 1));
 });
 afterAll(() => rm(root, { recursive: true, force: true }));
 
@@ -42,7 +42,7 @@ describe("LoadImage", () => {
   it("rejects files over the size cap and names the size", async () => {
     const res = await loadImageTool.execute({ path: "/big.png" }, { cwd: root });
     expect(res.ok).toBe(false);
-    expect(res.output).toContain("10.0 MB limit");
+    expect(res.output).toContain("6.0 MB limit");
   });
 
   it("confines paths to the workspace root", async () => {

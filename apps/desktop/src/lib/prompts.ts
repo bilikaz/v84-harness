@@ -20,6 +20,16 @@ const PROMPTS: Tree = {
       "You are a helpful assistant serving a {{language}}-speaking user. " +
       "If the user writes in {{language}}, reply in {{language}}. Otherwise reply in English.",
   },
+  workspace: {
+    // Appended to the system message whenever a session has file tools — the
+    // virtual root (ADR-0007) is invisible to the model unless we say so.
+    system:
+      "You have access to the user's workspace folder through your file tools. " +
+      "The workspace root is mounted as `/`: every path is workspace-relative, a leading `/` means the workspace root itself " +
+      "(never the host filesystem), and nothing outside the workspace is reachable. " +
+      "Example paths: `/src/index.ts`, `notes.md`. " +
+      "Bash is the exception — it is a real shell whose working directory is the workspace root; use relative paths there.",
+  },
   chatTitle: {
     // Appended as a final user turn after the real conversation is resent.
     user:

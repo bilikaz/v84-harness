@@ -3,9 +3,9 @@
 The "class diagram" of the sessions state: durable key scheme, in-memory state,
 and the accessor surface. Part of the map layer (present tense, updated with the
 code). Decisions behind the shapes:
-[ADR-0017](adr/0017-storage-port-with-detected-backends.md) (port + detection),
-[ADR-0020](adr/0020-persist-at-turn-completion.md) (when writes happen),
-[ADR-0021](adr/0021-granular-session-persistence.md) (granular keys).
+[ADR-0017](../adr/0017-storage-port-with-detected-backends.md) (port + detection),
+[ADR-0020](../adr/0020-persist-at-turn-completion.md) (when writes happen),
+[ADR-0021](../adr/0021-granular-session-persistence.md) (granular keys).
 
 ## Durable tier — key scheme
 

@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 // to one or more REGIONS the shell exposes. main.tsx runs an import.meta.glob
 // over those files at boot, so the filesystem IS the registry.
 
-export type Region = "left-top" | "menu" | "right-panel" | "settings" | "main";
+export type Region = "left-top" | "right-panel" | "settings" | "main";
 
 export interface Contribution {
   region: Region;

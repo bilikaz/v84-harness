@@ -1,0 +1,122 @@
+import { agentsForContext, type Agent } from "../agents.ts";
+import type { ToolSchema } from "../tools/types.ts";
+
+// The sub-agent tool pair (ADR-pending): ListAgents returns the catalog as
+// DATA, RunAgent runs one by name. The catalog is deliberately NOT embedded in
+// the schemas — two stable schemas stay byte-identical across turns and
+// sessions (provider prompt caches hold), and an edited agent library never
+// shifts the advertised tools under an in-flight conversation. The price — one
+// list call before the first delegation — self-heals: a blind RunAgent miss
+// returns the valid names inline. Execution lives in driver.ts (it spawns child
+// sessions); this module owns the schemas, the catalog text, and resolution.
+
+export const LIST_AGENTS = "ListAgents";
+export const RUN_AGENT = "RunAgent";
+
+const LIST_SCHEMA: ToolSchema = {
+  type: "function",
+  function: {
+    name: LIST_AGENTS,
+    description:
+      "List the stored agents you can run as sub-agents: their names, what they do, and what input they expect.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  },
+};
+
+const RUN_SCHEMA: ToolSchema = {
+  type: "function",
+  function: {
+    name: RUN_AGENT,
+    description:
+      "Run stored agents as sub-agents, each in its own fresh session, and get their final answers. " +
+      "All runs in one call execute CONCURRENTLY — to fan work out, pass several runs in a single call. " +
+      "Use ListAgents to see what is available. The same agent may appear in several runs with different tasks.",
+    parameters: {
+      type: "object",
+      properties: {
+        runs: {
+          type: "array",
+          minItems: 1,
+          description: "The sub-agent runs to start, all at once. The same agent may appear in several runs.",
+          items: {
+            type: "object",
+            properties: {
+              agent: { type: "string", description: "The agent's name exactly as ListAgents lists it." },
+              task: {
+                type: "string",
+                description:
+                  "The task for this run. Self-contained — the sub-agent cannot see this conversation, so include everything it needs (content to work on, constraints, expected output).",
+              },
+            },
+            required: ["agent", "task"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["runs"],
+      additionalProperties: false,
+    },
+  },
+};
+
+// The runnable catalog for a context: what the workspace gate allows (a chat
+// session can only spawn chat agents), minus unnamed agents — the name IS the
+// tool-facing address, so an unnamed agent is invisible to orchestrators.
+export function catalogAgents(hasWorkspace: boolean): Agent[] {
+  return agentsForContext(hasWorkspace).filter((a) => a.name.trim());
+}
+
+// Advertised only to TOP-LEVEL sessions with a non-empty catalog: children
+// never see the pair (depth 1 — orchestrator → workers, no runaway trees), and
+// an empty library isn't worth the schema tokens.
+export function agentToolSchemas(hasWorkspace: boolean): ToolSchema[] {
+  return catalogAgents(hasWorkspace).length ? [LIST_SCHEMA, RUN_SCHEMA] : [];
+}
+
+// The NAME is quoted and nothing is glued onto it — a marker appended to the
+// name reads as part of the name and the model passes it back verbatim
+// (observed live: `agent: "Code reviewer [workspace]"`). No workspace marker
+// at all: the catalog is already filtered to what this session can run, so
+// the distinction carries no information the orchestrator can act on.
+function catalogLines(agents: Agent[]): string {
+  return agents
+    .map((a) => `- "${a.name.trim()}" — ${a.description.trim() || "(no description)"}`)
+    .join("\n");
+}
+
+export function listAgentsOutput(hasWorkspace: boolean): string {
+  const agents = catalogAgents(hasWorkspace);
+  if (!agents.length) return "No agents are available in this context.";
+  return (
+    `Available agents:\n${catalogLines(agents)}\n\n` +
+    `Run them with RunAgent {runs: [{agent, task}, …]} — pass each agent's name without the quotes. ` +
+    `All entries in one call run concurrently; put everything you want in parallel into ONE call. ` +
+    `The SAME agent can appear in several entries with different tasks — e.g. five parallel runs of one ` +
+    `reviewer agent, each focused on a different aspect.`
+  );
+}
+
+// What the orchestrator sends as a name, reduced to the comparable core:
+// trimmed, unquoted, any trailing [bracketed] marker dropped, lowercased —
+// models echo the catalog's decoration around the name more often than not.
+function normalizeName(s: string): string {
+  return s
+    .trim()
+    .replace(/\s*\[[^\]]*\]\s*$/, "") // bracket suffix FIRST — it may trail a closing quote
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+// Resolve an orchestrator-supplied name to an agent. Returns a string — the
+// model-facing error — when it doesn't resolve; the error carries the valid
+// names, so a blind guess costs the same one step as listing first.
+export function resolveAgent(name: string, hasWorkspace: boolean): Agent | string {
+  const agents = catalogAgents(hasWorkspace);
+  if (!agents.length) return "No agents are available in this context.";
+  const wanted = normalizeName(name);
+  const matches = agents.filter((a) => normalizeName(a.name) === wanted);
+  if (matches.length === 1) return matches[0];
+  const problem = matches.length ? `agent name "${name}" is ambiguous` : `no agent is named "${name}"`;
+  return `${problem}. Valid agents:\n${catalogLines(agents)}`;
+}

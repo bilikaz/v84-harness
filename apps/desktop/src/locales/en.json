@@ -6,35 +6,39 @@
     "rename": "Rename",
     "delete": "Delete"
   },
-  "nav": {
-    "agents": "Agents"
-  },
   "agents": {
     "title": "Agents",
     "new": "New agent",
     "untitled": "Untitled agent",
+    "missing": "This agent no longer exists.",
+    "name": "Name",
+    "nameHelp": "The agent's address: orchestrating agents run it by this name. Unnamed agents are invisible to them.",
     "namePlaceholder": "Agent name",
     "description": "Description",
-    "descriptionHelp": "A short summary of what this agent does — shown here and used when one agent runs another.",
+    "descriptionHelp": "The orchestrator-facing contract: what this agent does and what input it expects — it is all another agent sees when choosing.",
     "descriptionPlaceholder": "Reviews a diff and reports findings by severity…",
     "system": "System",
     "systemHelp": "Standing instructions — how the model should behave.",
     "systemPlaceholder": "# Role\\n\\nYou are…",
-    "user": "User",
-    "userHelp": "The task to run when this agent is executed.",
+    "user": "User template",
+    "userHelp": "The default task for manual runs — seeded into the composer. Orchestrating agents supply their own task instead.",
     "userPlaceholder": "Do the following…",
-    "attach": "Attach images or files",
-    "requireJson": "Require JSON output",
-    "outputHelp": "When on, the agent's final answer must validate; if it doesn't, the model is automatically re-prompted (up to 3 times) before failing.",
-    "requiredKeys": "Required keys",
-    "requiredKeysPlaceholder": "subjects, resolution",
-    "requiredKeysHelp": "Comma-separated top-level keys the JSON object must contain. Leave empty to only require valid JSON.",
+    "workspace": "Requires workspace",
+    "workspaceHelp": "On: runs bound to the active workspace, with its file tools and permissions. Off: a pure chat agent — never gets file access, runnable anywhere.",
+    "needsWorkspace": "This agent needs a workspace — select one in the sidebar to run it.",
     "run": "Run",
     "edit": "Edit",
+    "backToRun": "Back",
     "delete": "Delete",
     "cancel": "Cancel",
     "confirmDelete": "Delete this agent?",
-    "empty": "Select or create an agent."
+    "systemBanner": "System — {{name}}",
+    "noSystem": "No system prompt.",
+    "viewRun": "View run",
+    "childRun": "Sub-agent run — read-only.",
+    "toParent": "Open {{title}}",
+    "permissionsHelp": "This agent's ceiling. For each call the stricter of this and the workspace policy applies — an agent can restrict what the workspace grants, never extend it.",
+    "workspaceSection": "Workspace & permissions"
   },
   "menu": {
     "settings": "Settings",
@@ -132,7 +136,8 @@
     "thinking": "Thinking…",
     "thoughts": "Thoughts",
     "running": "running…",
-    "loading": "Loading conversation…"
+    "loading": "Loading conversation…",
+    "attachTooBig": "Too large to attach (skipped): {{names}}"
   },
   "progress": {
     "progress": "Progress",

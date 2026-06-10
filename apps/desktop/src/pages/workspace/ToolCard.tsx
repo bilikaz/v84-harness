@@ -1,16 +1,32 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, RefreshCw, Terminal, Wrench } from "lucide-react";
+import { Bot, ChevronDown, RefreshCw, SquareArrowOutUpRight, Terminal, Wrench } from "lucide-react";
 
+import { setActive, useSessions } from "../../core/sessions/index.ts";
 import { SavableMedia } from "../../components/SavableMedia.tsx";
+import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 import type { MediaRef, ToolCall } from "../../lib/types.ts";
 
 // A tool call rendered as a card: the tool name on top, then IN (the call's
 // arguments) and OUT (the result, once it arrives). Collapsed by default.
-// Memoized — all props come from settled, reference-stable message objects, so
-// cards re-render only when their own result/media lands.
-export const ToolCard = memo(function ToolCard({ call, output, images, video }: { call: ToolCall; output?: string; images?: MediaRef[]; video?: MediaRef[] }) {
+// A RunAgent call carries `childSessionIds` — the doors into its sub-agent
+// sessions (one per run), live while they run and after. Memoized — all props
+// come from settled, reference-stable message objects, so cards re-render only
+// when their own result/media lands.
+export const ToolCard = memo(function ToolCard({
+  call,
+  output,
+  images,
+  video,
+  childSessionIds,
+}: {
+  call: ToolCall;
+  output?: string;
+  images?: MediaRef[];
+  video?: MediaRef[];
+  childSessionIds?: string[];
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   let args: Record<string, unknown> = {};
@@ -19,9 +35,10 @@ export const ToolCard = memo(function ToolCard({ call, output, images, video }: 
   } catch {
     /* keep {} */
   }
-  const summary = String(args.command ?? args.path ?? args.pattern ?? "");
+  const isAgent = call.name === "RunAgent" || call.name === "ListAgents";
+  const summary = String(args.agent ?? args.command ?? args.path ?? args.pattern ?? "");
   const inText = call.name === "Bash" ? String(args.command ?? "") : JSON.stringify(args, null, 2);
-  const Icon = call.name === "Bash" ? Terminal : Wrench;
+  const Icon = call.name === "Bash" ? Terminal : isAgent ? Bot : Wrench;
 
   return (
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50/70 text-sm">
@@ -36,6 +53,13 @@ export const ToolCard = memo(function ToolCard({ call, output, images, video }: 
         {output === undefined && <RefreshCw size={12} className="ml-auto animate-spin text-neutral-300" />}
         <ChevronDown size={14} className={cn("text-neutral-400 transition-transform", output === undefined ? "" : "ml-auto", open && "rotate-180")} />
       </button>
+      {childSessionIds && childSessionIds.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 border-t border-neutral-200 px-3 py-1.5">
+          {childSessionIds.map((csid) => (
+            <ChildRunLink key={csid} sid={csid} />
+          ))}
+        </div>
+      )}
       {images && images.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
           {images.map((im, i) => (
@@ -59,6 +83,28 @@ export const ToolCard = memo(function ToolCard({ call, output, images, video }: 
     </div>
   );
 });
+
+// The "view run" door — activates the sub-agent's session (live or settled).
+// Labeled with the child session's title so a fan-out's links are tellable
+// apart. Disappears if the child session was deleted.
+function ChildRunLink({ sid }: { sid: string }) {
+  const { t } = useTranslation();
+  const child = useSessions().find((s) => s.id === sid);
+  if (!child) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setActive(sid);
+        navigate("");
+      }}
+      title={t("agents.viewRun")}
+      className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800"
+    >
+      <SquareArrowOutUpRight size={11} /> {child.title}
+    </button>
+  );
+}
 
 function IO({ label, body }: { label: string; body: string }) {
   return (

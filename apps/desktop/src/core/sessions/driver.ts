@@ -6,9 +6,13 @@ import type { FileAttachment, MediaRef } from "./types.ts";
 import { harness } from "../../lib/harness.ts";
 import { resolveMediaProvider } from "../../core/media.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
-import { getWorkspace, type Workspace } from "../workspaces.ts";
-import { PERMISSIONLESS_TOOLS, type GatedTool, type ToolName, type ToolMode, type ToolResult } from "../tools/types.ts";
+import { getAgent, type Agent } from "../agents.ts";
+import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
+import { ALL_TOOLS, PERMISSIONLESS_TOOLS, type GatedTool, type ToolName, type ToolMode, type ToolResult } from "../tools/types.ts";
+import { pt } from "../../lib/prompts.ts";
+import { cap } from "../tools/shared.ts";
 import { RENDERER_TOOLS, RENDERER_TOOL_SCHEMAS } from "../tools/renderer.ts";
+import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgent } from "./agentTools.ts";
 import { sessionBus as bus } from "./events.ts";
 import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
@@ -16,6 +20,25 @@ import { errorMessage } from "../../lib/errors.ts";
 // A validator for the model's final (no-tool) turn. Throws to reject — the
 // engine then injects a correction and lets the model retry (see runTurn).
 export type Validate = (text: string) => void;
+
+// How a turn ended. `text` is the model's final (no-tool) answer — partial if
+// aborted. Callers that consume the answer programmatically (the RunAgent tool)
+// branch on `errored`/`aborted`; the chat UI ignores the result (the transcript
+// is already built by the listeners).
+export interface TurnResult {
+  text: string;
+  errored: boolean;
+  aborted: boolean;
+}
+
+// Per-turn options shared by every entry point (composer send, agent runs).
+export interface SendOptions {
+  images?: MediaRef[];
+  video?: MediaRef[];
+  files?: FileAttachment[];
+  autoName?: boolean;
+  validate?: Validate;
+}
 
 // The turn loop: drives the model stream and PUBLISHES events; the listeners
 // (./listeners.ts) react and update the store. When the session is bound to a
@@ -62,36 +85,40 @@ function allowedByCapability(name: ToolName, cfg: ModelConfig): boolean {
   return true;
 }
 
-async function advertisedTools(ws: Workspace | undefined, cfg: ModelConfig): Promise<ToolSpec[]> {
+async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefined, cfg: ModelConfig, isChild: boolean): Promise<ToolSpec[]> {
   // Permissionless renderer tools (e.g. GenerateImage) are available everywhere —
-  // browser build included.
-  const renderer = RENDERER_TOOL_SCHEMAS as ToolSpec[];
-  if (!harness) return renderer; // web: only the renderer tools
+  // browser build included. The sub-agent pair (ListAgents/RunAgent) joins for
+  // top-level sessions only (depth 1: children never orchestrate further).
+  const renderer = [
+    ...(RENDERER_TOOL_SCHEMAS as ToolSpec[]),
+    ...(isChild ? [] : (agentToolSchemas(!!ws) as ToolSpec[])),
+  ];
+  if (!harness) return renderer; // web: only the renderer-side tools
   // Electron: add the gated tools this workspace enables (they run in main).
   const bridge = await harness.tools.schemas();
   const gated = bridge.filter((s) => {
     const name = s.function.name as ToolName;
     if (PERMISSIONLESS_TOOLS.includes(name)) return false; // handled by the renderer set above
     if (!allowedByCapability(name, cfg)) return false;
-    return ws ? (ws.tools[name as GatedTool] ?? 0) !== 0 : false;
+    return effectiveMode(ws, agent, name) !== 0;
   }) as ToolSpec[];
   return [...renderer, ...gated];
 }
 
-// The approval mode for a tool this turn. Permissionless tools always auto-run
-// (2). Gated tools use the workspace's per-tool policy, and are unavailable (0)
-// with no workspace bound.
-function toolMode(ws: Workspace | undefined, name: ToolName): ToolMode {
+// The approval mode for a tool this turn: the STRICTER of the workspace policy
+// and the running agent's ceiling (min) — an agent can restrict what the
+// workspace grants (a read-only reviewer in a write-enabled workspace), never
+// extend it. Permissionless tools always auto-run (2); gated tools are
+// unavailable (0) with no workspace bound.
+function effectiveMode(ws: Workspace | undefined, agent: Agent | undefined, name: ToolName): ToolMode {
   if (PERMISSIONLESS_TOOLS.includes(name)) return 2;
-  return ws ? (ws.tools[name as GatedTool] ?? 0) : 0;
+  if (!ws) return 0;
+  const wsMode = ws.tools[name as GatedTool] ?? 0;
+  const ceiling = agent?.tools[name as GatedTool] ?? 2;
+  return Math.min(wsMode, ceiling) as ToolMode;
 }
 
-async function runTurn(
-  sid: string,
-  cfg: ModelConfig,
-  userText: string,
-  opts: { images?: MediaRef[]; video?: MediaRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate },
-): Promise<void> {
+async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: SendOptions): Promise<TurnResult> {
   const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
   const autoName = opts.autoName !== false;
 
@@ -99,13 +126,24 @@ async function runTurn(
   bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, video: opts.video, files: opts.files });
 
   const ws = getWorkspace(getSession(sid)?.workspaceId);
+  const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
+  // The agent this session runs (if any) — its tool ceiling applies to every
+  // step of the turn, advertising and execution alike. Looked up live, so
+  // editing an agent's permissions affects the next step, and a deleted agent
+  // degrades to the plain workspace policy.
+  const agent = getSession(sid)?.agentId ? getAgent(getSession(sid)!.agentId!) : undefined;
   // ctx for the bridge (main) tool path — present only in Electron. The media
   // provider is read here and handed in; main never reads the renderer store.
   const toolCtx = harness ? { cwd: ws?.root ?? "", media: resolveMediaProvider() ?? undefined } : null;
   // Tools are advertised even without the bridge — the renderer set (e.g.
   // GenerateImage) runs in-renderer, so the browser build has tools too.
-  const toolSpecs = await advertisedTools(ws, cfg);
+  const toolSpecs = await advertisedTools(ws, agent, cfg, isChild);
   llmLog.debug("turn", { workspace: ws?.name ?? null, electron: !!harness, tools: toolSpecs.map((t) => t.function.name) });
+  // Sessions with file tools are TOLD about them: the virtual root convention
+  // (/ = the workspace folder, ADR-0007) is invisible to the model otherwise —
+  // it would guess host paths. Appended only when gated tools are actually
+  // advertised, so a web/chat session never hears about folders it can't touch.
+  const fsAccess = toolSpecs.some((t) => (ALL_TOOLS as readonly string[]).includes(t.function.name));
 
   let finalText = "";
   let finalThinking = "";
@@ -119,7 +157,8 @@ async function runTurn(
     for (; step < MAX_STEPS; step++) {
       if (controller.signal.aborted) break;
       const history = toChatMessages(getSession(sid)?.messages ?? []);
-      const system = getSession(sid)?.system || ws?.instructions || undefined;
+      const baseSystem = getSession(sid)?.system || ws?.instructions || undefined;
+      const system = fsAccess ? [baseSystem, pt("workspace.system")].filter(Boolean).join("\n\n") : baseSystem;
       let text = "";
       let thinking = "";
       let thinkingDone = false;
@@ -191,6 +230,13 @@ async function runTurn(
       const fedVideo: MediaRef[] = []; // tool-produced video — fed back only when the model takes video input
       await Promise.all(
         calls.map(async (call) => {
+          // The sub-agent pair is driver-level (it spawns sessions, not fs
+          // work) — handled before the registry/policy paths. Parallel calls
+          // in one step = parallel child runs, via this very Promise.all.
+          if (call.name === LIST_AGENTS || call.name === RUN_AGENT) {
+            await execAgentTool(sid, call, ws, cfg, controller.signal, isChild);
+            return;
+          }
           // A model can call a tool it wasn't advertised (hallucinated name from
           // training) — the capability gate must hold at run time too, or the
           // loaded media would silently never reach it.
@@ -198,11 +244,11 @@ async function runTurn(
             bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: `tool "${call.name}" is not available for this model.` });
             return;
           }
-          const mode = toolMode(ws, call.name as ToolName);
+          const mode = effectiveMode(ws, agent, call.name as ToolName);
           if (mode === 0) {
             const why = !ws
               ? `tool "${call.name}" needs a workspace folder — open one for this session to use it.`
-              : `tool "${call.name}" is disabled in this workspace.`;
+              : `tool "${call.name}" is disabled for this session.`;
             bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: why });
             return;
           }
@@ -291,33 +337,128 @@ async function runTurn(
     bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, cfg, userText });
     bus.emit("turn:end", { sessionId: sid, errored });
   }
+  return { text: finalText, errored, aborted: controller.signal.aborted };
 }
 
-export async function send(
-  text: string,
+// Execute the sub-agent tool pair for one call. RunAgent takes an ARRAY of
+// runs and starts them all concurrently — one tool call IS the fan-out, so
+// parallelism never depends on the model emitting several calls per response
+// (most don't). Each run spawns a child SESSION (parentId stamped, never
+// activated — it must not steal focus from the parent chat) and publishes its
+// link immediately (tool:child — the ToolCard's door into the live run); the
+// combined answers come back as the tool output, per-run errors inline
+// (per-item catch, batches never fail wholesale). Stop cascades: aborting the
+// parent stops every child it spawned (and stopTurn denies the children's
+// queued approvals). Mirrors the tool contract — never throws.
+async function execAgentTool(
+  sid: string,
+  call: ToolCall,
+  ws: Workspace | undefined,
   cfg: ModelConfig,
-  opts: { images?: MediaRef[]; video?: MediaRef[]; files?: FileAttachment[]; autoName?: boolean; validate?: Validate } = {},
+  signal: AbortSignal,
+  isChild: boolean,
 ): Promise<void> {
+  const respond = (output: string, childSessionIds?: string[]): void =>
+    bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, childSessionIds });
+  // Children aren't advertised the pair, but a model can still hallucinate it —
+  // the depth-1 rule must hold at run time too.
+  if (isChild) return respond(`tool "${call.name}" is not available to sub-agents.`);
+  if (call.name === LIST_AGENTS) return respond(listAgentsOutput(!!ws));
+
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
+  } catch {
+    /* keep {} — the shape check below answers with usage */
+  }
+  // Lenient input: the documented {runs: [...]} — but the previous param name
+  // (agents) and the flat {agent, task} shape still work instead of erroring.
+  const raw = Array.isArray(args.runs) ? args.runs : Array.isArray(args.agents) ? args.agents : args.agent ? [args] : [];
+  const runs = raw as Record<string, unknown>[];
+  if (!runs.length) return respond("RunAgent needs runs: [{agent, task}, …] — one entry per sub-agent run.");
+
+  const children: string[] = [];
+  const answers = await Promise.all(
+    runs.map(async (run, i) => {
+      const label = runs.length > 1 ? `${i + 1}. ` : "";
+      const resolved = resolveAgent(String(run.agent ?? ""), !!ws);
+      if (typeof resolved === "string") return `${label}${resolved}`;
+      const task = String(run.task ?? "").trim();
+      if (!task) return `${label}"${resolved.name}": missing task — say what the agent should do, with all the context it needs.`;
+
+      const { sid: childSid, result } = runAgent(resolved, task, cfg, {
+        parentId: sid,
+        workspaceId: ws?.id ?? null,
+        activate: false,
+      });
+      children.push(childSid);
+      bus.emit("tool:child", { sessionId: sid, toolCallId: call.id, childSessionId: childSid });
+      const onAbort = (): void => stopTurn(childSid);
+      signal.addEventListener("abort", onAbort, { once: true });
+      let outcome: TurnResult | null;
+      try {
+        outcome = await result;
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+      }
+      const name = runs.length > 1 ? `${label}"${resolved.name}": ` : "";
+      if (!outcome) return `${name}the run did not start (empty task or a busy session).`;
+      if (outcome.aborted) return `${name}the sub-agent run was stopped.`;
+      if (outcome.errored) {
+        const detail = outcome.text ? `; its last output:\n${cap(outcome.text)}` : " — see its session for the error";
+        return `${name}sub-agent "${resolved.name}" failed${detail}`;
+      }
+      return `${name}${cap(outcome.text) || "(the sub-agent returned no text)"}`;
+    }),
+  );
+  respond(cap(answers.join("\n\n")), children.length ? children : undefined);
+}
+
+// Run a turn in a NAMED session and resolve with its outcome. The shared entry
+// point under every caller: the composer (via send), manual agent runs, and the
+// RunAgent tool awaiting a sub-agent's answer. Returns null when the send is
+// refused (nothing to send / that session already streaming / context full).
+export async function sendTo(sid: string, text: string, cfg: ModelConfig, opts: SendOptions = {}): Promise<TurnResult | null> {
   const t = text.trim();
-  const sid = getActiveId();
+  const session = getSession(sid);
   // Per-session guard: only block if THIS session is already streaming. Allow a
   // message with no text as long as there's at least one attachment.
-  if ((!t && !opts.images?.length && !opts.video?.length && !opts.files?.length) || getStreamingIds().has(sid) || isFull(cfg)) return;
+  if (!session || (!t && !opts.images?.length && !opts.video?.length && !opts.files?.length)) return null;
+  if (getStreamingIds().has(sid) || isFull(cfg, session)) return null;
   // Sessions lazy-load (ADR-0021) — make sure the history is in memory before
   // the turn reads it, or the model would see an empty conversation.
   await ensureLoaded(sid);
-  await runTurn(sid, cfg, t, opts);
+  return runTurn(sid, cfg, t, opts);
 }
 
-// Run a stored agent: spin up a session whose system message IS the agent's
-// system MD, then send the user MD (with any attached images/files). No
-// auto-naming — the agent's name is the title. Safe to fire while other
-// sessions stream.
+// Composer-facing send: targets the active session.
+export async function send(text: string, cfg: ModelConfig, opts: SendOptions = {}): Promise<void> {
+  await sendTo(getActiveId(), text, cfg, opts);
+}
+
+// Run a stored agent in a fresh session: the agent's system MD is the system
+// message, `task` the user message (the saved template for manual runs, the
+// orchestrator's text for sub-agent runs). A workspace agent binds to the given
+// workspace (manual runs pass the active one); a chat agent ALWAYS runs unbound
+// — the toggle is a capability boundary, file tools never leak in by launch
+// context. No auto-naming — the agent's name is the title. Targets the created
+// session BY ID — the active session can change between create and send.
 export function runAgent(
-  agent: { name: string; system: string; user: string },
+  agent: Agent,
+  task: string,
   cfg: ModelConfig,
-  opts: { images?: MediaRef[]; video?: MediaRef[]; files?: FileAttachment[]; validate?: Validate } = {},
-): void {
-  createSession({ title: agent.name, system: agent.system });
-  void send(agent.user, cfg, { ...opts, autoName: false });
+  opts: SendOptions & { parentId?: string; workspaceId?: string | null; activate?: boolean } = {},
+): { sid: string; result: Promise<TurnResult | null> } {
+  const { parentId, workspaceId, activate, ...sendOpts } = opts;
+  const sid = createSession(
+    {
+      title: agent.name,
+      system: agent.system,
+      workspaceId: agent.workspace ? (workspaceId ?? getActiveWorkspaceId()) : null,
+      agentId: agent.id,
+      parentId,
+    },
+    { activate },
+  );
+  return { sid, result: sendTo(sid, task, cfg, { ...sendOpts, autoName: false }) };
 }

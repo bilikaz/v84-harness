@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import { FolderClosed, Trash2 } from "lucide-react";
 
 import { Modal } from "../../components/Modal.tsx";
+import { ToolModePicker } from "../../components/ToolModePicker.tsx";
 import { fieldInputFull } from "../settings/Field.tsx";
-import { cn } from "../../lib/cn.ts";
 import { useProvider } from "../../core/settings.ts";
 import {
   addWorkspace,
@@ -17,12 +17,6 @@ import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/types
 // Add/edit popup for a workspace. Opened from the sidebar after the folder
 // picker (new) or from a workspace row (edit). Self-contained form over a local
 // copy of the draft; Save commits to the store.
-// i18n keys, translated at render (the module-level constant can't call t()).
-const MODES: { value: ToolMode; labelKey: string; hintKey: string }[] = [
-  { value: 0, labelKey: "workspace.modeOff", hintKey: "workspace.modeOffHint" },
-  { value: 1, labelKey: "workspace.modeAsk", hintKey: "workspace.modeAskHint" },
-  { value: 2, labelKey: "workspace.modeAuto", hintKey: "workspace.modeAutoHint" },
-];
 
 export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean; onClose: () => void }) {
   const { workspace, isNew, onClose } = props;
@@ -111,7 +105,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
             {ALL_TOOLS.map((tool) => (
               <div key={tool} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-neutral-50">
                 <span className="text-sm text-neutral-700">{tool}</span>
-                <Segmented value={draft.tools[tool]} onChange={(m) => setTool(tool, m)} />
+                <ToolModePicker value={draft.tools[tool]} onChange={(m) => setTool(tool, m)} />
               </div>
             ))}
           </div>
@@ -158,29 +152,5 @@ function Field(props: { label: string; hint?: string; children: ReactNode }) {
       {props.hint && <span className="mt-0.5 block text-xs text-neutral-500">{props.hint}</span>}
       <div className="mt-1.5">{props.children}</div>
     </label>
-  );
-}
-
-function Segmented(props: { value: ToolMode; onChange: (m: ToolMode) => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex overflow-hidden rounded-lg border border-neutral-200">
-      {MODES.map((m) => (
-        <button
-          key={m.value}
-          type="button"
-          title={t(m.hintKey)}
-          onClick={() => props.onChange(m.value)}
-          className={cn(
-            "px-2.5 py-1 text-xs",
-            props.value === m.value
-              ? "bg-neutral-900 text-white"
-              : "bg-white text-neutral-600 hover:bg-neutral-100",
-          )}
-        >
-          {t(m.labelKey)}
-        </button>
-      ))}
-    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Bot,
   Check,
   ChevronDown,
   FolderClosed,
@@ -59,7 +60,14 @@ export function Sidebar() {
   const [editing, setEditing] = useState<{ ws: Workspace; isNew: boolean } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const visibleSessions = sessions.filter((s) => (s.workspaceId ?? null) === activeWorkspaceId);
+  const visible = sessions.filter((s) => (s.workspaceId ?? null) === activeWorkspaceId);
+  // Sub-agent runs indent under the session that spawned them; an orphan
+  // (parent deleted mid-flight or in another group) falls back to top level.
+  const topLevel = visible.filter((s) => !s.parentId || !visible.some((p) => p.id === s.parentId));
+  const visibleSessions = topLevel.flatMap((s) => [
+    { session: s, child: false },
+    ...visible.filter((c) => c.parentId === s.id).map((c) => ({ session: c, child: true })),
+  ]);
 
   function commitRename(id: string) {
     renameSession(id, draft);
@@ -148,13 +156,14 @@ export function Sidebar() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-2">
-        {visibleSessions.map((s) => {
+        {visibleSessions.map(({ session: s, child }) => {
           const renaming = renamingId === s.id;
           return (
             <div
               key={s.id}
               className={cn(
                 "flex items-center gap-0.5 rounded-lg pr-1",
+                child && "ml-5",
                 activeId === s.id ? "bg-neutral-200/70" : "hover:bg-neutral-200/40",
               )}
             >
@@ -175,10 +184,12 @@ export function Sidebar() {
                   }}
                   className={cn(
                     "flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left text-sm",
+                    child && "py-1.5",
                     activeId === s.id ? "text-neutral-900" : "text-neutral-600",
                   )}
                 >
                   <StatusDot streaming={streamingIds.has(s.id)} unread={!!s.unread} />
+                  {child && <Bot size={13} className="shrink-0 text-neutral-400" />}
                   <span className="truncate">{s.title}</span>
                 </button>
               )}

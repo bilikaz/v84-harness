@@ -1,0 +1,205 @@
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
+import { ArrowUp, ChevronDown, Plus, RefreshCw, Square } from "lucide-react";
+
+import { detectModels, useProvider } from "../../core/settings.ts";
+import { readAttachments } from "../../lib/attachments.ts";
+import { navigate } from "../../lib/router.ts";
+import { AttachmentList } from "../../components/AttachmentList.tsx";
+import type { FileAttachment, MediaRef } from "../../lib/types.ts";
+
+export interface ComposerAttachments {
+  images?: MediaRef[];
+  video?: MediaRef[];
+  files?: FileAttachment[];
+}
+
+// The message composer: text + attachments (picked, dropped, or pasted), the
+// model selector/detect pair, and send/stop. Shared by the chat (SessionView)
+// and the agent run page (AgentRunView) — the agent's user template seeds
+// `seed`, so "running an agent" IS composing a message. Owns its input state;
+// the parent owns what submit means.
+export function Composer(props: {
+  seed?: string; // initial text (an agent's saved user template)
+  disabled?: boolean; // blocks send (context full, compacting, missing workspace)
+  streaming?: boolean; // swap send → stop
+  onStop?: () => void;
+  onSubmit: (text: string, atts: ComposerAttachments) => void;
+}) {
+  const { t } = useTranslation();
+  const provider = useProvider();
+  const [input, setInput] = useState(props.seed ?? "");
+  const [images, setImages] = useState<MediaRef[]>([]);
+  const [videos, setVideos] = useState<MediaRef[]>([]);
+  const [files, setFiles] = useState<FileAttachment[]>([]);
+  const [attachNote, setAttachNote] = useState("");
+  const [detecting, setDetecting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const canSend =
+    (input.trim().length > 0 || images.length > 0 || videos.length > 0 || files.length > 0) &&
+    !props.streaming &&
+    !props.disabled;
+
+  // Auto-grow the composer with its content, up to the textarea's max-height
+  // (then it scrolls). Runs on every input change, incl. the reset after submit.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
+  async function detect() {
+    if (detecting) return;
+    setDetecting(true);
+    try {
+      await detectModels();
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  // Turn a FileList (picked, dropped, or pasted) into composer attachments,
+  // dropping media the model can't accept. Images default on; video requires
+  // the model to explicitly declare video input. Oversized media is skipped
+  // with a note — what can never be sent shouldn't enter the transcript.
+  async function addAttachments(list: FileList) {
+    const { images: imgs, video: vids, files: fs, skipped } = await readAttachments(list);
+    if (imgs.length) {
+      if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
+      else {
+        setImages((prev) => [...prev, ...imgs]);
+        setAttachNote("");
+      }
+    }
+    if (vids.length) {
+      if (!provider.input?.video) setAttachNote(t("session.noVideoSupport"));
+      else {
+        setVideos((prev) => [...prev, ...vids]);
+        setAttachNote("");
+      }
+    }
+    if (fs.length) setFiles((prev) => [...prev, ...fs]);
+    // Last so it survives the accept paths clearing the note.
+    if (skipped.length) setAttachNote(t("session.attachTooBig", { names: skipped.join(", ") }));
+  }
+
+  async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const el = e.target;
+    if (el.files?.length) await addAttachments(el.files);
+    el.value = ""; // allow re-picking the same file
+  }
+
+  // Paste an image/video straight from the clipboard (e.g. a screenshot) as an
+  // attachment. Only intercept when the clipboard actually carries media —
+  // otherwise let the normal text paste through.
+  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const list = e.clipboardData?.files;
+    if (!list?.length) return;
+    const hasMedia = Array.from(list).some((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+    if (!hasMedia) return;
+    e.preventDefault();
+    void addAttachments(list);
+  }
+
+  function submit() {
+    if (!canSend) return;
+    const text = input.trim();
+    const atts: ComposerAttachments = {
+      images: images.length ? images : undefined,
+      video: videos.length ? videos : undefined,
+      files: files.length ? files : undefined,
+    };
+    setInput("");
+    setImages([]);
+    setVideos([]);
+    setFiles([]);
+    props.onSubmit(text, atts);
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  }
+
+  return (
+    <>
+      <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
+        <AttachmentList
+          className="mb-2 px-1"
+          images={images}
+          videos={videos}
+          files={files}
+          onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+          onRemoveVideo={(i) => setVideos((prev) => prev.filter((_, j) => j !== i))}
+          onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
+        />
+        {attachNote && <p className="mb-1 px-1 text-xs text-amber-600">{attachNote}</p>}
+        <textarea
+          ref={inputRef}
+          rows={1}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          placeholder={t("session.placeholder")}
+          className="max-h-24 w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
+        />
+        <input ref={fileRef} type="file" multiple hidden onChange={onPickFiles} />
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            title={t("session.attach")}
+            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100"
+          >
+            <Plus size={18} />
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => navigate("settings/provider")}
+            title={t("session.changeModel")}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100"
+          >
+            {provider.model || t("session.selectModel")}
+            <ChevronDown size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void detect()}
+            disabled={detecting}
+            title={t("session.detectModels")}
+            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+          >
+            <RefreshCw size={18} className={detecting ? "animate-spin" : ""} />
+          </button>
+          {props.streaming ? (
+            <button
+              type="button"
+              onClick={props.onStop}
+              title={t("session.stop")}
+              className="rounded-md bg-neutral-900 p-1.5 text-white hover:bg-neutral-700"
+            >
+              <Square size={16} className="fill-current" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!canSend}
+              className="rounded-md bg-neutral-900 p-1.5 text-white hover:bg-neutral-700 disabled:opacity-30"
+            >
+              <ArrowUp size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="mt-2 text-center text-xs text-neutral-400">{t("session.disclaimer")}</p>
+    </>
+  );
+}

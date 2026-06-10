@@ -4,9 +4,16 @@
 
 | Layer | File(s) | Tense / lifecycle |
 | --- | --- | --- |
-| Map | `docs/ARCHITECTURE.md` | present tense; updated with the code; instance-specific |
+| Map | `docs/ARCHITECTURE.md` (+ area docs) | present tense; updated with the code; instance-specific |
 | Rules | `docs/conventions/` | present tense; portable across projects; one topic per file |
 | Decisions | `docs/adr/` | dated, immutable log; statuses Proposed → Accepted → Superseded |
+
+When the map outgrows one file, it becomes a **hub and spokes**: the hub keeps
+the cross-cutting orientation (overview, process model, directory map, an index
+of area docs) and each subsystem gets its own area file under
+`docs/architecture/`. Updating the map then means updating the right spoke, not
+just the hub — the hub's index line per spoke is what keeps "which file owns
+this" answerable.
 
 The separation exists because mixing them corrupts both: rules buried in dated
 records go stale-looking the moment a supersession lands; history rewritten into

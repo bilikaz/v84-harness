@@ -3,9 +3,7 @@
 // This shim keeps existing UI import sites stable; new code may import from
 // core/sessions directly.
 export type {
-  StepStatus,
   Role,
-  Step,
   MediaRef,
   FileAttachment,
   Message,

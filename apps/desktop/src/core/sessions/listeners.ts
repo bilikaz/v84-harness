@@ -11,6 +11,7 @@ import {
   pushToolResult,
   pushTurn,
   resetLast,
+  addChildRun,
   setLastToolCalls,
   setStreaming,
   setUsage,
@@ -34,7 +35,8 @@ const offs: Array<() => void> = [
   // Tool loop — attach the model's tool calls, append each result, then open a
   // fresh assistant message for the next model turn.
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
-  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.video)),
+  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.video, e.childSessionIds)),
+  bus.on("tool:child", (e) => addChildRun(e.toolCallId, e.childSessionId)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
   bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),
   bus.on("stream:retry", (e) => resetLast(e.sessionId)),

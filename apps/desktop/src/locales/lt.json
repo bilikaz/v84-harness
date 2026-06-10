@@ -6,35 +6,39 @@
     "rename": "Pervadinti",
     "delete": "Ištrinti"
   },
-  "nav": {
-    "agents": "Agentai"
-  },
   "agents": {
     "title": "Agentai",
     "new": "Naujas agentas",
     "untitled": "Agentas be pavadinimo",
+    "missing": "Šio agento nebėra.",
+    "name": "Pavadinimas",
+    "nameHelp": "Agento adresas: orkestruojantys agentai paleidžia jį šiuo pavadinimu. Bevardžiai agentai jiems nematomi.",
     "namePlaceholder": "Agento pavadinimas",
     "description": "Aprašymas",
-    "descriptionHelp": "Trumpas aprašymas, ką šis agentas daro — rodomas čia ir naudojamas, kai vienas agentas paleidžia kitą.",
+    "descriptionHelp": "Kontraktas orkestratoriui: ką šis agentas daro ir kokios įvesties tikisi — tai viskas, ką kitas agentas mato rinkdamasis.",
     "descriptionPlaceholder": "Peržiūri diff ir pateikia pastabas pagal svarbą…",
     "system": "Sistema",
     "systemHelp": "Nuolatinės instrukcijos — kaip modelis turi elgtis.",
     "systemPlaceholder": "# Vaidmuo\\n\\nTu esi…",
-    "user": "Vartotojas",
-    "userHelp": "Užduotis, vykdoma paleidus šį agentą.",
+    "user": "Vartotojo šablonas",
+    "userHelp": "Numatytoji užduotis rankiniam paleidimui — įkeliama į rašymo lauką. Orkestruojantys agentai pateikia savo užduotį.",
     "userPlaceholder": "Atlik šiuos veiksmus…",
-    "attach": "Pridėti paveikslėlius ar failus",
-    "requireJson": "Reikalauti JSON išvesties",
-    "outputHelp": "Įjungus, galutinis agento atsakymas turi būti validus; jei ne, modelis automatiškai perklausiamas (iki 3 kartų) prieš nutraukiant.",
-    "requiredKeys": "Privalomi raktai",
-    "requiredKeysPlaceholder": "subjects, resolution",
-    "requiredKeysHelp": "Kableliais atskirti aukščiausio lygio raktai, kuriuos turi turėti JSON objektas. Palikite tuščią, kad reikalautų tik validaus JSON.",
+    "workspace": "Reikalinga darbo sritis",
+    "workspaceHelp": "Įjungta: vykdomas susietas su aktyvia darbo sritimi, su jos failų įrankiais ir leidimais. Išjungta: grynas pokalbio agentas — niekada negauna prieigos prie failų, paleidžiamas bet kur.",
+    "needsWorkspace": "Šiam agentui reikia darbo srities — pasirinkite ją šoninėje juostoje.",
     "run": "Paleisti",
     "edit": "Redaguoti",
+    "backToRun": "Atgal",
     "delete": "Ištrinti",
     "cancel": "Atšaukti",
     "confirmDelete": "Ištrinti šį agentą?",
-    "empty": "Pasirinkite arba sukurkite agentą."
+    "systemBanner": "Sistema — {{name}}",
+    "noSystem": "Nėra sisteminės žinutės.",
+    "viewRun": "Žiūrėti vykdymą",
+    "childRun": "Sub-agento vykdymas — tik peržiūra.",
+    "toParent": "Atidaryti {{title}}",
+    "permissionsHelp": "Šio agento riba. Kiekvienam kvietimui galioja griežtesnis iš šio ir darbo srities nustatymo — agentas gali apriboti tai, ką suteikia darbo sritis, bet ne praplėsti.",
+    "workspaceSection": "Darbo sritis ir leidimai"
   },
   "menu": {
     "settings": "Nustatymai",
@@ -132,7 +136,8 @@
     "thinking": "Mąsto…",
     "thoughts": "Mintys",
     "running": "vykdoma…",
-    "loading": "Įkeliamas pokalbis…"
+    "loading": "Įkeliamas pokalbis…",
+    "attachTooBig": "Per dideli prisegti (praleisti): {{names}}"
   },
   "progress": {
     "progress": "Eiga",

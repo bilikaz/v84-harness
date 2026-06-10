@@ -54,12 +54,24 @@ export interface ToolCalls {
 }
 // A tool returned → append a tool-result message answering that call. `images`
 // are media the tool produced (e.g. GenerateImage) — shown in its tool card.
+// `childSessionIds` are a RunAgent result's links to the child sessions it ran
+// (one per run in the call) — display-only (the model gets the answer text,
+// never session ids).
 export interface ToolResultEvt {
   sessionId: string;
   toolCallId: string;
   output: string;
   images?: MediaRef[];
   video?: MediaRef[];
+  childSessionIds?: string[];
+}
+// A RunAgent call spawned a child session → published immediately (before the
+// run completes) so the tool card can open the live run. One event per child;
+// a multi-run call emits several with the same toolCallId.
+export interface ToolChild {
+  sessionId: string;
+  toolCallId: string;
+  childSessionId: string;
 }
 // Tool-produced media (generated or loaded) fed back as a hidden user turn so
 // a vision agent can inspect it. The driver only includes what the model's
@@ -99,6 +111,7 @@ declare module "../../lib/bus.ts" {
     "session:turn:end": TurnEnd;
     "session:tool:calls": ToolCalls;
     "session:tool:result": ToolResultEvt;
+    "session:tool:child": ToolChild;
     "session:assistant:open": AssistantOpen;
     "session:heal": Heal;
     "session:stream:retry": StreamRetry;
