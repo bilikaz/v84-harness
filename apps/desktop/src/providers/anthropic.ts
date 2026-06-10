@@ -1,10 +1,39 @@
-import type { ChatImage, ChatMessage, ModelConfig, StreamEvent } from "./types.ts";
+import type { ChatImage, ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
 import { parseSSE } from "./sse.ts";
-import { parseDataUrl, safeJson } from "./util.ts";
-import { dlog } from "./debug.ts";
+import { sseRequest } from "./transport.ts";
+import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "./util.ts";
+import { llmLog } from "./debug.ts";
 
-function baseFor(cfg: ModelConfig): string {
-  return (cfg.baseUrl || "https://api.anthropic.com").replace(/\/+$/, "");
+const FALLBACK_BASE = "https://api.anthropic.com";
+
+// Anthropic requires max_tokens; this is the response cap when the user set none.
+const DEFAULT_MAX_TOKENS = 8192;
+
+function v1(cfg: Pick<ModelConfig, "baseUrl">): string {
+  return baseWithPrefix(cfg.baseUrl, FALLBACK_BASE, "/v1");
+}
+
+function authHeaders(cfg: Pick<ModelConfig, "apiKey">): Record<string, string> {
+  return {
+    ...(cfg.apiKey ? { "x-api-key": cfg.apiKey } : {}),
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+  };
+}
+
+// Thinking/effort request fields. Anthropic deprecated token budgets — current
+// models take adaptive thinking plus `output_config.effort` (low…max). With
+// effort off we omit `thinking` entirely (an explicit "disabled" 400s on some
+// models). `display: "summarized"` opts back into visible thinking text, which
+// Opus 4.7+ omits by default — our UI streams reasoning, so we want it.
+// cfg.thinkingBudget is intentionally ignored here (OpenAI/vLLM + Gemini only).
+function reasoningFields(cfg: ModelConfig): Record<string, unknown> {
+  const effort = cfg.reasoningEffort;
+  if (!effort || effort === "off") return {};
+  return {
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort },
+  };
 }
 
 function imageBlock(im: ChatImage): unknown {
@@ -20,27 +49,34 @@ function imageBlock(im: ChatImage): unknown {
 //  • images → image content blocks
 // System is a top-level field (handled by the caller), not a message.
 function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
-  return messages.map((m) => {
+  const out: { role: string; content: unknown }[] = [];
+  for (const m of messages) {
     if (m.role === "tool") {
-      return { role: "user", content: [{ type: "tool_result", tool_use_id: m.toolCallId, content: m.content }] };
-    }
-    if (m.role === "assistant" && m.toolCalls?.length) {
-      return {
+      // Anthropic wants ALL tool_results for one assistant turn in the single
+      // next user message — fold consecutive results into one.
+      const block = { type: "tool_result", tool_use_id: m.toolCallId, content: m.content };
+      const prev = out[out.length - 1];
+      const prevBlocks = prev?.role === "user" && Array.isArray(prev.content) ? (prev.content as { type: string }[]) : null;
+      if (prevBlocks?.[0]?.type === "tool_result") prevBlocks.push(block);
+      else out.push({ role: "user", content: [block] });
+    } else if (m.role === "assistant" && m.toolCalls?.length) {
+      out.push({
         role: "assistant",
         content: [
           ...(m.content ? [{ type: "text", text: m.content }] : []),
           ...m.toolCalls.map((tc) => ({ type: "tool_use", id: tc.id, name: tc.name, input: safeJson(tc.arguments) })),
         ],
-      };
-    }
-    if (m.images?.length) {
-      return {
+      });
+    } else if (m.images?.length) {
+      out.push({
         role: m.role,
         content: [...m.images.map(imageBlock), ...(m.content ? [{ type: "text", text: m.content }] : [])],
-      };
+      });
+    } else {
+      out.push({ role: m.role, content: m.content });
     }
-    return { role: m.role, content: m.content };
-  });
+  }
+  return out;
 }
 
 export async function* streamAnthropic(
@@ -48,37 +84,35 @@ export async function* streamAnthropic(
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
+  tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
-  const url = `${baseFor(cfg)}/v1/messages`;
+  const url = `${v1(cfg)}/messages`;
   const body = {
     model: cfg.model,
-    max_tokens: 8192,
+    max_tokens: DEFAULT_MAX_TOKENS,
     stream: true,
+    ...reasoningFields(cfg),
     ...(system ? { system } : {}),
+    // ToolSpec is the OpenAI function shape — unwrap to Anthropic's.
+    ...(tools?.length
+      ? { tools: tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters })) }
+      : {}),
     messages: toAnthropicMessages(messages),
   };
-  dlog("anthropic →", url, body);
-  const res = await fetch(url, {
+  llmLog.debug("anthropic.request", { url, body });
+  const res = await sseRequest("anthropic", url, {
     method: "POST",
     signal,
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders(cfg) },
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    dlog("anthropic ✗", res.status, res.statusText, errText);
-    yield { type: "error", message: `${res.status} ${res.statusText} ${errText}`.trim() };
-    return;
-  }
-
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
+  // tool_use blocks stream as: content_block_start (id + name) → input_json_delta
+  // fragments → content_block_stop. Accumulate per block index, emit on stop so
+  // each tool_call carries the full arguments JSON.
+  const toolAcc = new Map<number, { id: string; name: string; args: string }>();
 
   for await (const data of parseSSE(res, signal)) {
     if (!data) continue;
@@ -97,10 +131,27 @@ export async function* streamAnthropic(
         }
         break;
       }
+      case "content_block_start": {
+        const cb = evt.content_block;
+        if (cb?.type === "tool_use") toolAcc.set(evt.index, { id: cb.id, name: cb.name, args: "" });
+        break;
+      }
       case "content_block_delta": {
         const d = evt.delta;
         if (d?.type === "text_delta" && d.text) yield { type: "text", delta: d.text };
         else if (d?.type === "thinking_delta" && d.thinking) yield { type: "thinking", delta: d.thinking };
+        else if (d?.type === "input_json_delta" && typeof d.partial_json === "string") {
+          const cur = toolAcc.get(evt.index);
+          if (cur) cur.args += d.partial_json;
+        }
+        break;
+      }
+      case "content_block_stop": {
+        const cur = toolAcc.get(evt.index);
+        if (cur) {
+          toolAcc.delete(evt.index);
+          yield { type: "tool_call", call: { id: cur.id, name: cur.name, arguments: cur.args } };
+        }
         break;
       }
       case "message_delta": {
@@ -118,15 +169,7 @@ export async function* streamAnthropic(
 }
 
 export async function listAnthropicModels(cfg: Pick<ModelConfig, "baseUrl" | "apiKey">): Promise<string[]> {
-  const url = `${(cfg.baseUrl || "https://api.anthropic.com").replace(/\/+$/, "")}/v1/models`;
-  const res = await fetch(url, {
-    headers: {
-      "x-api-key": cfg.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const res = await expectOk(await fetch(`${v1(cfg)}/models`, { headers: authHeaders(cfg) }));
   const data = await res.json();
   return (data.data ?? []).map((m: any) => m.id).filter(Boolean);
 }

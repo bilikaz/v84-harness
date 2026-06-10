@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, ChevronDown, Download, FileText, PanelRight, Pencil, Plus, RefreshCw, Sparkles, Square, Terminal, Trash2, Wrench, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { ArrowUp, ChevronDown, PanelRight, Pencil, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
 
 import {
   contextLimit,
@@ -15,14 +13,17 @@ import {
   useCompacting,
   useStreaming,
 } from "../../core/sessions/index.ts";
-import { harness, isElectron } from "../../lib/harness.ts";
-import { detectModels, useProvider } from "../../lib/settings.ts";
+import { detectModels, useProvider } from "../../core/settings.ts";
+import { useOutsideClick } from "../../lib/hooks.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { navigate } from "../../lib/router.ts";
-import { openLightbox, toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
+import { toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
+import { AttachmentList } from "../../components/AttachmentList.tsx";
+import { InlineEdit } from "../../components/InlineEdit.tsx";
+import { Message } from "./Message.tsx";
 import { readAttachments } from "../../lib/attachments.ts";
 import { cn } from "../../lib/cn.ts";
-import type { FileAttachment, ImageRef, Role, ToolCall } from "../../lib/types.ts";
+import type { FileAttachment, ImageRef } from "../../lib/types.ts";
 
 // The main center: active session transcript + the composer (model selector,
 // detect button, send). Reads the session + provider stores.
@@ -70,14 +71,7 @@ export function SessionView() {
   }
 
   // Close the title menu on outside click.
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onDown(e: PointerEvent) {
-      if (!headerRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [menuOpen]);
+  useOutsideClick(menuOpen, headerRef, () => setMenuOpen(false));
 
   // Auto-grow the composer with its content, up to the textarea's max-height
   // (then it scrolls). Runs on every input change, incl. the reset after submit.
@@ -210,16 +204,12 @@ export function SessionView() {
       <header className="flex items-center gap-2 border-b border-neutral-200 px-6 py-3">
         <div ref={headerRef} className="relative">
           {renaming ? (
-            <input
-              autoFocus
+            <InlineEdit
               value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitRename();
-                else if (e.key === "Escape") setRenaming(false);
-              }}
-              onBlur={commitRename}
-              className="rounded-md px-1.5 py-0.5 text-sm font-medium text-neutral-800 outline-none ring-1 ring-neutral-300"
+              onChange={setTitleDraft}
+              onCommit={commitRename}
+              onCancel={() => setRenaming(false)}
+              className="px-1.5 py-0.5 font-medium text-neutral-800"
             />
           ) : (
             <button
@@ -258,7 +248,7 @@ export function SessionView() {
         <button
           type="button"
           onClick={toggleRightPanel}
-          title={rightPanel ? "Hide panel" : "Show panel"}
+          title={rightPanel ? t("session.hidePanel") : t("session.showPanel")}
           className={cn(
             "rounded-md p-1.5 hover:bg-neutral-100",
             rightPanel ? "text-neutral-700" : "text-neutral-400",
@@ -297,7 +287,7 @@ export function SessionView() {
       <div className="px-6 pb-6">
         {compacting ? (
           <p className="mx-auto mb-2 flex max-w-3xl items-center justify-center gap-1.5 text-center text-xs text-neutral-500">
-            <RefreshCw size={12} className="animate-spin" /> Summarizing earlier messages to free context…
+            <RefreshCw size={12} className="animate-spin" /> {t("session.compacting")}
           </p>
         ) : full ? (
           <p className="mx-auto mb-2 max-w-3xl text-center text-xs text-red-600">
@@ -308,58 +298,15 @@ export function SessionView() {
           </p>
         ) : null}
         <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
-          {images.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2 px-1">
-              {images.map((im, i) => (
-                <div key={i} className="relative">
-                  <img src={im.url} alt={im.name ?? ""} className="h-16 w-16 rounded-lg object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                    className="absolute -right-1.5 -top-1.5 rounded-full bg-neutral-800 p-0.5 text-white hover:bg-neutral-600"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {videos.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2 px-1">
-              {videos.map((v, i) => (
-                <div key={i} className="relative">
-                  <video src={v.url} className="h-16 w-24 rounded-lg object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setVideos((prev) => prev.filter((_, j) => j !== i))}
-                    className="absolute -right-1.5 -top-1.5 rounded-full bg-neutral-800 p-0.5 text-white hover:bg-neutral-600"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {files.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2 px-1">
-              {files.map((f, i) => (
-                <span
-                  key={i}
-                  className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600"
-                >
-                  <FileText size={12} className="shrink-0 text-neutral-400" />
-                  <span className="max-w-[12rem] truncate">{f.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
-                    className="text-neutral-400 hover:text-neutral-700"
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+          <AttachmentList
+            className="mb-2 px-1"
+            images={images}
+            videos={videos}
+            files={files}
+            onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+            onRemoveVideo={(i) => setVideos((prev) => prev.filter((_, j) => j !== i))}
+            onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
+          />
           {attachNote && <p className="mb-1 px-1 text-xs text-amber-600">{attachNote}</p>}
           <textarea
             ref={inputRef}
@@ -369,8 +316,7 @@ export function SessionView() {
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             placeholder={t("session.placeholder")}
-            style={{ maxHeight: "6rem" }}
-            className="w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
+            className="max-h-24 w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
           />
           <input ref={fileRef} type="file" multiple hidden onChange={onPickFiles} />
           <div className="mt-2 flex items-center gap-2">
@@ -386,7 +332,7 @@ export function SessionView() {
             <button
               type="button"
               onClick={() => navigate("settings/provider")}
-              title="Change provider / model"
+              title={t("session.changeModel")}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100"
             >
               {provider.model || t("session.selectModel")}
@@ -396,7 +342,7 @@ export function SessionView() {
               type="button"
               onClick={detect}
               disabled={detecting}
-              title="Detect available models"
+              title={t("session.detectModels")}
               className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
             >
               <RefreshCw size={18} className={detecting ? "animate-spin" : ""} />
@@ -405,7 +351,7 @@ export function SessionView() {
               <button
                 type="button"
                 onClick={() => stopTurn(session.id)}
-                title="Stop"
+                title={t("session.stop")}
                 className="rounded-md bg-neutral-900 p-1.5 text-white hover:bg-neutral-700"
               >
                 <Square size={16} className="fill-current" />
@@ -424,235 +370,6 @@ export function SessionView() {
         </div>
         <p className="mt-2 text-center text-xs text-neutral-400">{t("session.disclaimer")}</p>
       </div>
-    </div>
-  );
-}
-
-function Message({
-  role,
-  text,
-  thinking,
-  images,
-  video,
-  files,
-  toolCalls,
-  results,
-  toolImages,
-  toolVideo,
-  streaming,
-}: {
-  role: Role;
-  text: string;
-  thinking?: string;
-  images?: ImageRef[];
-  video?: ImageRef[];
-  files?: FileAttachment[];
-  toolCalls?: ToolCall[];
-  results?: Map<string, string>;
-  toolImages?: Map<string, ImageRef[]>;
-  toolVideo?: Map<string, ImageRef[]>;
-  streaming: boolean;
-}) {
-  if (role === "user") {
-    return (
-      <div className="flex justify-end">
-        <div className="flex max-w-[80%] flex-col items-end gap-2">
-          {images && images.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {images.map((im, i) => (
-                <SavableImage key={i} src={im.url} name={im.name} className="max-h-48 cursor-zoom-in rounded-xl object-cover" />
-              ))}
-            </div>
-          )}
-          {video && video.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {video.map((v, i) => (
-                <SavableVideo key={i} src={v.url} name={v.name} className="max-h-48 rounded-xl" />
-              ))}
-            </div>
-          )}
-          {files && files.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {files.map((f, i) => (
-                <span
-                  key={i}
-                  className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-600"
-                >
-                  <FileText size={12} className="shrink-0 text-neutral-400" />
-                  <span className="max-w-[14rem] truncate">{f.name}</span>
-                </span>
-              ))}
-            </div>
-          )}
-          {text && (
-            <div className="rounded-2xl bg-neutral-100 px-4 py-2.5 text-sm text-neutral-800">{text}</div>
-          )}
-        </div>
-      </div>
-    );
-  }
-  const hasTools = !!toolCalls?.length;
-  return (
-    <div className="space-y-2">
-      {thinking && <Thinking text={thinking} streaming={streaming && !text} />}
-      {(text || (streaming && !hasTools)) && (
-        <div className="prose prose-sm prose-neutral max-w-none text-neutral-800 prose-pre:bg-neutral-900 prose-pre:text-neutral-100">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-          {streaming && <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-neutral-400 align-middle" />}
-        </div>
-      )}
-      {toolCalls?.map((c) => (
-        <ToolCard key={c.id} call={c} output={results?.get(c.id)} images={toolImages?.get(c.id)} video={toolVideo?.get(c.id)} />
-      ))}
-    </div>
-  );
-}
-
-// A tool call rendered as a card: the tool name on top, then IN (the call's
-// arguments) and OUT (the result, once it arrives). Collapsed by default.
-// A thumbnail with a Save button overlaid in the top corner. Clicking the
-// image still opens the lightbox; the button saves directly (native dialog in
-// Electron, browser download on the web) without the extra popup hop.
-function SavableImage({ src, name, className }: { src: string; name?: string; className?: string }) {
-  async function save(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (isElectron()) {
-      await harness!.saveImage(src);
-    } else {
-      const a = document.createElement("a");
-      a.href = src;
-      a.download = name ?? "generated.png";
-      a.click();
-    }
-  }
-  return (
-    <div className="group relative inline-block">
-      <img src={src} alt={name ?? ""} onClick={() => openLightbox(src)} className={className} />
-      <button
-        type="button"
-        onClick={save}
-        title="Save image"
-        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
-      >
-        <Download size={16} />
-      </button>
-    </div>
-  );
-}
-
-// A generated-video player with a Save button overlaid in the top corner —
-// kept out of the way of the native controls bar along the bottom. Saves via
-// the native dialog in Electron, a browser download on the web.
-function SavableVideo({ src, name, className }: { src: string; name?: string; className?: string }) {
-  async function save(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (isElectron()) {
-      await harness!.saveVideo(src);
-    } else {
-      const a = document.createElement("a");
-      a.href = src;
-      a.download = name ?? "generated.mp4";
-      a.click();
-    }
-  }
-  return (
-    <div className="group relative inline-block">
-      <video src={src} controls className={className} />
-      <button
-        type="button"
-        onClick={save}
-        title="Save video"
-        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
-      >
-        <Download size={16} />
-      </button>
-    </div>
-  );
-}
-
-function ToolCard({ call, output, images, video }: { call: ToolCall; output?: string; images?: ImageRef[]; video?: ImageRef[] }) {
-  const [open, setOpen] = useState(false);
-  let args: Record<string, unknown> = {};
-  try {
-    args = JSON.parse(call.arguments || "{}");
-  } catch {
-    /* keep {} */
-  }
-  const summary = String(args.command ?? args.path ?? args.pattern ?? "");
-  const inText = call.name === "Bash" ? String(args.command ?? "") : JSON.stringify(args, null, 2);
-  const Icon = call.name === "Bash" ? Terminal : Wrench;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50/70 text-sm">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
-      >
-        <Icon size={14} className="shrink-0 text-neutral-400" />
-        <span className="font-medium text-neutral-700">{call.name}</span>
-        {summary && <span className="truncate font-mono text-xs text-neutral-400">{summary}</span>}
-        {output === undefined && <RefreshCw size={12} className="ml-auto animate-spin text-neutral-300" />}
-        <ChevronDown size={14} className={cn("text-neutral-400 transition-transform", output === undefined ? "" : "ml-auto", open && "rotate-180")} />
-      </button>
-      {images && images.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
-          {images.map((im, i) => (
-            <SavableImage key={i} src={im.url} name={im.name} className="max-h-64 cursor-zoom-in rounded-lg object-cover" />
-          ))}
-        </div>
-      )}
-      {video && video.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
-          {video.map((v, i) => (
-            <SavableVideo key={i} src={v.url} name={v.name} className="max-h-72 rounded-lg" />
-          ))}
-        </div>
-      )}
-      {open && (
-        <div className="border-t border-neutral-200">
-          <IO label="IN" body={inText} />
-          {output !== undefined ? <IO label="OUT" body={output} /> : <div className="px-3 py-2 text-xs text-neutral-400">running…</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function IO({ label, body }: { label: string; body: string }) {
-  return (
-    <div className="flex gap-3 px-3 py-2">
-      <span className="w-8 shrink-0 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{label}</span>
-      <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-neutral-700">
-        {body}
-      </pre>
-    </div>
-  );
-}
-
-// Reasoning in a distinct color — muted violet, collapsible. Auto-expands while
-// the model is thinking, then collapses; the user can still toggle it after.
-// The whole block toggles (not just the header line).
-function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
-  const [open, setOpen] = useState(streaming);
-  useEffect(() => {
-    if (streaming) setOpen(true);
-  }, [streaming]);
-  return (
-    <div
-      onClick={() => setOpen((o) => !o)}
-      className="cursor-pointer select-none rounded-lg border border-violet-100 bg-violet-50/60"
-    >
-      <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-violet-500">
-        <Sparkles size={13} className={streaming ? "animate-pulse" : ""} />
-        {streaming ? "Thinking…" : "Thoughts"}
-        <ChevronDown size={13} className={cn("ml-auto transition-transform", open && "rotate-180")} />
-      </div>
-      {open && (
-        <div className="whitespace-pre-wrap px-3 pb-3 text-xs italic leading-relaxed text-violet-500/90">
-          {text}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { Session } from "../../lib/types.ts";
+import type { Session } from "./types.ts";
 import {
   getActive,
   getActiveId,

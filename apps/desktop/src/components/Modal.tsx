@@ -1,7 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "../lib/cn.ts";
+import { useEscapeKey } from "../lib/hooks.ts";
 
 // Reusable centered modal: backdrop (click to close), ESC to close, a panel
 // with a top-right close button. Generic on purpose — Settings is one user;
@@ -14,15 +16,8 @@ export function Modal(props: {
   className?: string;
 }) {
   const { open, onClose, children, className } = props;
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  const { t } = useTranslation();
+  useEscapeKey(open, onClose);
 
   if (!open) return null;
 
@@ -41,7 +36,7 @@ export function Modal(props: {
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("common.close")}
           className="absolute right-4 top-4 z-10 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
         >
           <X size={18} />

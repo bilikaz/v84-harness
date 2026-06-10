@@ -1,8 +1,16 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import { streamModel } from "../../providers/index.ts";
+import { collectText } from "../../providers/client.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import { rootLog } from "../../lib/logger/index.ts";
 import { pt } from "../../lib/prompts.ts";
 import { sessionBus as bus } from "./events.ts";
 import { getSession, setTitle, toChatMessages } from "./store.ts";
+
+const log = rootLog.child("session.naming");
+
+// Budget must fit stray thinking AND the short answer (see comment below).
+const TITLE_MAX_TOKENS = 4096;
+const TITLE_MAX_CHARS = 80;
 
 // Auto-naming service — self-contained: owns both the logic and its
 // subscription. When a brand-new session finishes its first exchange, resend the
@@ -12,7 +20,7 @@ import { getSession, setTitle, toChatMessages } from "./store.ts";
 async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
   const session = getSession(sid);
   if (!session) {
-    console.warn("[naming] no session", sid);
+    log.warn("no_session", { sid });
     return;
   }
 
@@ -24,22 +32,16 @@ async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
   // thinking, so give a real budget — thinking + the short title must both fit,
   // or the title comes back empty. The demux drops <think>; only the answer text
   // becomes the title.
-  const namingCfg: ModelConfig = { ...cfg, reasoningEffort: "off", maxTokens: 4096 };
-  console.debug("[naming] request", { sid, model: namingCfg.model, messages });
+  const namingCfg: ModelConfig = { ...cfg, reasoningEffort: "off", maxTokens: TITLE_MAX_TOKENS };
+  log.debug("request", { sid, model: namingCfg.model, messages });
 
   let title = "";
   let thinkingChars = 0;
   try {
-    for await (const evt of streamModel(namingCfg, messages, new AbortController().signal, session.system || undefined)) {
-      if (evt.type === "text") title += evt.delta;
-      else if (evt.type === "thinking") thinkingChars += evt.delta.length;
-      else if (evt.type === "error") {
-        console.error("[naming] LLM returned an error:", evt.message);
-        return;
-      }
-    }
+    const controller = new AbortController();
+    ({ text: title, thinkingChars } = await collectText(namingCfg, messages, controller.signal, session.system || undefined));
   } catch (e) {
-    console.error("[naming] request threw:", e);
+    log.error("request_failed", { error: errorMessage(e) });
     return;
   }
 
@@ -48,10 +50,10 @@ async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
     .trim()
     .replace(/^["'“”]+|["'“”]+$/g, "")
     .replace(/[.\s]+$/, "")
-    .slice(0, 80);
-  console.debug("[naming] result", { raw, title, thinkingChars });
+    .slice(0, TITLE_MAX_CHARS);
+  log.debug("result", { raw, title, thinkingChars });
   if (title) setTitle(sid, title);
-  else console.warn("[naming] empty title — not set (model produced no text;", thinkingChars, "thinking chars)");
+  else log.warn("empty_title", { hint: "model produced no answer text — title not set", thinkingChars });
 }
 
 const off = bus.on("message:done", (e) => {

@@ -1,8 +1,11 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "../../lib/types.ts";
+import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "./types.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
-import { idbGet, idbSet } from "../../lib/idb.ts";
+import { detectStorage, IdbStorage, type Storage } from "../../lib/storage/index.ts";
+import { createListeners } from "../../lib/store.ts";
+import { errorMessage } from "../../lib/errors.ts";
+import { rootLog } from "../../lib/logger/index.ts";
 
 // Session store — the single source of truth for multi-session state (sidebar
 // list, chat view, right-panel progress). Plain external store; React binds via
@@ -12,6 +15,11 @@ import { idbGet, idbSet } from "../../lib/idb.ts";
 // This module owns STATE + the operations that change it. The turn loop lives
 // in ./driver.ts and the bus reactions in ./listeners.ts — they call in here.
 const KEY = "v84-harness:sessions";
+const log = rootLog.child("session.store");
+
+// The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017);
+// localStorage below stays the synchronous first-paint cache regardless.
+const storageReady = detectStorage();
 
 // Build a fresh session. Used for "new session" and the empty-state.
 function makeSession(init: { title?: string; system?: string; workspaceId?: string | null } = {}): Session {
@@ -92,10 +100,9 @@ let hydrated = false;
 // the auto-compaction generates).
 export const CONTEXT_RESERVE = 50_000;
 
-const listeners = new Set<() => void>();
-export function notify(): void {
-  for (const l of listeners) l();
-}
+const reg = createListeners();
+export const notify = reg.notify;
+export const subscribe = reg.subscribe;
 export function persist(): void {
   const data = JSON.stringify({ sessions, activeId });
   // localStorage is a fast cache for the instant first paint, but it's capped at
@@ -103,21 +110,41 @@ export function persist(): void {
   try {
     localStorage.setItem(KEY, data);
   } catch {
-    /* quota / private mode — IndexedDB below is the source of truth */
+    /* quota / private mode — the durable tier below is the source of truth */
   }
-  // IndexedDB holds the FULL state (large quota), so images survive a reload.
-  void idbSet(KEY, data).catch((e) =>
-    console.warn("[sessions] IndexedDB write failed — state (incl. images) may not survive a reload.", e),
-  );
+  // The durable tier holds the FULL state (large quota), so images survive a
+  // reload.
+  void storageReady
+    .then((s) => s.set(KEY, data))
+    .catch((e) => log.warn("persist_failed", { hint: "state (incl. images) may not survive a reload", error: errorMessage(e) }));
 }
 
-// Hydrate from IndexedDB — the authoritative store. localStorage (loaded above)
-// gives an instant first paint but may be missing images that didn't fit; IDB
-// replaces it once read. On the first run after this upgrade, IDB is empty, so
-// we seed it from whatever localStorage had (migration).
+// On a desktop build's first run with SQLite, the durable tier is empty while
+// the previous runs' data sits in IndexedDB — copy it over once (the legacy-
+// key migration recipe, applied across backends).
+async function migrateFromIdb(target: Storage): Promise<string | null> {
+  if (target.name === "idb") return null; // idb IS the selected tier
+  try {
+    const legacy = await IdbStorage.create();
+    const raw = await legacy.get(KEY);
+    if (raw) {
+      await target.set(KEY, raw);
+      log.info("migrated", { from: "idb", to: target.name });
+    }
+    return raw;
+  } catch {
+    return null; // no IndexedDB here — nothing to migrate
+  }
+}
+
+// Hydrate from the durable tier — the authoritative store. localStorage
+// (loaded above) gives an instant first paint but may be missing images that
+// didn't fit; the durable tier replaces it once read. On the first run the
+// tier is empty, so seed it from whatever localStorage had (migration).
 void (async () => {
   try {
-    const raw = await idbGet(KEY);
+    const storage = await storageReady;
+    const raw = (await storage.get(KEY)) ?? (await migrateFromIdb(storage));
     if (raw) {
       const parsed = JSON.parse(raw) as { sessions: Partial<Session>[]; activeId: string };
       if (parsed.sessions?.length) {
@@ -126,25 +153,19 @@ void (async () => {
         return;
       }
     }
-    await idbSet(KEY, JSON.stringify({ sessions, activeId }));
+    await storage.set(KEY, JSON.stringify({ sessions, activeId }));
   } catch (e) {
-    // Don't lose data silently: if IDB is unavailable we stay on the
-    // localStorage-loaded state, which may be stale/missing images.
-    console.warn(
-      "[sessions] IndexedDB unavailable — falling back to localStorage; recent large data (e.g. images) may be missing.",
-      e,
-    );
+    // Don't lose data silently: if the durable tier is unavailable we stay on
+    // the localStorage-loaded state, which may be stale/missing images.
+    log.warn("hydrate_failed", {
+      hint: "falling back to localStorage; recent large data (e.g. images) may be missing",
+      error: errorMessage(e),
+    });
   } finally {
     hydrated = true;
-    notify(); // re-render with the IDB state and flip useHydrated()
+    notify(); // re-render with the durable-tier state and flip useHydrated()
   }
 })();
-export function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => {
-    listeners.delete(l);
-  };
-}
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export function getSessions(): Session[] {
@@ -287,18 +308,32 @@ export function pushToolResult(sid: string, toolCallId: string, output: string, 
   notify();
 }
 
-// Feed tool-produced images back to the model as a hidden user turn (skipped in
-// the UI — the images already show in the tool card; this just lets a vision
-// agent see them on its next turn).
-export function pushImageFeedback(sid: string, images: ImageRef[]): void {
+// Feed tool-produced media (generated or loaded) back to the model as a hidden
+// user turn (skipped in the UI — it already shows in the tool card; this just
+// lets a vision agent see it on its next turn).
+export function pushMediaFeedback(sid: string, images?: ImageRef[], video?: ImageRef[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
     role: "user",
-    text: "Generated image(s) attached above for your review.",
+    text: "Media attached above for your review.",
     images,
+    video,
     hidden: true,
   };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
+  notify();
+}
+
+// Wipe the streaming assistant placeholder after a mid-step transport retry —
+// the request is re-sent from scratch, so partial text/thinking/calls must go.
+export function resetLast(sid: string): void {
+  sessions = sessions.map((s) => {
+    if (s.id !== sid) return s;
+    const messages = s.messages.slice();
+    const i = messages.length - 1;
+    messages[i] = { ...messages[i], text: "", thinking: undefined, toolCalls: undefined };
+    return { ...s, messages };
+  });
   notify();
 }
 
@@ -309,9 +344,13 @@ export function pushAssistant(sid: string): void {
   notify();
 }
 
-export function addUsage(sid: string, tokens: number): void {
+// Context occupancy is a SNAPSHOT, not a running sum: each request's input
+// tokens already count the whole conversation, so the latest report alone says
+// what the window holds. Summing reports would re-count the history once per
+// tool-loop step and blow past the window after a few tool calls.
+export function setUsage(sid: string, tokens: number): void {
   if (!tokens) return;
-  sessions = sessions.map((s) => (s.id === sid ? { ...s, usedTokens: (s.usedTokens ?? 0) + tokens } : s));
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, usedTokens: tokens } : s));
   notify();
 }
 
@@ -368,7 +407,7 @@ function withFiles(text: string, files?: FileAttachment[]): string {
 // empty placeholders (the trailing assistant) and thinking (not resent).
 export function toChatMessages(messages: Message[]): ChatMessage[] {
   return messages
-    .filter((m) => m.text || m.images?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
+    .filter((m) => m.text || m.images?.length || m.video?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
     .map((m) => ({
       role: m.role,
       content: m.summary
@@ -376,7 +415,7 @@ export function toChatMessages(messages: Message[]): ChatMessage[] {
         : withFiles(m.text, m.files),
       // Tool-role images/video are display-only (shown in the tool card) — many
       // chat APIs reject media on a tool message, so they're never sent. Vision
-      // feedback goes through the hidden user turn (pushImageFeedback) instead.
+      // feedback goes through the hidden user turn (pushMediaFeedback) instead.
       // User-uploaded images/video ARE sent so the model can review them.
       images: m.role === "tool" ? undefined : m.images?.map((im) => ({ url: im.url, mime: im.mime })),
       video: m.role === "tool" ? undefined : m.video?.map((v) => ({ url: v.url, mime: v.mime })),

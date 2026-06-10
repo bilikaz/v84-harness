@@ -1,4 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { stripFences } from "../lib/format.ts";
+import { createStore } from "../lib/store.ts";
+import { errorMessage } from "../lib/errors.ts";
 
 // Agents store — reusable playbooks. Each is a name + description plus a pair of
 // markdown documents: a `system` (how to behave / standing instructions) and a
@@ -6,14 +8,14 @@ import { useSyncExternalStore } from "react";
 // system prompt and user as the first message. The description is a short,
 // plain-language summary of what the agent does — surfaced to the (upcoming)
 // "run agent" tool so one agent can pick and orchestrate others.
-// localStorage now; core/IPC + files later.
 const KEY = "v84-harness:agents";
 const LEGACY_KEY = "v84-harness:procedures"; // pre-rename storage; migrated on first load
 
 // Optional output contract. When set, the chat engine validates the agent's
-// final turn against it and heals (re-prompts) on failure — see core/heal.ts +
-// the `validate` path in core/sessions/driver.ts. Lightweight by design (no JSON
-// Schema dependency): require valid JSON, optionally with given top-level keys.
+// final turn against it and heals (re-prompts) on failure — see the heal layer
+// in providers/client.ts + the `validate` path in core/sessions/driver.ts.
+// Lightweight by design (no JSON Schema dependency): require valid JSON,
+// optionally with given top-level keys.
 export interface AgentOutput {
   json: boolean; // the final answer must parse as JSON
   required?: string[]; // required top-level keys (implies a JSON object)
@@ -53,16 +55,6 @@ function normalize(p: Partial<Agent>): Agent {
   };
 }
 
-// Strip a leading ```json / ``` fence (and trailing ```), so a model that wraps
-// its JSON answer in a code block still validates.
-function stripFences(text: string): string {
-  return text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-}
-
 // Build a validator for an agent's output contract, or undefined when there's
 // nothing to enforce. The returned fn THROWS on a rejected answer — that's what
 // triggers a heal in the turn loop. Shape matches core/sessions/driver.ts's
@@ -75,7 +67,7 @@ export function buildValidator(output?: AgentOutput): ((text: string) => void) |
     try {
       parsed = JSON.parse(stripFences(text));
     } catch (e) {
-      throw new Error(`output is not valid JSON: ${(e as Error).message}`);
+      throw new Error(`output is not valid JSON: ${errorMessage(e)}`);
     }
     if (required.length) {
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -100,61 +92,28 @@ function read(key: string): Agent[] | null {
   return null;
 }
 
-function load(): Agent[] {
-  const current = read(KEY);
-  if (current) return current;
-  // One-time migration from the pre-rename "procedures" key.
-  const legacy = read(LEGACY_KEY);
-  if (legacy) return legacy;
-  return SEED;
-}
-
-let agents: Agent[] = load();
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const l of listeners) l();
-}
-function persist(): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(agents));
-  } catch {
-    /* ignore */
-  }
-}
+// Initial read with one-time migration from the pre-rename "procedures" key.
+const store = createStore<Agent[]>(KEY, SEED, () => read(KEY) ?? read(LEGACY_KEY));
 
 export function getAgents(): Agent[] {
-  return agents;
+  return store.get();
 }
 
 // Add a blank agent and return its id (for immediate editing).
 export function createAgent(name: string): string {
   const a: Agent = { id: crypto.randomUUID(), name, description: "", system: "", user: "" };
-  agents = [...agents, a];
-  persist();
-  emit();
+  store.set([...store.get(), a]);
   return a.id;
 }
 
 export function saveAgent(id: string, patch: Partial<Omit<Agent, "id">>): void {
-  agents = agents.map((a) => (a.id === id ? { ...a, ...patch } : a));
-  persist();
-  emit();
+  store.set(store.get().map((a) => (a.id === id ? { ...a, ...patch } : a)));
 }
 
 export function deleteAgent(id: string): void {
-  agents = agents.filter((a) => a.id !== id);
-  persist();
-  emit();
-}
-
-function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => {
-    listeners.delete(l);
-  };
+  store.set(store.get().filter((a) => a.id !== id));
 }
 
 export function useAgents(): Agent[] {
-  return useSyncExternalStore(subscribe, getAgents, getAgents);
+  return store.use();
 }

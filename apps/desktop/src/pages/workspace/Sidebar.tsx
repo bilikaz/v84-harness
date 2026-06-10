@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 
+import { InlineEdit } from "../../components/InlineEdit.tsx";
 import { Slot } from "../../components/Slot.tsx";
 import { cn } from "../../lib/cn.ts";
 import { navigate } from "../../lib/router.ts";
@@ -35,6 +36,7 @@ import {
 } from "../../core/workspaces.ts";
 import { harness } from "../../lib/harness.ts";
 import { useAccount } from "../../lib/account.ts";
+import { useOutsideClick } from "../../lib/hooks.ts";
 import { LANGUAGES, setLanguage } from "../../lib/i18n.ts";
 import { WorkspaceSettings } from "./WorkspaceSettings.tsx";
 
@@ -91,14 +93,7 @@ export function Sidebar() {
   }, [activeWorkspaceId, sessions]);
 
   // Close the user menu when clicking anywhere outside it.
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onDown(e: PointerEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [menuOpen]);
+  useOutsideClick(menuOpen, menuRef, () => setMenuOpen(false));
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
@@ -164,16 +159,12 @@ export function Sidebar() {
               )}
             >
               {renaming ? (
-                <input
-                  autoFocus
+                <InlineEdit
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRename(s.id);
-                    else if (e.key === "Escape") setRenamingId(null);
-                  }}
-                  onBlur={() => commitRename(s.id)}
-                  className="my-1 min-w-0 flex-1 rounded-md bg-white px-2 py-1 text-sm outline-none ring-1 ring-neutral-300"
+                  onChange={setDraft}
+                  onCommit={() => commitRename(s.id)}
+                  onCancel={() => setRenamingId(null)}
+                  className="my-1 min-w-0 flex-1 bg-white px-2 py-1"
                 />
               ) : (
                 <button
@@ -269,6 +260,7 @@ function WorkspaceRow(props: {
   onSettings?: () => void;
 }) {
   const { icon: Icon, label, active, onSelect, onSettings } = props;
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -291,7 +283,7 @@ function WorkspaceRow(props: {
         <button
           type="button"
           onClick={onSettings}
-          title="Workspace settings"
+          title={t("workspace.editTitle")}
           className="shrink-0 rounded-md p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100"
         >
           <Settings size={13} />

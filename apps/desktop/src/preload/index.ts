@@ -17,10 +17,18 @@ const api: HarnessApi = {
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
     schemas: () => ipcRenderer.invoke(IPC.toolsSchemas),
-    exec: (call: ToolCallRequest, ctx: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
+    // `signal` is process-local and not cloneable — strip it before the wire.
+    exec: (call: ToolCallRequest, { signal: _local, ...ctx }: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
+    cancel: (callId: string) => ipcRenderer.invoke(IPC.toolsCancel, callId),
   },
   media: {
     models: (cfg: MediaProviderConfig) => ipcRenderer.invoke(IPC.mediaModels, cfg),
+  },
+  storage: {
+    available: () => ipcRenderer.invoke(IPC.storageAvailable),
+    get: (key: string) => ipcRenderer.invoke(IPC.storageGet, key),
+    set: (key: string, value: string) => ipcRenderer.invoke(IPC.storageSet, key, value),
+    del: (key: string) => ipcRenderer.invoke(IPC.storageDel, key),
   },
   saveImage: (dataUrl: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl),
   saveVideo: (dataUrl: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl),

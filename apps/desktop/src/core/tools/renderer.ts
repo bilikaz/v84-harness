@@ -6,7 +6,7 @@
 // (main has no CORS) — see core/sessions/driver.ts.
 //
 // Add a tool here only if its module imports nothing from `node:*`.
-import type { Tool, ToolName, ToolSchema } from "./shared.ts";
+import type { Tool, ToolName, ToolSchema } from "./types.ts";
 import { generateImageTool } from "./generateImage.ts";
 import { generateVideoTool } from "./generateVideo.ts";
 

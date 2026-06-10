@@ -1,13 +1,11 @@
-import { useSyncExternalStore } from "react";
-
-import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/shared.ts";
+import { createStore } from "../lib/store.ts";
+import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/types.ts";
 
 // Workspace store — a workspace is a first-class record: a folder (the agent's
 // root) + name + per-workspace settings. Sessions LINK to a workspace via
 // `session.workspaceId` (the workspace "owns" its sessions as a derived query).
 // `activeWorkspaceId` scopes the sidebar's session list; null = the "no
-// workspace / chat" group (tool-less sessions). localStorage for now; swaps to
-// SQLite via the core/IPC layer later, same surface.
+// workspace / chat" group (tool-less sessions).
 const KEY = "v84-harness:workspaces";
 
 export type { GatedTool, ToolMode, ToolName };
@@ -22,6 +20,11 @@ export interface Workspace {
   isolation: Isolation; // worktree-per-session vs. work directly in the folder
   instructions?: string; // optional per-project system prompt
   tools: Record<GatedTool, ToolMode>; // the 0/1/2 permission map (gated tools only)
+}
+
+interface WsState {
+  workspaces: Workspace[];
+  activeId: string | null;
 }
 
 // A new workspace's settings before the user tweaks them.
@@ -47,7 +50,7 @@ function normalize(w: Partial<Workspace>): Workspace {
   };
 }
 
-function load(): { workspaces: Workspace[]; activeId: string | null } {
+function load(): WsState | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -59,81 +62,52 @@ function load(): { workspaces: Workspace[]; activeId: string | null } {
   } catch {
     /* fall through */
   }
-  return { workspaces: [], activeId: null };
+  return null;
 }
 
-const initial = load();
-let workspaces: Workspace[] = initial.workspaces;
-let activeId: string | null = initial.activeId;
-
-const listeners = new Set<() => void>();
-function emit(): void {
-  for (const l of listeners) l();
-}
-function persist(): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ workspaces, activeId }));
-  } catch {
-    /* ignore */
-  }
-}
-function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => {
-    listeners.delete(l);
-  };
-}
+const store = createStore<WsState>(KEY, { workspaces: [], activeId: null }, load);
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export function getWorkspaces(): Workspace[] {
-  return workspaces;
+  return store.get().workspaces;
 }
 export function getActiveWorkspaceId(): string | null {
-  return activeId;
+  return store.get().activeId;
 }
 export function getWorkspace(id: string | null | undefined): Workspace | undefined {
-  return id ? workspaces.find((w) => w.id === id) : undefined;
+  return id ? store.get().workspaces.find((w) => w.id === id) : undefined;
 }
 export function getActiveWorkspace(): Workspace | undefined {
-  return getWorkspace(activeId);
+  return getWorkspace(store.get().activeId);
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 // Add a fully-formed workspace (built + edited in the add popup), make it active.
 export function addWorkspace(ws: Workspace): void {
-  workspaces = [...workspaces, ws];
-  activeId = ws.id;
-  persist();
-  emit();
+  store.set({ workspaces: [...store.get().workspaces, ws], activeId: ws.id });
 }
 
 export function updateWorkspace(id: string, patch: Partial<Omit<Workspace, "id">>): void {
-  workspaces = workspaces.map((w) => (w.id === id ? { ...w, ...patch } : w));
-  persist();
-  emit();
+  store.patch({ workspaces: store.get().workspaces.map((w) => (w.id === id ? { ...w, ...patch } : w)) });
 }
 
 export function deleteWorkspace(id: string): void {
-  workspaces = workspaces.filter((w) => w.id !== id);
-  if (activeId === id) activeId = null;
-  persist();
-  emit();
+  const { workspaces, activeId } = store.get();
+  store.set({ workspaces: workspaces.filter((w) => w.id !== id), activeId: activeId === id ? null : activeId });
 }
 
 // null selects the "no workspace / chat" group.
 export function setActiveWorkspace(id: string | null): void {
-  activeId = id;
-  persist();
-  emit();
+  store.patch({ activeId: id });
 }
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 export function useWorkspaces(): Workspace[] {
-  return useSyncExternalStore(subscribe, getWorkspaces, getWorkspaces);
+  return store.useSelect((s) => s.workspaces);
 }
 export function useActiveWorkspaceId(): string | null {
-  return useSyncExternalStore(subscribe, getActiveWorkspaceId, getActiveWorkspaceId);
+  return store.useSelect((s) => s.activeId);
 }
 export function useActiveWorkspace(): Workspace | undefined {
-  return useSyncExternalStore(subscribe, getActiveWorkspace, getActiveWorkspace);
+  return store.useSelect((s) => (s.activeId ? s.workspaces.find((w) => w.id === s.activeId) : undefined));
 }

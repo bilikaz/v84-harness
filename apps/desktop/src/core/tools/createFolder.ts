@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 
-import { type Tool } from "./shared.ts";
+import { type Tool } from "./types.ts";
 import { toReal } from "./paths.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // Create a directory (recursive). Confined to the workspace.
 export const createFolderTool: Tool = {
@@ -25,7 +26,7 @@ export const createFolderTool: Tool = {
       await mkdir(toReal(ctx.cwd, p), { recursive: true });
       return { ok: true, output: `created ${p}` };
     } catch (e) {
-      return { ok: false, output: `error creating ${p}: ${(e as Error).message}` };
+      return { ok: false, output: `error creating ${p}: ${errorMessage(e)}` };
     }
   },
 };

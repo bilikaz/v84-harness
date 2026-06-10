@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 
-import { cap, type Tool, type ToolResult } from "./shared.ts";
+import { type Tool, type ToolResult } from "./types.ts";
+import { cap } from "./shared.ts";
 import { rootReal, toReal } from "./paths.ts";
+
+const GREP_TIMEOUT_MS = 30_000;
 
 // Search file contents with `grep -rIn`. Read-only and argv-controlled (not a
 // free-form shell), so it stays auto-run rather than going through the Bash
@@ -34,16 +37,18 @@ export const grepTool: Tool = {
     const target = args.path ? toReal(ctx.cwd, String(args.path)) : root;
     const rel = target === root ? "." : target.slice(root.length + 1);
     const flags = ["-rIn", ...(args.ignore_case ? ["-i"] : [])];
-    return run(["grep", ...flags, "--", pattern, rel], root);
+    return run(["grep", ...flags, "--", pattern, rel], root, ctx.signal);
   },
 };
 
-function run(argv: string[], cwd: string): Promise<ToolResult> {
+function run(argv: string[], cwd: string, signal?: AbortSignal): Promise<ToolResult> {
+  if (signal?.aborted) return Promise.resolve({ ok: false, output: "[cancelled before start]" });
   return new Promise((resolve) => {
     const proc = spawn(argv[0]!, argv.slice(1), { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     let err = "";
-    const timer = setTimeout(() => proc.kill("SIGKILL"), 30_000);
+    signal?.addEventListener("abort", () => proc.kill("SIGKILL"), { once: true });
+    const timer = setTimeout(() => proc.kill("SIGKILL"), GREP_TIMEOUT_MS);
     proc.stdout.on("data", (b: Buffer) => (out += b.toString("utf-8")));
     proc.stderr.on("data", (b: Buffer) => (err += b.toString("utf-8")));
     proc.on("close", (code) => {

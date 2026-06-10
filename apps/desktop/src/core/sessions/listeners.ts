@@ -1,6 +1,5 @@
 import { sessionBus as bus } from "./events.ts";
 import {
-  addUsage,
   appendToLast,
   getActiveId,
   markUnread,
@@ -8,11 +7,13 @@ import {
   persist,
   pushAssistant,
   pushHeal,
-  pushImageFeedback,
+  pushMediaFeedback,
   pushToolResult,
   pushTurn,
+  resetLast,
   setLastToolCalls,
   setStreaming,
+  setUsage,
 } from "./store.ts";
 
 // Services — each subscribes to the event types it cares about and updates the
@@ -36,10 +37,12 @@ const offs: Array<() => void> = [
   bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.video)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
   bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),
-  bus.on("imageFeedback", (e) => pushImageFeedback(e.sessionId, e.images)),
+  bus.on("stream:retry", (e) => resetLast(e.sessionId)),
+  bus.on("mediaFeedback", (e) => pushMediaFeedback(e.sessionId, e.images, e.video)),
 
-  // Usage meter — count input + output (normalized to include thinking).
-  bus.on("usage", (e) => addUsage(e.sessionId, (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0))),
+  // Usage meter — the latest request's input + output IS the current context
+  // occupancy (input already includes the whole history), so set, don't add.
+  bus.on("usage", (e) => setUsage(e.sessionId, (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0))),
 
   // Streaming state + persistence + unread.
   bus.on("turn:start", (e) => {

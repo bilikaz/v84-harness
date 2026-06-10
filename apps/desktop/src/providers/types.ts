@@ -3,7 +3,11 @@
 
 export type ProviderKind = "openai" | "anthropic" | "gemini";
 
-export type ReasoningEffort = "off" | "low" | "medium" | "high";
+// Effort levels follow the Anthropic scale (low/medium/high/xhigh/max — xhigh
+// from Opus 4.7, max from Opus 4.6/Sonnet 4.6). OpenAI-compatible endpoints
+// receive the value verbatim as `reasoning_effort`; Gemini maps it to a
+// thinking budget. "off" disables thinking where the model allows it.
+export type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // Provider-agnostic chat message — the conversation we resubmit each turn. Each
 // provider maps this to its native wire format (incl. image parts). `url` may be
@@ -47,8 +51,10 @@ export interface ModelConfig {
   // Generation params (optional; sent when set). Surfaced once a model is picked.
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;
-  // Cap on reasoning tokens for vLLM/Qwen-style endpoints (sent as
-  // `thinking_token_budget` when thinking is on). 0/undefined = no cap.
+  // Cap on reasoning tokens. vLLM/Qwen-style endpoints get it as
+  // `thinking_token_budget`; Gemini as `thinkingConfig.thinkingBudget`.
+  // Anthropic ignores it (token budgets are deprecated there — effort + adaptive
+  // thinking replace them). 0/undefined = no cap / dynamic.
   thinkingBudget?: number;
   // Tokens kept free below the context window (headroom for the response +
   // auto-compaction summary). undefined → CONTEXT_RESERVE default (50k).
@@ -86,5 +92,8 @@ export type StreamEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_call"; call: ToolCall } // a complete tool call the model asked for
   | { type: "usage"; usage: StreamUsage }
+  // Transport failed and the request is being re-sent from scratch (see
+  // providers/transport.ts) — consumers must discard this step's partial output.
+  | { type: "retry"; message: string }
   | { type: "error"; message: string }
   | { type: "done" };

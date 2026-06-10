@@ -8,7 +8,7 @@
 // to the TOOLS array below. Planned: Read, List, Grep, Write, Edit,
 // CreateFolder, Bash.
 
-import type { Tool, ToolCtx, ToolCallRequest, ToolResult, ToolSchema } from "./shared.ts";
+import type { Tool, ToolCtx, ToolCallRequest, ToolResult, ToolSchema } from "./types.ts";
 import { readTool } from "./read.ts";
 import { listTool } from "./list.ts";
 import { grepTool } from "./grep.ts";
@@ -16,11 +16,13 @@ import { writeTool } from "./write.ts";
 import { editTool } from "./edit.ts";
 import { createFolderTool } from "./createFolder.ts";
 import { bashTool } from "./bash.ts";
+import { loadImageTool, loadVideoTool } from "./loadMedia.ts";
+import { errorMessage } from "../../lib/errors.ts";
 
 // NOTE: media tools (e.g. GenerateImage) are NOT here — they're self-contained
 // renderer tools (see core/tools/renderer.ts), so they don't go through the
 // main process dispatcher. Only the fs/Bash tools that need Node live here.
-const TOOLS: Tool[] = [readTool, listTool, grepTool, writeTool, editTool, createFolderTool, bashTool];
+const TOOLS: Tool[] = [readTool, listTool, grepTool, writeTool, editTool, createFolderTool, bashTool, loadImageTool, loadVideoTool];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.schema.function.name, t]));
 const VALID_NAMES = TOOLS.map((t) => t.schema.function.name);
@@ -28,6 +30,14 @@ const VALID_NAMES = TOOLS.map((t) => t.schema.function.name);
 export const TOOL_SCHEMAS: ToolSchema[] = TOOLS.map((t) => t.schema);
 
 const available = (): string => VALID_NAMES.join(", ") || "(no tools enabled)";
+
+// Running calls by id, so the renderer can cancel one over IPC (an AbortSignal
+// can't cross the bridge — main mints its own controller per call instead).
+const running = new Map<string, AbortController>();
+
+export function cancelTool(callId: string): void {
+  running.get(callId)?.abort();
+}
 
 export async function execTool(call: ToolCallRequest, ctx: ToolCtx): Promise<ToolResult> {
   const name = call.name?.trim();
@@ -45,7 +55,7 @@ export async function execTool(call: ToolCallRequest, ctx: ToolCtx): Promise<Too
         `tool call rejected: arguments are not valid JSON.`,
         `Tool: ${name}`,
         `Received arguments: ${call.arguments}`,
-        `Parse error: ${(e as Error).message}`,
+        `Parse error: ${errorMessage(e)}`,
         `Retry with a valid JSON object matching the tool's schema.`,
       ].join("\n"),
     };
@@ -56,9 +66,13 @@ export async function execTool(call: ToolCallRequest, ctx: ToolCtx): Promise<Too
     return { ok: false, output: `tool call rejected: unknown tool "${name}". Available: ${available()}.` };
   }
 
+  const controller = new AbortController();
+  if (call.id) running.set(call.id, controller);
   try {
-    return await tool.execute(args, ctx);
+    return await tool.execute(args, { ...ctx, signal: controller.signal });
   } catch (e) {
-    return { ok: false, output: `error running ${name}: ${(e as Error).message}` };
+    return { ok: false, output: `error running ${name}: ${errorMessage(e)}` };
+  } finally {
+    if (call.id) running.delete(call.id);
   }
 }

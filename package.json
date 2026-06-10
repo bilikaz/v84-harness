@@ -12,7 +12,8 @@
     "dev:desktop": "pnpm --filter @v84-harness/desktop dev",
     "dev:desktop:electron": "pnpm --filter @v84-harness/desktop dev:electron",
     "build:desktop": "pnpm --filter @v84-harness/desktop build",
-    "build:desktop:electron": "pnpm --filter @v84-harness/desktop build:electron"
+    "build:desktop:electron": "pnpm --filter @v84-harness/desktop build:electron",
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "@bilikaz/code-reviewer": "^0.1.2",

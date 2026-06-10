@@ -83,6 +83,8 @@
     "low": "Low",
     "medium": "Medium",
     "high": "High",
+    "xhigh": "Extra high",
+    "max": "Max",
     "thinkingBudget": "Thinking budget",
     "noBudget": "no cap (tokens)",
     "maxOutput": "Max output tokens",
@@ -120,7 +122,16 @@
     "noVideoSupport": "This model doesn't accept video — enable video input in Settings → Provider to attach it.",
     "disclaimer": "Agents can make mistakes. Review their output.",
     "selectModel": "Select model",
-    "contextFull": "Context full — {{used}} / {{total}} tokens used. Start a new session to continue."
+    "contextFull": "Context full — {{used}} / {{total}} tokens used. Start a new session to continue.",
+    "hidePanel": "Hide panel",
+    "showPanel": "Show panel",
+    "changeModel": "Change provider / model",
+    "detectModels": "Detect available models",
+    "stop": "Stop",
+    "compacting": "Summarizing earlier messages to free context…",
+    "thinking": "Thinking…",
+    "thoughts": "Thoughts",
+    "running": "running…"
   },
   "progress": {
     "progress": "Progress",
@@ -131,6 +142,63 @@
     "used": "{{used}} / {{total}} used",
     "left": "{{tokens}} left",
     "full": "full",
-    "noModel": "{{used}} used — detect a model to see the window size."
+    "noModel": "{{used}} used — detect a model to see the window size.",
+    "reserved": "{{reserve}} system reserved · {{total}} window",
+    "summarize": "Summarize",
+    "summarizing": "Summarizing…",
+    "summarizeHint": "Summarize conversation to free context",
+    "summarizeTitle": "Summarize conversation",
+    "summarizeBody": "This compresses the entire conversation into a short summary and <b>drops the full history</b> (including attached images and files) to free up the context window. The model keeps the summary and continues from it. This can't be undone."
+  },
+  "workspace": {
+    "addTitle": "Add workspace",
+    "editTitle": "Workspace settings",
+    "name": "Name",
+    "defaultModel": "Default model",
+    "defaultModelHint": "Model new sessions in this workspace use.",
+    "providerDefault": "Provider default ({{model}})",
+    "unset": "unset",
+    "isolation": "Isolation",
+    "isolationHint": "A git worktree per session keeps parallel agents from clobbering files.",
+    "worktree": "Worktree per session",
+    "direct": "Work directly in the folder",
+    "instructions": "Instructions",
+    "instructionsHint": "Optional standing system prompt for agents in this workspace.",
+    "instructionsPlaceholder": "e.g. This is a pnpm monorepo; run typecheck before finishing.",
+    "tools": "Tools",
+    "toolsHint": "File tools are confined to this folder; only Bash can step outside, so it asks by default.",
+    "modeOff": "Off",
+    "modeOffHint": "withheld from the agent",
+    "modeAsk": "Ask",
+    "modeAskHint": "asks before each call",
+    "modeAuto": "Auto",
+    "modeAutoHint": "runs without asking"
+  },
+  "storage": {
+    "title": "Storage",
+    "subtitle": "What your conversation history occupies, and where it lives. Delete sessions to free space.",
+    "backend": "Storage backend",
+    "backend_sqlite": "SQLite (desktop)",
+    "backend_idb": "IndexedDB (browser)",
+    "backend_local": "localStorage (limited, ~5 MB)",
+    "totalUsed": "Sessions total (approx.)",
+    "noWorkspace": "Chat (no workspace)",
+    "deleteAll": "Delete all"
+  },
+  "developer": {
+    "title": "Developer",
+    "subtitle": "Diagnostics, logs, and feature flags.",
+    "llmDebug": "LLM debug logging",
+    "llmDebugHint": "Logs every model request/response to the console (prefixed [llm]). On by default in dev."
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "add": "Add",
+    "remove": "Remove",
+    "close": "Close",
+    "closeEsc": "Close (Esc)",
+    "saveImage": "Save image",
+    "saveVideo": "Save video"
   }
 }

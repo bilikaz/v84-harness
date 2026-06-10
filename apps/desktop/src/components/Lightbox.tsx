@@ -1,38 +1,22 @@
-import { useEffect } from "react";
 import { Download, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { closeLightbox, useLightbox } from "../lib/ui.ts";
-import { harness, isElectron } from "../lib/harness.ts";
+import { useEscapeKey } from "../lib/hooks.ts";
+import { saveMedia } from "../lib/saveMedia.ts";
 
 // Full-screen image viewer. Opened via openLightbox(url) from any thumbnail;
 // dismissed by clicking the backdrop, the image, the close button, or Escape.
 export function Lightbox() {
+  const { t } = useTranslation();
   const url = useLightbox();
-
-  useEffect(() => {
-    if (!url) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeLightbox();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [url]);
+  useEscapeKey(!!url, closeLightbox);
 
   if (!url) return null;
 
-  // Save the image: native Save dialog in Electron, browser download on the web.
   async function save(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!url) return;
-    if (isElectron()) {
-      await harness!.saveImage(url);
-    } else {
-      const a = document.createElement("a");
-      a.href = url;
-      const ext = /^data:image\/([\w.+-]+)/.exec(url)?.[1];
-      a.download = `generated.${ext === "jpeg" ? "jpg" : (ext ?? "png")}`;
-      a.click();
-    }
+    if (url) await saveMedia(url, "image");
   }
 
   return (
@@ -45,7 +29,7 @@ export function Lightbox() {
           type="button"
           onClick={save}
           className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          title="Save image"
+          title={t("common.saveImage")}
         >
           <Download size={20} />
         </button>
@@ -53,7 +37,7 @@ export function Lightbox() {
           type="button"
           onClick={closeLightbox}
           className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          title="Close (Esc)"
+          title={t("common.closeEsc")}
         >
           <X size={20} />
         </button>
