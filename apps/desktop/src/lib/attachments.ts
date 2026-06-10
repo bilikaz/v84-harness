@@ -1,13 +1,13 @@
-import type { FileAttachment, ImageRef } from "./types.ts";
+import type { FileAttachment, MediaRef } from "./types.ts";
 
 const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context
 
 // Read picked files: images & video → data-URL attachments (multimodal),
 // everything else → text attachments folded into the message. Shared by the
 // session composer and the agent runner.
-export function readAttachments(list: FileList): Promise<{ images: ImageRef[]; video: ImageRef[]; files: FileAttachment[] }> {
-  const images: ImageRef[] = [];
-  const video: ImageRef[] = [];
+export function readAttachments(list: FileList): Promise<{ images: MediaRef[]; video: MediaRef[]; files: FileAttachment[] }> {
+  const images: MediaRef[] = [];
+  const video: MediaRef[] = [];
   const files: FileAttachment[] = [];
   return Promise.all(
     Array.from(list).map(

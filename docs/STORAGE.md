@@ -10,28 +10,8 @@ code). Decisions behind the shapes:
 ## Durable tier — key scheme
 
 One detected backend (SQLite > IndexedDB > localStorage) behind the
-`Storage { get, set, del, keys }` port. Every key below lives in that one
-backend; the prefixes are the "tables":
-
-```mermaid
-erDiagram
-    INDEX ||--o{ MSGS : "one row per session"
-    MSGS ||--o{ MEDIA : "media: refs point to blobs"
-
-    INDEX {
-        string key "v84-harness:sessions:index"
-        string activeId
-        SessionMeta_array sessions "metas only - no messages"
-    }
-    MSGS {
-        string key "v84-harness:sessions:msgs:<sid>"
-        Message_array messages "media URLs replaced by media:<id>"
-    }
-    MEDIA {
-        string key "v84-harness:media:<sid>:<id>"
-        string value "one data: URL - written ONCE at first persist"
-    }
-```
+`Storage { get, set, del, keys }` port. Three key prefixes act as the
+"tables" — the value shapes are charted in the Shapes section below:
 
 | Key | Shape | Written when | Read when |
 | --- | --- | --- | --- |
@@ -70,28 +50,32 @@ classDiagram
         role: user | assistant | tool
         text: string
         thinking?: string
-        images?: ImageRef[]
-        video?: ImageRef[]
+        images?: MediaRef[]
+        video?: MediaRef[]
         files?: FileAttachment[]
         toolCalls?: ToolCall[]
         toolCallId?: string
         summary?: boolean
         hidden?: boolean
     }
-    class ImageRef {
+    class MediaRef {
         url: string  «data: in memory, media:id when stored»
-        mime?: string
+        mime?: string  «says what the blob is - image/video/audio»
         name?: string
         id?: string  «stamped at first persist = blob exists»
     }
     SessionMeta <|-- Session : + messages, loaded
     SessionsIndex o-- SessionMeta
     Session o-- Message
-    Message o-- ImageRef
+    Message o-- MediaRef
 ```
 
 `SessionMeta` is exactly `Session` minus `messages`/`loaded` (`toMeta()` in
 persistence.ts). `bytes` ≈ stored messages JSON + live media blob lengths.
+A `MediaRef` is kind-agnostic — image and video today, audio when it arrives;
+the `mime` says what the blob holds, the containing field (`images`/`video`)
+says how it's rendered and sent. `media:<sid>:<id>` blobs are likewise just
+data: URLs of any media kind.
 
 ## In-memory state (`core/sessions/store.ts`, module singletons)
 

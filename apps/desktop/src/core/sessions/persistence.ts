@@ -15,7 +15,7 @@
 import type { Storage } from "../../lib/storage/index.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import type { ImageRef, Message, Session } from "./types.ts";
+import type { MediaRef, Message, Session } from "./types.ts";
 
 const log = rootLog.child("session.persistence");
 
@@ -89,7 +89,7 @@ export async function saveMessages(storage: Storage, sid: string, messages: Mess
   const liveIds = new Set<string>();
   let mediaBytes = 0;
 
-  const storeRef = async (ref: ImageRef): Promise<ImageRef> => {
+  const storeRef = async (ref: MediaRef): Promise<MediaRef> => {
     if (!ref.url.startsWith("data:")) return ref; // http(s) URL — store as-is
     if (!ref.id) {
       const id = crypto.randomUUID();
@@ -133,7 +133,7 @@ export async function loadMessages(storage: Storage, sid: string): Promise<Messa
   if (!raw) return null;
   const messages = (JSON.parse(raw) as Message[]).map((m) => ({ ...m }));
 
-  const inflate = async (ref: ImageRef): Promise<ImageRef> => {
+  const inflate = async (ref: MediaRef): Promise<MediaRef> => {
     if (!ref.url.startsWith(MEDIA_REF)) return ref;
     const id = ref.url.slice(MEDIA_REF.length);
     const blob = await storage.get(mediaKey(sid, id));

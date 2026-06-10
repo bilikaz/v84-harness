@@ -18,7 +18,7 @@ export {
   getSessionsForWorkspace,
 } from "./store.ts";
 export { send, runAgent, stopTurn } from "./driver.ts";
-export type { Session, Message, Role, Step, StepStatus, ImageRef, FileAttachment, Tool, ToolCall } from "./types.ts";
+export type { Session, Message, Role, Step, StepStatus, MediaRef, FileAttachment, Tool, ToolCall } from "./types.ts";
 
 // Deleting a session must also abort its in-flight turn, or the stream keeps
 // running (and writing) against a session that no longer exists. Composed here

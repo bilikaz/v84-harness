@@ -5,7 +5,7 @@ import { Markdown } from "../../components/Markdown.tsx";
 import { SavableMedia } from "../../components/SavableMedia.tsx";
 import { Thinking } from "./Thinking.tsx";
 import { ToolCard } from "./ToolCard.tsx";
-import type { FileAttachment, ImageRef, Role, ToolCall } from "../../lib/types.ts";
+import type { FileAttachment, MediaRef, Role, ToolCall } from "../../lib/types.ts";
 
 // One transcript entry. User messages render right-aligned with their
 // attachments; assistant messages render thinking, markdown text, and a tool
@@ -31,13 +31,13 @@ function MessageImpl({
   role: Role;
   text: string;
   thinking?: string;
-  images?: ImageRef[];
-  video?: ImageRef[];
+  images?: MediaRef[];
+  video?: MediaRef[];
   files?: FileAttachment[];
   toolCalls?: ToolCall[];
   results?: Map<string, string>;
-  toolImages?: Map<string, ImageRef[]>;
-  toolVideo?: Map<string, ImageRef[]>;
+  toolImages?: Map<string, MediaRef[]>;
+  toolVideo?: Map<string, MediaRef[]>;
   streaming: boolean;
 }) {
   if (role === "user") {

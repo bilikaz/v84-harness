@@ -1,5 +1,5 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "./types.ts";
+import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
 import { detectStorage, IdbStorage } from "../../lib/storage/index.ts";
@@ -281,7 +281,7 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
-export function pushTurn(sid: string, userText: string, images?: ImageRef[], files?: FileAttachment[], video?: ImageRef[]): void {
+export function pushTurn(sid: string, userText: string, images?: MediaRef[], files?: FileAttachment[], video?: MediaRef[]): void {
   const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
   sessions = sessions.map((s) =>
@@ -316,7 +316,7 @@ export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
 
 // Append a tool-result message answering a specific call. `images` are shown in
 // the tool card (display only — toChatMessages drops tool-role images).
-export function pushToolResult(sid: string, toolCallId: string, output: string, images?: ImageRef[], video?: ImageRef[]): void {
+export function pushToolResult(sid: string, toolCallId: string, output: string, images?: MediaRef[], video?: MediaRef[]): void {
   const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
@@ -325,7 +325,7 @@ export function pushToolResult(sid: string, toolCallId: string, output: string, 
 // Feed tool-produced media (generated or loaded) back to the model as a hidden
 // user turn (skipped in the UI — it already shows in the tool card; this just
 // lets a vision agent see it on its next turn).
-export function pushMediaFeedback(sid: string, images?: ImageRef[], video?: ImageRef[]): void {
+export function pushMediaFeedback(sid: string, images?: MediaRef[], video?: MediaRef[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
     role: "user",

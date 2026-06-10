@@ -23,7 +23,7 @@ import { InlineEdit } from "../../components/InlineEdit.tsx";
 import { Message } from "./Message.tsx";
 import { readAttachments } from "../../lib/attachments.ts";
 import { cn } from "../../lib/cn.ts";
-import type { FileAttachment, ImageRef } from "../../lib/types.ts";
+import type { FileAttachment, MediaRef } from "../../lib/types.ts";
 
 // The main center: active session transcript + the composer (model selector,
 // detect button, send). Reads the session + provider stores.
@@ -34,8 +34,8 @@ export function SessionView() {
   const compacting = useCompacting();
   const provider = useProvider();
   const [input, setInput] = useState("");
-  const [images, setImages] = useState<ImageRef[]>([]);
-  const [videos, setVideos] = useState<ImageRef[]>([]);
+  const [images, setImages] = useState<MediaRef[]>([]);
+  const [videos, setVideos] = useState<MediaRef[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [attachNote, setAttachNote] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -62,8 +62,8 @@ export function SessionView() {
   // caused by local state (composer input, menus) don't rebuild them.
   const { toolResults, toolImages, toolVideo } = useMemo(() => {
     const toolResults = new Map<string, string>();
-    const toolImages = new Map<string, ImageRef[]>();
-    const toolVideo = new Map<string, ImageRef[]>();
+    const toolImages = new Map<string, MediaRef[]>();
+    const toolVideo = new Map<string, MediaRef[]>();
     for (const m of session.messages) {
       if (m.role === "tool" && m.toolCallId) {
         toolResults.set(m.toolCallId, m.text);

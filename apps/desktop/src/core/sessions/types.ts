@@ -14,11 +14,12 @@ export interface Step {
   status: StepStatus;
 }
 
-// An attached image. `url` is a `data:` URL (local attachment) or an http(s) URL.
+// A media attachment, kind-agnostic (image/video today, audio when it arrives —
+// `mime` says what it is). `url` is a `data:` URL (local) or an http(s) URL.
 // `id` is stamped the first time the ref is persisted — it keys the media blob
 // in the durable tier so the bytes are written once, not on every persist (and
 // messages sharing the ref object — e.g. the media-feedback turn — share the blob).
-export interface ImageRef {
+export interface MediaRef {
   url: string;
   mime?: string;
   name?: string;
@@ -39,8 +40,8 @@ export interface Message {
   role: Role;
   text: string; // raw content — the answer, or a tool result (file/page content)
   thinking?: string; // reasoning stream (assistant); not resubmitted
-  images?: ImageRef[]; // image attachments (user) — sent as multimodal parts
-  video?: ImageRef[]; // generated video clips (tool output) — shown in the tool card, not sent to the model
+  images?: MediaRef[]; // image attachments — sent as multimodal parts (user/hidden turns)
+  video?: MediaRef[]; // video attachments — sent as video parts when the model declares video input
   files?: FileAttachment[]; // non-image attachments (user) — folded into content
   toolCalls?: ToolCall[]; // assistant: tools the model asked to call
   toolCallId?: string; // tool: which call this result answers

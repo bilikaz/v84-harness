@@ -6,7 +6,7 @@ export type {
   StepStatus,
   Role,
   Step,
-  ImageRef,
+  MediaRef,
   FileAttachment,
   Message,
   Tool,
