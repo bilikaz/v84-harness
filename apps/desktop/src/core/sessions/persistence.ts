@@ -19,7 +19,6 @@ import type { ImageRef, Message, Session } from "./types.ts";
 
 const log = rootLog.child("session.persistence");
 
-export const LEGACY_KEY = "v84-harness:sessions"; // pre-granular whole-profile blob
 export const INDEX_KEY = "v84-harness:sessions:index";
 export const msgsKey = (sid: string): string => `v84-harness:sessions:msgs:${sid}`;
 export const mediaPrefix = (sid: string): string => `v84-harness:media:${sid}:`;
@@ -40,7 +39,7 @@ export function toMeta(s: Session): SessionMeta {
 }
 
 // Coerce a persisted (possibly older-shape) session into the current model, so
-// upgrades don't break existing data. Shared by index load and legacy migration.
+// upgrades don't break existing data. Shared by index load.
 export function normalize(s: Partial<Session> & { messages?: Partial<Message>[] }): Session {
   return {
     id: s.id ?? crypto.randomUUID(),
@@ -153,29 +152,4 @@ export async function deleteSessionData(storage: Storage, sid: string): Promise<
   await storage.del(msgsKey(sid));
   const blobs = await storage.keys(mediaPrefix(sid));
   await Promise.all(blobs.map((k) => storage.del(k)));
-}
-
-// One-time upgrade from the pre-granular blob (everything under one key): split
-// it into index + per-session messages + media blobs, then delete the blob.
-// Returns the migrated index, or null when there's no legacy data.
-export async function migrateLegacy(storage: Storage, legacyRaw?: string | null): Promise<SessionsIndex | null> {
-  const raw = legacyRaw ?? (await storage.get(LEGACY_KEY));
-  if (!raw) return null;
-  const parsed = JSON.parse(raw) as { sessions?: Partial<Session>[]; activeId?: string };
-  if (!parsed.sessions?.length) return null;
-
-  const metas: SessionMeta[] = [];
-  for (const partial of parsed.sessions) {
-    const s = normalize(partial);
-    const bytes = await saveMessages(storage, s.id, s.messages);
-    metas.push({ ...toMeta(s), bytes });
-  }
-  const index: SessionsIndex = {
-    activeId: metas.some((m) => m.id === parsed.activeId) ? parsed.activeId! : metas[0].id,
-    sessions: metas,
-  };
-  await saveIndex(storage, index);
-  await storage.del(LEGACY_KEY);
-  log.info("migrated_legacy_blob", { sessions: metas.length, bytes: raw.length });
-  return index;
 }

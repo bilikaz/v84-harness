@@ -38,7 +38,6 @@ erDiagram
 | `sessions:index` | `SessionsIndex { activeId, sessions: SessionMeta[] }` | meta changes (create/delete/rename/switch/title) + every `persistSession` | boot |
 | `sessions:msgs:<sid>` | `Message[]` (media as `media:<id>` refs) | `turn:end` for the turn's session; compaction replace | boot (active session) + `ensureLoaded` on first open |
 | `media:<sid>:<id>` | one `data:` URL | once, when the ref is first persisted (id stamp = already stored) | `loadMessages` reinflation |
-| `v84-harness:sessions` | legacy whole-profile blob | never (pre-0021) | once, by `migrateLegacy` — then deleted |
 
 GC: `saveMessages` deletes this session's blobs not referenced by any stored
 message; `deleteSessionData` removes the msgs row + all `media:<sid>:*`.
@@ -142,8 +141,8 @@ sequenceDiagram
     participant D as durable tier
 
     Note over Store,D: boot
-    Store->>P: loadIndex / migrateLegacy / importFromIdb
-    P->>D: get index (+ legacy paths)
+    Store->>P: loadIndex (importFromIdb on first SQLite run)
+    P->>D: get index
     Store->>P: loadMessages(activeId)
     P->>D: get msgs + media blobs
     Store-->>UI: hydrated=true, notify

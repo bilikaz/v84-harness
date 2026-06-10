@@ -7,11 +7,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { LocalStorage } from "../src/lib/storage/index.ts";
 import {
   deleteSessionData,
-  LEGACY_KEY,
-  loadIndex,
   loadMessages,
   mediaPrefix,
-  migrateLegacy,
   saveMessages,
 } from "../src/core/sessions/persistence.ts";
 import type { ImageRef, Message } from "../src/core/sessions/types.ts";
@@ -72,35 +69,5 @@ describe("deleteSessionData", () => {
     await deleteSessionData(s, "s1");
     expect(await loadMessages(s, "s1")).toBeNull();
     expect(await s.keys(mediaPrefix("s1"))).toHaveLength(0);
-  });
-});
-
-describe("migrateLegacy", () => {
-  it("splits the pre-granular blob into index + rows + blobs and deletes it", async () => {
-    const s = await LocalStorage.create();
-    const legacy = {
-      activeId: "a",
-      sessions: [
-        { id: "a", title: "A", messages: [{ id: "m1", role: "user", text: "hello", images: [{ url: DATA_URL }] }] },
-        { id: "b", title: "B", messages: [{ id: "m2", role: "assistant", text: "yo" }] },
-      ],
-    };
-    await s.set(LEGACY_KEY, JSON.stringify(legacy));
-
-    const index = (await migrateLegacy(s))!;
-    expect(index.activeId).toBe("a");
-    expect(index.sessions.map((m) => m.id)).toEqual(["a", "b"]);
-    expect(index.sessions[0].bytes).toBeGreaterThan(0);
-    expect(await s.get(LEGACY_KEY)).toBeNull();
-    expect(await loadIndex(s)).not.toBeNull();
-
-    const a = (await loadMessages(s, "a"))!;
-    expect(a[0].text).toBe("hello");
-    expect(a[0].images![0].url).toBe(DATA_URL);
-  });
-
-  it("returns null when there is no legacy blob", async () => {
-    const s = await LocalStorage.create();
-    expect(await migrateLegacy(s)).toBeNull();
   });
 });

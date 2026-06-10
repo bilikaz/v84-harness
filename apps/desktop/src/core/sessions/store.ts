@@ -8,10 +8,8 @@ import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import {
   deleteSessionData,
-  LEGACY_KEY,
   loadIndex,
   loadMessages,
-  migrateLegacy,
   normalize,
   saveIndex,
   saveMessages,
@@ -150,14 +148,14 @@ async function importFromIdb(target: { name: string; set(k: string, v: string): 
 
 // Hydrate from the durable tier — the authoritative store. Reads the INDEX and
 // the ACTIVE session's messages only; everything else lazy-loads via
-// ensureLoaded. Falls back through: granular index → legacy single-key blob
-// (migrated in place) → cross-tier IDB import → fresh.
+// ensureLoaded. Falls back through: granular index → cross-tier IDB import →
+// fresh.
 void (async () => {
   try {
     const storage = await storageReady;
-    let index = (await loadIndex(storage)) ?? (await migrateLegacy(storage));
+    let index = await loadIndex(storage);
     if (!index && (await importFromIdb(storage))) {
-      index = (await loadIndex(storage)) ?? (await migrateLegacy(storage));
+      index = await loadIndex(storage);
     }
     if (index) {
       sessions = index.sessions.map((meta) => ({ ...normalize(meta), loaded: false }));
@@ -165,12 +163,6 @@ void (async () => {
       await ensureLoaded(activeId); // active transcript is part of first paint
     } else {
       await saveIndex(storage, currentIndex()); // first run — seed the index
-    }
-    // The pre-granular localStorage first-paint cache is gone; drop its key.
-    try {
-      localStorage.removeItem(LEGACY_KEY);
-    } catch {
-      /* private mode */
     }
   } catch (e) {
     log.warn("hydrate_failed", {
