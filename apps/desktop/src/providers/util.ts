@@ -1,9 +1,6 @@
-// Split a `data:<mime>;base64,<data>` URL into its parts. Returns null for
-// non-data (http) URLs, which providers pass through as a URL source instead.
-export function parseDataUrl(url: string): { mime: string; b64: string } | null {
-  const m = /^data:([^;]+);base64,(.*)$/s.exec(url);
-  return m ? { mime: m[1], b64: m[2] } : null;
-}
+// Data-URL parsing lives in lib/dataUrl.ts (the one source, shared with main +
+// the tools); re-exported here so the mappers keep their single util import.
+export { parseDataUrl } from "../lib/dataUrl.ts";
 
 // Parse tool-call arguments (a JSON string). Falls back to {} on malformed JSON
 // so a bad arguments blob doesn't crash the request mapping.

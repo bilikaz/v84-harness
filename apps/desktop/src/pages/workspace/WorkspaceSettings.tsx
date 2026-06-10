@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { FolderClosed, Trash2 } from "lucide-react";
 
 import { Modal } from "../../components/Modal.tsx";
+import { fieldInputFull } from "../settings/Field.tsx";
 import { cn } from "../../lib/cn.ts";
 import { useProvider } from "../../lib/settings.ts";
 import {
@@ -60,7 +61,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
             value={draft.name}
             onChange={(e) => set("name", e.target.value)}
             placeholder={draft.root.split(/[/\\]/).pop()}
-            className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+            className={fieldInputFull}
           />
         </Field>
 
@@ -68,7 +69,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
           <select
             value={draft.defaultModelId ?? ""}
             onChange={(e) => set("defaultModelId", e.target.value || undefined)}
-            className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+            className={fieldInputFull}
           >
             <option value="">Provider default ({provider.model || "unset"})</option>
             {(provider.models ?? []).map((m) => (
@@ -83,7 +84,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
           <select
             value={draft.isolation}
             onChange={(e) => set("isolation", e.target.value as Workspace["isolation"])}
-            className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+            className={fieldInputFull}
           >
             <option value="worktree">Worktree per session</option>
             <option value="direct">Work directly in the folder</option>
@@ -96,7 +97,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
             onChange={(e) => set("instructions", e.target.value || undefined)}
             rows={3}
             placeholder="e.g. This is a pnpm monorepo; run typecheck before finishing."
-            className="w-full resize-y rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+            className={`${fieldInputFull} resize-y`}
           />
         </Field>
 

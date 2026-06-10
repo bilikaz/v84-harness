@@ -1,9 +1,8 @@
-import { useSyncExternalStore } from "react";
+import { createStore } from "./store.ts";
 
-// Account store — identity + how the harness connects. localStorage for now;
-// swaps to the core/IPC layer alongside the other stores later. "offline" means
-// fully standalone (local models, no backend); "connected" links a future
-// company system (shared knowledge, plans, sync) — not wired yet.
+// Account store — identity + how the harness connects. "offline" means fully
+// standalone (local models, no backend); "connected" links a future company
+// system (shared knowledge, plans, sync) — not wired yet.
 const KEY = "v84-harness:account";
 
 export type Connection = "offline" | "connected";
@@ -26,43 +25,23 @@ const DEFAULTS: Account = {
   connection: "offline",
 };
 
-function read(): Account {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Account>) } : DEFAULTS;
-  } catch {
-    return DEFAULTS;
-  }
-}
-
-let current = read();
-const listeners = new Set<() => void>();
+const store = createStore<Account>(KEY, DEFAULTS);
 
 export function getAccount(): Account {
-  return current;
+  return store.get();
 }
 
 // The auth header future backend calls attach. Empty while offline / no token,
 // so callers can always spread it: { ...authHeader(), ...otherHeaders }.
 export function authHeader(): Record<string, string> {
-  return current.connection === "connected" && current.token
-    ? { Authorization: `Bearer ${current.token}` }
-    : {};
+  const { connection, token } = store.get();
+  return connection === "connected" && token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export function saveAccount(patch: Partial<Account>): void {
-  current = { ...current, ...patch };
-  localStorage.setItem(KEY, JSON.stringify(current));
-  for (const l of listeners) l();
-}
-
-function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => {
-    listeners.delete(l);
-  };
+  store.patch(patch);
 }
 
 export function useAccount(): Account {
-  return useSyncExternalStore(subscribe, getAccount, getAccount);
+  return store.use();
 }

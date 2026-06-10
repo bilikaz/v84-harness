@@ -77,6 +77,13 @@ export interface Heal {
   sessionId: string;
   correction: string;
 }
+// Transport retry fired mid-step (providers/transport.ts) → the step is being
+// re-sent from scratch, so wipe the partial output off the streaming assistant
+// placeholder.
+export interface StreamRetry {
+  sessionId: string;
+  message: string;
+}
 
 declare module "../../lib/bus.ts" {
   interface BusEvents {
@@ -92,6 +99,7 @@ declare module "../../lib/bus.ts" {
     "session:tool:result": ToolResultEvt;
     "session:assistant:open": AssistantOpen;
     "session:heal": Heal;
+    "session:stream:retry": StreamRetry;
     "session:imageFeedback": ImageFeedback;
   }
 }

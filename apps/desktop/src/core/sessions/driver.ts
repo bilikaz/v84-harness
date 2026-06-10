@@ -1,6 +1,6 @@
 import type { ModelConfig, ToolSpec } from "../../providers/index.ts";
 import type { ToolCall } from "../../providers/types.ts";
-import { streamModel } from "../../providers/index.ts";
+import { MAX_HEAL_ATTEMPTS, healCorrection, streamModel } from "../../providers/index.ts";
 import { dlog } from "../../providers/debug.ts";
 import type { FileAttachment, ImageRef } from "../../lib/types.ts";
 import { harness } from "../../lib/harness.ts";
@@ -11,7 +11,6 @@ import { PERMISSIONLESS_TOOLS, type GatedTool, type ToolName, type ToolMode, typ
 import { RENDERER_TOOLS, RENDERER_TOOL_SCHEMAS } from "../tools/renderer.ts";
 import { sessionBus as bus } from "./events.ts";
 import { createSession, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
-import { MAX_HEAL_ATTEMPTS, healCorrection } from "../heal.ts";
 
 // A validator for the model's final (no-tool) turn. Throws to reject — the
 // engine then injects a correction and lets the model retry (see runTurn).
@@ -113,6 +112,14 @@ async function runTurn(
           bus.emit("thinking", { sessionId: sid, delta: evt.delta });
         } else if (evt.type === "tool_call") {
           calls.push(evt.call);
+        } else if (evt.type === "retry") {
+          // Transport died mid-step and the router is re-sending — discard the
+          // attempt's partial output here and in the store.
+          text = "";
+          thinking = "";
+          thinkingDone = false;
+          calls.length = 0;
+          bus.emit("stream:retry", { sessionId: sid, message: evt.message });
         } else if (evt.type === "usage") {
           bus.emit("usage", { sessionId: sid, usage: evt.usage });
         } else if (evt.type === "error") {
@@ -149,47 +156,52 @@ async function runTurn(
         }
         break;
       }
-      // Attach the calls to the assistant message, then run each.
+      // Attach the calls to the assistant message, then run them all
+      // concurrently — results link back via toolCallId, so completion order
+      // doesn't matter. Approval-gated calls each queue a prompt; the modal
+      // shows them one at a time while the auto-approved calls keep running.
       bus.emit("tool:calls", { sessionId: sid, calls });
       const fedImages: ImageRef[] = []; // tool-produced images to show the vision agent this step
-      for (const call of calls) {
-        const mode = toolMode(ws, call.name as ToolName);
-        if (mode === 0) {
-          const why = !ws
-            ? `tool "${call.name}" needs a workspace folder — open one for this session to use it.`
-            : `tool "${call.name}" is disabled in this workspace.`;
-          bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: why });
-          continue;
-        }
-        if (mode === 1 && !(await requestApproval(sid, call))) {
-          bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: `the user denied the ${call.name} call.` });
-          continue;
-        }
-        let result: ToolResult;
-        try {
-          const name = call.name as ToolName;
-          const rendererTool = RENDERER_TOOLS[name];
-          if (rendererTool) {
-            // Renderer tools are self-contained — run them in-process (web + desktop).
-            const args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
-            result = await rendererTool.execute(args, { cwd: ws?.root ?? "", media: resolveMediaProvider() ?? undefined });
-          } else if (toolCtx) {
-            // Gated fs/Bash tools run via the main dispatcher.
-            result = await harness!.tools.exec(call, toolCtx);
-          } else {
-            result = { ok: false, output: `tool "${name}" is unavailable here.` };
+      await Promise.all(
+        calls.map(async (call) => {
+          const mode = toolMode(ws, call.name as ToolName);
+          if (mode === 0) {
+            const why = !ws
+              ? `tool "${call.name}" needs a workspace folder — open one for this session to use it.`
+              : `tool "${call.name}" is disabled in this workspace.`;
+            bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: why });
+            return;
           }
-        } catch (e) {
-          result = { ok: false, output: `tool execution failed: ${(e as Error).message}` };
-        }
-        const output = result.output;
-        // GeneratedImage → ImageRef for display + model feedback.
-        const images = result.images?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
-        // Generated video → display only (not fed back to the model).
-        const video = result.video?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
-        bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, video });
-        if (images?.length) fedImages.push(...images);
-      }
+          if (mode === 1 && !(await requestApproval(sid, call))) {
+            bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: `the user denied the ${call.name} call.` });
+            return;
+          }
+          let result: ToolResult;
+          try {
+            const name = call.name as ToolName;
+            const rendererTool = RENDERER_TOOLS[name];
+            if (rendererTool) {
+              // Renderer tools are self-contained — run them in-process (web + desktop).
+              const args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
+              result = await rendererTool.execute(args, { cwd: ws?.root ?? "", media: resolveMediaProvider() ?? undefined });
+            } else if (toolCtx) {
+              // Gated fs/Bash tools run via the main dispatcher.
+              result = await harness!.tools.exec(call, toolCtx);
+            } else {
+              result = { ok: false, output: `tool "${name}" is unavailable here.` };
+            }
+          } catch (e) {
+            result = { ok: false, output: `tool execution failed: ${(e as Error).message}` };
+          }
+          const output = result.output;
+          // GeneratedImage → ImageRef for display + model feedback.
+          const images = result.images?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
+          // Generated video → display only (not fed back to the model).
+          const video = result.video?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
+          bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, video });
+          if (images?.length) fedImages.push(...images);
+        }),
+      );
       // Feed any generated images back as a hidden user turn so a vision agent
       // can inspect its own output (tool-role images aren't sent to the model —
       // see toChatMessages). Guardrail: only when the model declares image input

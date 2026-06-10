@@ -3,6 +3,7 @@ import type { FileAttachment, ImageRef, Message, Session, ToolCall } from "../..
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
 import { idbGet, idbSet } from "../../lib/idb.ts";
+import { createListeners } from "../../lib/store.ts";
 
 // Session store — the single source of truth for multi-session state (sidebar
 // list, chat view, right-panel progress). Plain external store; React binds via
@@ -92,10 +93,9 @@ let hydrated = false;
 // the auto-compaction generates).
 export const CONTEXT_RESERVE = 50_000;
 
-const listeners = new Set<() => void>();
-export function notify(): void {
-  for (const l of listeners) l();
-}
+const reg = createListeners();
+export const notify = reg.notify;
+export const subscribe = reg.subscribe;
 export function persist(): void {
   const data = JSON.stringify({ sessions, activeId });
   // localStorage is a fast cache for the instant first paint, but it's capped at
@@ -139,12 +139,6 @@ void (async () => {
     notify(); // re-render with the IDB state and flip useHydrated()
   }
 })();
-export function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => {
-    listeners.delete(l);
-  };
-}
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export function getSessions(): Session[] {
@@ -299,6 +293,19 @@ export function pushImageFeedback(sid: string, images: ImageRef[]): void {
     hidden: true,
   };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
+  notify();
+}
+
+// Wipe the streaming assistant placeholder after a mid-step transport retry —
+// the request is re-sent from scratch, so partial text/thinking/calls must go.
+export function resetLast(sid: string): void {
+  sessions = sessions.map((s) => {
+    if (s.id !== sid) return s;
+    const messages = s.messages.slice();
+    const i = messages.length - 1;
+    messages[i] = { ...messages[i], text: "", thinking: undefined, toolCalls: undefined };
+    return { ...s, messages };
+  });
   notify();
 }
 

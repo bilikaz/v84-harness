@@ -11,6 +11,7 @@ import {
   pushImageFeedback,
   pushToolResult,
   pushTurn,
+  resetLast,
   setLastToolCalls,
   setStreaming,
 } from "./store.ts";
@@ -36,6 +37,7 @@ const offs: Array<() => void> = [
   bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.video)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
   bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),
+  bus.on("stream:retry", (e) => resetLast(e.sessionId)),
   bus.on("imageFeedback", (e) => pushImageFeedback(e.sessionId, e.images)),
 
   // Usage meter — count input + output (normalized to include thinking).

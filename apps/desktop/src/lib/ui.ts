@@ -1,72 +1,29 @@
-import { useSyncExternalStore } from "react";
+import { createStore } from "./store.ts";
 
-// Layout / UI state (not domain data). External store so the shell (App) and
-// widgets (the composer's panel toggle) share it without prop threading.
+// Layout / UI state (not domain data). External stores so the shell (App) and
+// widgets (the composer's panel toggle) share them without prop threading.
+
 // Persisted so the panel stays where you left it.
-const KEY = "v84-harness:ui";
-
-interface UiState {
-  rightPanel: boolean;
-}
-
-function load(): UiState {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return { rightPanel: true, ...(JSON.parse(raw) as Partial<UiState>) };
-  } catch {
-    /* ignore */
-  }
-  return { rightPanel: true };
-}
-
-let state: UiState = load();
-const listeners = new Set<() => void>();
-
-function set(patch: Partial<UiState>): void {
-  state = { ...state, ...patch };
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* ignore */
-  }
-  for (const l of listeners) l();
-}
-
-function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  return () => {
-    listeners.delete(l);
-  };
-}
+const panel = createStore<{ rightPanel: boolean }>("v84-harness:ui", { rightPanel: true });
 
 export function toggleRightPanel(): void {
-  set({ rightPanel: !state.rightPanel });
+  panel.patch({ rightPanel: !panel.get().rightPanel });
 }
 
 export function useRightPanel(): boolean {
-  return useSyncExternalStore(
-    subscribe,
-    () => state.rightPanel,
-    () => state.rightPanel,
-  );
+  return panel.useSelect((s) => s.rightPanel);
 }
 
 // Lightbox — the image URL currently shown enlarged, or null. Transient (not
 // persisted): clicking an image opens it; Escape / clicking the backdrop closes.
-let lightbox: string | null = null;
+const lightbox = createStore<{ url: string | null }>(null, { url: null });
+
 export function openLightbox(url: string): void {
-  lightbox = url;
-  for (const l of listeners) l();
+  lightbox.set({ url });
 }
 export function closeLightbox(): void {
-  if (lightbox === null) return;
-  lightbox = null;
-  for (const l of listeners) l();
+  if (lightbox.get().url !== null) lightbox.set({ url: null });
 }
 export function useLightbox(): string | null {
-  return useSyncExternalStore(
-    subscribe,
-    () => lightbox,
-    () => lightbox,
-  );
+  return lightbox.useSelect((s) => s.url);
 }

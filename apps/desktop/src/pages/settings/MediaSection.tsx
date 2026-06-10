@@ -1,9 +1,8 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw } from "lucide-react";
 
-import { Row, fieldInput } from "./Field.tsx";
+import { DetectButton, Row, fieldInput, fieldInputFlex } from "./Field.tsx";
 import { detectMediaModels, saveMediaConfig, useMediaConfig } from "../../lib/media.ts";
+import { useDetection } from "../../lib/hooks.ts";
 
 // Image-generation provider settings (the container the GenerateImage tool
 // posts to). Separate endpoint from the chat provider. The tool stays inert
@@ -11,18 +10,10 @@ import { detectMediaModels, saveMediaConfig, useMediaConfig } from "../../lib/me
 export function MediaSection() {
   const { t } = useTranslation();
   const cfg = useMediaConfig();
-  const [testing, setTesting] = useState(false);
-  const [msg, setMsg] = useState("");
   const hasModels = (cfg.models?.length ?? 0) > 0;
-
-  async function test() {
-    if (testing) return;
-    setTesting(true);
-    setMsg("");
-    const r = await detectMediaModels();
-    setTesting(false);
-    setMsg(r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error }));
-  }
+  const { detecting: testing, msg, detect: test } = useDetection(detectMediaModels, (r) =>
+    r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error }),
+  );
 
   return (
     <div className="max-w-xl">
@@ -44,7 +35,7 @@ export function MediaSection() {
             <select
               value={cfg.model ?? ""}
               onChange={(e) => saveMediaConfig({ model: e.target.value })}
-              className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+              className={fieldInputFlex}
             >
               <option value="">{t("media.modelDefault")}</option>
               {cfg.model && !cfg.models!.includes(cfg.model) && <option value={cfg.model}>{cfg.model}</option>}
@@ -59,19 +50,10 @@ export function MediaSection() {
               value={cfg.model ?? ""}
               onChange={(e) => saveMediaConfig({ model: e.target.value })}
               placeholder={t("media.modelPlaceholder")}
-              className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+              className={fieldInputFlex}
             />
           )}
-          <button
-            type="button"
-            onClick={test}
-            disabled={testing || !cfg.baseUrl}
-            title={t("media.detectHint")}
-            className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={testing ? "animate-spin" : ""} />
-            {t("media.detect")}
-          </button>
+          <DetectButton label={t("media.detect")} busy={testing} disabled={!cfg.baseUrl} title={t("media.detectHint")} onClick={test} />
         </div>
       </Row>
       {msg && <p className="py-2 text-xs text-neutral-500">{msg}</p>}

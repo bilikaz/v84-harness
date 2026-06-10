@@ -1,4 +1,6 @@
-import type { ChatMessage, ModelConfig, StreamEvent } from "./types.ts";
+import type { ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
+import { parseSSE } from "./sse.ts";
+import { sseRequest } from "./transport.ts";
 import { parseDataUrl, safeJson } from "./util.ts";
 import { dlog } from "./debug.ts";
 
@@ -14,31 +16,38 @@ function toGeminiContents(messages: ChatMessage[]): unknown[] {
   const nameById = new Map<string, string>();
   for (const m of messages) for (const tc of m.toolCalls ?? []) nameById.set(tc.id, tc.name);
 
-  return messages.map((m) => {
+  const out: { role: string; parts: Record<string, unknown>[] }[] = [];
+  for (const m of messages) {
     if (m.role === "tool") {
       const name = (m.toolCallId && nameById.get(m.toolCallId)) || "tool";
-      return { role: "user", parts: [{ functionResponse: { name, response: { result: m.content } } }] };
-    }
-    if (m.role === "assistant" && m.toolCalls?.length) {
-      return {
+      // All functionResponses answering one model turn go in a single user
+      // content — fold consecutive results together.
+      const part = { functionResponse: { name, response: { result: m.content } } };
+      const prev = out[out.length - 1];
+      if (prev?.role === "user" && prev.parts[0]?.functionResponse) prev.parts.push(part);
+      else out.push({ role: "user", parts: [part] });
+    } else if (m.role === "assistant" && m.toolCalls?.length) {
+      out.push({
         role: "model",
         parts: [
           ...(m.content ? [{ text: m.content }] : []),
           ...m.toolCalls.map((tc) => ({ functionCall: { name: tc.name, args: safeJson(tc.arguments) } })),
         ],
-      };
+      });
+    } else {
+      out.push({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [
+          ...(m.content ? [{ text: m.content }] : []),
+          ...(m.images ?? []).flatMap((im) => {
+            const d = parseDataUrl(im.url);
+            return d ? [{ inline_data: { mime_type: d.mime, data: d.b64 } }] : [];
+          }),
+        ],
+      });
     }
-    return {
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [
-        ...(m.content ? [{ text: m.content }] : []),
-        ...(m.images ?? []).flatMap((im) => {
-          const d = parseDataUrl(im.url);
-          return d ? [{ inline_data: { mime_type: d.mime, data: d.b64 } }] : [];
-        }),
-      ],
-    };
-  });
+  }
+  return out;
 }
 
 // Gemini streaming: streamGenerateContent with alt=sse returns SSE.
@@ -47,70 +56,49 @@ export async function* streamGemini(
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
+  tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
   const url = `${baseFor(cfg)}/v1beta/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cfg.apiKey)}`;
   const body = {
     ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+    // ToolSpec is the OpenAI function shape — Gemini's functionDeclarations use
+    // the same {name, description, parameters} fields.
+    ...(tools?.length ? { tools: [{ functionDeclarations: tools.map((t) => t.function) }] } : {}),
     contents: toGeminiContents(messages),
   };
   dlog("gemini →", url.replace(/key=[^&]+/, "key=***"), body);
-  const res = await fetch(url, {
+  const res = await sseRequest("gemini", url, {
     method: "POST",
     signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    dlog("gemini ✗", res.status, res.statusText, errText);
-    yield { type: "error", message: `${res.status} ${res.statusText} ${errText}`.trim() };
-    return;
-  }
-
-  if (!res.body) {
-    yield { type: "error", message: "No body" };
-    return;
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let lastUsage: any = null;
-
-  try {
-    outer: while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, idx).replace(/\r$/, "");
-        buffer = buffer.slice(idx + 1);
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trimStart();
-        if (!payload) continue;
-        let evt: any;
-        try {
-          evt = JSON.parse(payload);
-        } catch {
-          continue;
-        }
-        const parts = evt.candidates?.[0]?.content?.parts ?? [];
-        for (const p of parts) {
-          if (typeof p.text !== "string") continue;
-          if (p.thought) yield { type: "thinking", delta: p.text };
-          else yield { type: "text", delta: p.text };
-        }
-        if (evt.usageMetadata) lastUsage = evt.usageMetadata;
-        if (signal.aborted) break outer;
-      }
-    }
-  } finally {
+  for await (const data of parseSSE(res, signal)) {
+    if (!data) continue;
+    let evt: any;
     try {
-      reader.releaseLock();
+      evt = JSON.parse(data);
     } catch {
-      /* noop */
+      continue;
     }
+    const parts = evt.candidates?.[0]?.content?.parts ?? [];
+    for (const p of parts) {
+      if (p.functionCall?.name) {
+        // Gemini doesn't assign call ids (results are keyed by name) —
+        // synthesize one so the app can link call ↔ result like the others.
+        yield {
+          type: "tool_call",
+          call: { id: `call_${crypto.randomUUID()}`, name: p.functionCall.name, arguments: JSON.stringify(p.functionCall.args ?? {}) },
+        };
+        continue;
+      }
+      if (typeof p.text !== "string") continue;
+      if (p.thought) yield { type: "thinking", delta: p.text };
+      else yield { type: "text", delta: p.text };
+    }
+    if (evt.usageMetadata) lastUsage = evt.usageMetadata;
   }
 
   if (lastUsage) {

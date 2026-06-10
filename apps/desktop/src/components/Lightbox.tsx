@@ -1,38 +1,20 @@
-import { useEffect } from "react";
 import { Download, X } from "lucide-react";
 
 import { closeLightbox, useLightbox } from "../lib/ui.ts";
-import { harness, isElectron } from "../lib/harness.ts";
+import { useEscapeKey } from "../lib/hooks.ts";
+import { saveMedia } from "../lib/saveMedia.ts";
 
 // Full-screen image viewer. Opened via openLightbox(url) from any thumbnail;
 // dismissed by clicking the backdrop, the image, the close button, or Escape.
 export function Lightbox() {
   const url = useLightbox();
-
-  useEffect(() => {
-    if (!url) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeLightbox();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [url]);
+  useEscapeKey(!!url, closeLightbox);
 
   if (!url) return null;
 
-  // Save the image: native Save dialog in Electron, browser download on the web.
   async function save(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!url) return;
-    if (isElectron()) {
-      await harness!.saveImage(url);
-    } else {
-      const a = document.createElement("a");
-      a.href = url;
-      const ext = /^data:image\/([\w.+-]+)/.exec(url)?.[1];
-      a.download = `generated.${ext === "jpeg" ? "jpg" : (ext ?? "png")}`;
-      a.click();
-    }
+    if (url) await saveMedia(url, "image");
   }
 
   return (

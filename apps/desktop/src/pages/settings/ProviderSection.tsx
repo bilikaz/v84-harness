@@ -1,26 +1,17 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw } from "lucide-react";
 
-import { Row, fieldInput } from "./Field.tsx";
+import { DetectButton, Row, fieldInput, fieldInputBare, fieldInputFlex } from "./Field.tsx";
 import { detectModels, saveProvider, useProvider } from "../../lib/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
+import { useDetection } from "../../lib/hooks.ts";
 import type { ProviderKind, ReasoningEffort } from "../../providers/types.ts";
 
 export function ProviderSection() {
   const { t } = useTranslation();
   const cfg = useProvider();
-  const [detecting, setDetecting] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  async function detect() {
-    if (detecting) return;
-    setDetecting(true);
-    setMsg("");
-    const r = await detectModels();
-    setDetecting(false);
-    setMsg(r.ok ? t("provider.found", { count: r.count }) : t("provider.failed", { error: r.error }));
-  }
+  const { detecting, msg, detect } = useDetection(detectModels, (r) =>
+    r.ok ? t("provider.found", { count: r.count }) : t("provider.failed", { error: r.error }),
+  );
 
   const hasModels = (cfg.models?.length ?? 0) > 0;
   // System reserve can't go below 10% of the context window.
@@ -61,7 +52,7 @@ export function ProviderSection() {
               onChange={(e) =>
                 saveProvider({ model: e.target.value, contextLength: cfg.modelLimits?.[e.target.value] })
               }
-              className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
+              className={fieldInputFlex}
             >
               {cfg.model && !cfg.models!.includes(cfg.model) && <option value={cfg.model}>{cfg.model}</option>}
               {cfg.models!.map((m) => (
@@ -71,22 +62,9 @@ export function ProviderSection() {
               ))}
             </select>
           ) : (
-            <input
-              value={cfg.model}
-              onChange={(e) => saveProvider({ model: e.target.value })}
-              className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-neutral-400"
-            />
+            <input value={cfg.model} onChange={(e) => saveProvider({ model: e.target.value })} className={fieldInputFlex} />
           )}
-          <button
-            type="button"
-            onClick={detect}
-            disabled={detecting}
-            title="Detect available models"
-            className="flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={detecting ? "animate-spin" : ""} />
-            {t("provider.detect")}
-          </button>
+          <DetectButton label={t("provider.detect")} busy={detecting} title="Detect available models" onClick={detect} />
         </div>
       </Row>
       {msg && <p className="py-2 text-xs text-neutral-500">{msg}</p>}
@@ -163,7 +141,7 @@ export function ProviderSection() {
               if (v !== undefined && minReserve && v < minReserve) saveProvider({ contextReserve: minReserve });
             }}
             placeholder="50000"
-            className={`w-full rounded-lg border px-3 py-1.5 text-sm outline-none ${
+            className={`w-full ${fieldInputBare} ${
               reserveBelowMin ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-neutral-400"
             }`}
           />

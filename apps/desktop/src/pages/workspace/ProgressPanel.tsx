@@ -7,6 +7,7 @@ import { useProvider } from "../../lib/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import type { ModelConfig } from "../../providers/types.ts";
 import { cn } from "../../lib/cn.ts";
+import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { Modal } from "../../components/Modal.tsx";
 
 // A right-panel contribution: the active session's progress (DAG steps),
@@ -109,25 +110,16 @@ function SummarizeControl({ sid, cfg, ratio }: { sid: string; cfg: ModelConfig; 
               (including attached images and files) to free up the context window. The model keeps the summary
               and continues from it. This can’t be undone.
             </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirm(false)}
-                className="rounded-lg px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirm(false);
-                  void compact(sid, cfg);
-                }}
-                className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700"
-              >
-                Summarize
-              </button>
-            </div>
+            <ConfirmActions
+              className="mt-5 flex justify-end gap-2"
+              cancelLabel="Cancel"
+              confirmLabel="Summarize"
+              onCancel={() => setConfirm(false)}
+              onConfirm={() => {
+                setConfirm(false);
+                void compact(sid, cfg);
+              }}
+            />
           </div>
         </Modal>
       )}

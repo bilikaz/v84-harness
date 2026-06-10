@@ -1,5 +1,5 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import { streamModel } from "../../providers/index.ts";
+import { collectText } from "../../providers/index.ts";
 import { pt } from "../../lib/prompts.ts";
 import { sessionBus as bus } from "./events.ts";
 import { getSession, setTitle, toChatMessages } from "./store.ts";
@@ -30,16 +30,10 @@ async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
   let title = "";
   let thinkingChars = 0;
   try {
-    for await (const evt of streamModel(namingCfg, messages, new AbortController().signal, session.system || undefined)) {
-      if (evt.type === "text") title += evt.delta;
-      else if (evt.type === "thinking") thinkingChars += evt.delta.length;
-      else if (evt.type === "error") {
-        console.error("[naming] LLM returned an error:", evt.message);
-        return;
-      }
-    }
+    const controller = new AbortController();
+    ({ text: title, thinkingChars } = await collectText(namingCfg, messages, controller.signal, session.system || undefined));
   } catch (e) {
-    console.error("[naming] request threw:", e);
+    console.error("[naming] request failed:", e);
     return;
   }
 

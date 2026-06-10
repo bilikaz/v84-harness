@@ -4,3 +4,18 @@ export function fmtTokens(n: number): string {
   if (n >= 1000) return `${Math.round(n / 1000)}k`;
   return String(n);
 }
+
+// Strip a leading ```json / ``` fence (and trailing ```), so a model that wraps
+// its JSON answer in a code block still parses.
+export function stripFences(text: string): string {
+  return text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+}
+
+// Trailing-slash-free base URL, for `${base}/path` concatenation.
+export function trimBase(url: string): string {
+  return url.replace(/\/+$/, "");
+}

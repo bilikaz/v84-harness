@@ -86,5 +86,8 @@ export type StreamEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_call"; call: ToolCall } // a complete tool call the model asked for
   | { type: "usage"; usage: StreamUsage }
+  // Transport failed and the request is being re-sent from scratch (see
+  // providers/transport.ts) — consumers must discard this step's partial output.
+  | { type: "retry"; message: string }
   | { type: "error"; message: string }
   | { type: "done" };

@@ -1,8 +1,7 @@
 import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedImage } from "./shared.ts";
-import { getProvider } from "../../lib/settings.ts";
-import { streamModel } from "../../providers/index.ts";
-import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import { healLoop, type HealMessage } from "../heal.ts";
+import { bytesToB64, mimeToExt } from "../../lib/dataUrl.ts";
+import { trimBase } from "../../lib/format.ts";
+import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt, type Quality } from "./media.ts";
 
 // Generate an image from a prompt via the configured media provider (a local
 // container, e.g. Cosmos). A thin step: POST the prompt → get image bytes →
@@ -21,21 +20,10 @@ import { healLoop, type HealMessage } from "../heal.ts";
 // Quality presets — the agent picks one; users never see raw steps/guidance.
 // guidance stays ~6 across all (high guidance DEGRADES, it's not a quality
 // slider); quality scales with sampling steps. Starting values — tune as needed.
-type Quality = "low" | "good" | "super";
 const QUALITY: Record<Quality, { steps: number; guidance: number; flowShift: number }> = {
   low: { steps: 40, guidance: 6, flowShift: 10 }, // fast drafts
   good: { steps: 60, guidance: 6, flowShift: 10 }, // default
   super: { steps: 80, guidance: 6, flowShift: 10 }, // final / hero images
-};
-
-// Legal Cosmos aspect ratios → [w, h]. The model picks one; we derive height
-// from the width and clamp to the configured max.
-const ASPECTS: Record<string, [number, number]> = {
-  "1:1": [1, 1],
-  "16:9": [16, 9],
-  "9:16": [9, 16],
-  "4:3": [4, 3],
-  "3:4": [3, 4],
 };
 
 export const generateImageTool: Tool = {
@@ -102,22 +90,14 @@ export const generateImageTool: Tool = {
       return { ok: false, output: `GenerateImage rejected: width must be a positive integer.` };
     }
     const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "1:1";
-    const [aw, ah] = ASPECTS[aspect];
-    let w = Math.min(reqW ?? max?.w ?? 1024, max?.w ?? Infinity);
-    let h = Math.round((w * ah) / aw);
-    if (max?.h && h > max.h) {
-      w = Math.round((w * max.h) / h);
-      h = max.h;
-    }
-    w = Math.max(16, Math.round(w / 16) * 16); // diffusion-friendly multiples of 16
-    h = Math.max(16, Math.round(h / 16) * 16);
+    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, 1024);
     const size = `${w}x${h}`; // the ONE source of dimensions — sent as the top-level `size`
 
-    const quality: Quality = args.quality === "low" || args.quality === "super" ? args.quality : "good";
+    const quality = pickQuality(args.quality);
     // Upsample the prompt into Cosmos's structured-JSON prompt with our main chat
     // LLM (the image endpoint can't — its chat returns images). It produces only
     // CONTENT — dimensions live solely in `size`. The tool owns this; core doesn't.
-    const finalPrompt = await upsamplePrompt(prompt);
+    const finalPrompt = await upsamplePrompt({ prompt, system: UPSAMPLE_SYSTEM, requiredKey: "comprehensive_t2i_caption" });
 
     try {
       const { b64, mime } = await generate(media, finalPrompt, {
@@ -128,8 +108,7 @@ export const generateImageTool: Tool = {
 
       // Return as a data-URL — it rides on the message and persists to
       // localStorage like any attached image. No files, no workspace.
-      const ext = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
-      const image: GeneratedImage = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${ext}` };
+      const image: GeneratedImage = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
         output: `Generated an image (shown to you above). Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
@@ -151,7 +130,7 @@ async function generate(
   opts: { size?: string; quality: Quality; negativePrompt?: string },
 ): Promise<{ b64: string; mime: string }> {
   const q = QUALITY[opts.quality];
-  const res = await fetch(`${media.baseUrl.replace(/\/$/, "")}/images/generations`, {
+  const res = await fetch(`${trimBase(media.baseUrl)}/images/generations`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -169,10 +148,7 @@ async function generate(
       num_inference_steps: q.steps,
       guidance_scale: q.guidance,
       flow_shift: q.flowShift,
-      // Fresh random seed per call — without it the server reuses a fixed seed
-      // and consecutive generations come out correlated (artifacts bleed across
-      // prompts). Each request should be independent.
-      seed: Math.floor(Math.random() * 2_147_483_647),
+      seed: randomSeed(),
       n: 1,
       response_format: "b64_json",
     }),
@@ -188,32 +164,12 @@ async function generate(
     return { b64: first.b64_json, mime: fmt === "jpg" || fmt === "jpeg" ? "image/jpeg" : `image/${fmt}` };
   }
   if (first?.url) {
-    // Some servers return a URL instead of bytes — fetch and inline it. Portable
-    // base64 (no node Buffer) so this module runs in the renderer too.
+    // Some servers return a URL instead of bytes — fetch and inline it.
     const img = await fetch(first.url);
     if (!img.ok) throw new Error(`fetching generated image URL failed: ${img.status}`);
-    const bytes = new Uint8Array(await img.arrayBuffer());
-    let bin = "";
-    for (const b of bytes) bin += String.fromCharCode(b);
-    const b64 = typeof btoa !== "undefined" ? btoa(bin) : Buffer.from(bin, "binary").toString("base64");
-    const mime = img.headers.get("content-type") || "image/png";
-    return { b64, mime };
+    return { b64: bytesToB64(new Uint8Array(await img.arrayBuffer())), mime: img.headers.get("content-type") || "image/png" };
   }
   throw new Error("generation response had no image (expected data[0].b64_json or data[0].url)");
-}
-
-// Coerce a tool arg to a positive integer, or undefined if it isn't one.
-function toInt(v: unknown): number | undefined {
-  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
-  return Number.isInteger(n) && n > 0 ? n : undefined;
-}
-
-// Parse an operator-written "WxH" max into numbers (tolerate x, _, -, * and
-// spaces, since people write it however).
-function parseDims(s?: string): { w: number; h: number } | null {
-  if (!s) return null;
-  const m = /^\s*(\d+)\s*[x_*-]\s*(\d+)\s*$/i.exec(s);
-  return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
 // The Cosmos text2image structured-prompt schema, verbatim from cosmos-framework
@@ -246,48 +202,3 @@ const UPSAMPLE_SYSTEM =
   "field doesn't apply (e.g. non-human subjects). Do NOT add 'resolution' or 'aspect_ratio' — the system sets " +
   "the image dimensions. Output ONLY the JSON object — no markdown, no code fences, no commentary.";
 
-// Upsample a short prompt into Cosmos's structured-JSON prompt using the app's
-// main chat LLM at full strength (reasoning + token budget as configured). The
-// heal loop re-prompts up to 3× if the output doesn't parse/validate. resolution
-// + aspect_ratio are forced to match the requested size. Falls back to the raw
-// prompt if no chat model is configured or it can't produce valid JSON.
-async function upsamplePrompt(prompt: string): Promise<string> {
-  const cfg = getProvider();
-  if (!cfg.baseUrl || !cfg.model) return prompt;
-  try {
-    const { value: obj } = await healLoop<Record<string, unknown>>({
-      messages: [{ role: "user", content: prompt }],
-      call: (msgs) => runChat(cfg, msgs),
-      validate: validateUpsample,
-      maxAttempts: 3,
-    });
-    // Content only — dimensions are carried by the top-level `size`, not here.
-    return JSON.stringify(obj);
-  } catch {
-    return prompt;
-  }
-}
-
-// Run one chat completion over the heal conversation, returning the model's text.
-async function runChat(cfg: ModelConfig, msgs: HealMessage[]): Promise<string> {
-  const messages: ChatMessage[] = msgs.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
-  let out = "";
-  for await (const evt of streamModel(cfg, messages, new AbortController().signal, UPSAMPLE_SYSTEM)) {
-    if (evt.type === "text") out += evt.delta;
-    else if (evt.type === "error") throw new Error(evt.message);
-  }
-  return out;
-}
-
-// Validate the upsampler output: valid JSON object with the key caption +
-// subjects. Throws (→ heal) on failure. Returns the parsed object.
-function validateUpsample(text: string): Record<string, unknown> {
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  const obj = JSON.parse(cleaned) as Record<string, unknown>;
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new Error("output must be a single JSON object");
-  if (typeof obj.comprehensive_t2i_caption !== "string" || !obj.comprehensive_t2i_caption.trim()) {
-    throw new Error("missing non-empty 'comprehensive_t2i_caption'");
-  }
-  if (!Array.isArray(obj.subjects)) throw new Error("missing 'subjects' array");
-  return obj;
-}

@@ -4,29 +4,22 @@
 
 import { writeFile } from "node:fs/promises";
 
+import { mimeToExt, parseDataUrl } from "../lib/dataUrl.ts";
+
 type Electron = typeof import("electron");
 
 // Returns the written path, or null if the user cancelled or the input wasn't
 // a recognized image/video data URL.
 export async function saveDataUrl(dialog: Electron["dialog"], dataUrl: string): Promise<string | null> {
-  const m = /^data:((?:image|video)\/[\w.+-]+);base64,(.*)$/s.exec(dataUrl);
-  if (!m) return null;
-  const [, mime, b64] = m;
-  const isVideo = mime.startsWith("video/");
-  const ext = isVideo
-    ? mime.includes("webm")
-      ? "webm"
-      : mime.split("/")[1] || "mp4"
-    : mime === "image/jpeg"
-      ? "jpg"
-      : mime === "image/webp"
-        ? "webp"
-        : mime.split("/")[1] || "png";
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed || !/^(image|video)\//.test(parsed.mime)) return null;
+  const isVideo = parsed.mime.startsWith("video/");
+  const ext = mimeToExt(parsed.mime);
   const res = await dialog.showSaveDialog({
     defaultPath: `generated.${ext}`,
     filters: [{ name: isVideo ? "Video" : "Image", extensions: [ext] }],
   });
   if (res.canceled || !res.filePath) return null;
-  await writeFile(res.filePath, Buffer.from(b64, "base64"));
+  await writeFile(res.filePath, Buffer.from(parsed.b64, "base64"));
   return res.filePath;
 }

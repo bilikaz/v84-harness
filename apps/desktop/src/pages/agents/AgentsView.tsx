@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FileText, Pencil, Play, Plus, Trash2, X } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Pencil, Play, Plus, Trash2 } from "lucide-react";
 
+import { AttachmentList } from "../../components/AttachmentList.tsx";
+import { ConfirmActions } from "../../components/ConfirmActions.tsx";
+import { Markdown } from "../../components/Markdown.tsx";
 import { buildValidator, createAgent, deleteAgent, saveAgent, useAgents } from "../../lib/agents.ts";
 import { runAgent } from "../../core/sessions/index.ts";
 import { readAttachments } from "../../lib/attachments.ts";
@@ -179,22 +180,13 @@ export function AgentsView() {
                   {confirmDelete && (
                     <div className="absolute right-0 top-11 z-20 w-60 rounded-xl border border-neutral-200 bg-white p-3 shadow-xl">
                       <p className="text-sm text-neutral-700">{t("agents.confirmDelete")}</p>
-                      <div className="mt-3 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDelete(false)}
-                          className="rounded-lg px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-100"
-                        >
-                          {t("agents.cancel")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={doDelete}
-                          className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
-                        >
-                          {t("agents.delete")}
-                        </button>
-                      </div>
+                      <ConfirmActions
+                        cancelLabel={t("agents.cancel")}
+                        confirmLabel={t("agents.delete")}
+                        onCancel={() => setConfirmDelete(false)}
+                        onConfirm={doDelete}
+                        danger
+                      />
                     </div>
                   )}
                 </div>
@@ -246,38 +238,12 @@ export function AgentsView() {
 
                 {/* Attachments for this run — images preview as thumbnails,
                     other files as chips. Not saved to the playbook. */}
-                {(images.length > 0 || files.length > 0) && (
-                  <div className="flex flex-wrap gap-2">
-                    {images.map((im, i) => (
-                      <div key={`img-${i}`} className="relative">
-                        <img src={im.url} alt={im.name ?? ""} className="h-16 w-16 rounded-lg object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                          className="absolute -right-1.5 -top-1.5 rounded-full bg-neutral-800 p-0.5 text-white hover:bg-neutral-600"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                    {files.map((f, i) => (
-                      <span
-                        key={`file-${i}`}
-                        className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600"
-                      >
-                        <FileText size={12} className="shrink-0 text-neutral-400" />
-                        <span className="max-w-[12rem] truncate">{f.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
-                          className="text-neutral-400 hover:text-neutral-700"
-                        >
-                          <X size={11} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <AttachmentList
+                  images={images}
+                  files={files}
+                  onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+                  onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                />
                 <input ref={fileRef} type="file" multiple hidden onChange={onPickFiles} />
                 <button
                   type="button"
@@ -366,9 +332,7 @@ function Field(props: {
           className="resize-y rounded-lg border border-neutral-200 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-neutral-400"
         />
       ) : props.value ? (
-        <div className="prose prose-sm prose-neutral max-w-none rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{props.value}</ReactMarkdown>
-        </div>
+        <Markdown text={props.value} className="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2" />
       ) : (
         <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2 text-sm text-neutral-400">—</div>
       )}

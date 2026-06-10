@@ -1,7 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
 import { cn } from "../lib/cn.ts";
+import { useEscapeKey } from "../lib/hooks.ts";
 
 // Reusable centered modal: backdrop (click to close), ESC to close, a panel
 // with a top-right close button. Generic on purpose — Settings is one user;
@@ -14,15 +15,7 @@ export function Modal(props: {
   className?: string;
 }) {
   const { open, onClose, children, className } = props;
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useEscapeKey(open, onClose);
 
   if (!open) return null;
 

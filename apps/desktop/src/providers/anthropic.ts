@@ -1,5 +1,6 @@
-import type { ChatImage, ChatMessage, ModelConfig, StreamEvent } from "./types.ts";
+import type { ChatImage, ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
 import { parseSSE } from "./sse.ts";
+import { sseRequest } from "./transport.ts";
 import { parseDataUrl, safeJson } from "./util.ts";
 import { dlog } from "./debug.ts";
 
@@ -20,27 +21,34 @@ function imageBlock(im: ChatImage): unknown {
 //  • images → image content blocks
 // System is a top-level field (handled by the caller), not a message.
 function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
-  return messages.map((m) => {
+  const out: { role: string; content: unknown }[] = [];
+  for (const m of messages) {
     if (m.role === "tool") {
-      return { role: "user", content: [{ type: "tool_result", tool_use_id: m.toolCallId, content: m.content }] };
-    }
-    if (m.role === "assistant" && m.toolCalls?.length) {
-      return {
+      // Anthropic wants ALL tool_results for one assistant turn in the single
+      // next user message — fold consecutive results into one.
+      const block = { type: "tool_result", tool_use_id: m.toolCallId, content: m.content };
+      const prev = out[out.length - 1];
+      const prevBlocks = prev?.role === "user" && Array.isArray(prev.content) ? (prev.content as { type: string }[]) : null;
+      if (prevBlocks?.[0]?.type === "tool_result") prevBlocks.push(block);
+      else out.push({ role: "user", content: [block] });
+    } else if (m.role === "assistant" && m.toolCalls?.length) {
+      out.push({
         role: "assistant",
         content: [
           ...(m.content ? [{ type: "text", text: m.content }] : []),
           ...m.toolCalls.map((tc) => ({ type: "tool_use", id: tc.id, name: tc.name, input: safeJson(tc.arguments) })),
         ],
-      };
-    }
-    if (m.images?.length) {
-      return {
+      });
+    } else if (m.images?.length) {
+      out.push({
         role: m.role,
         content: [...m.images.map(imageBlock), ...(m.content ? [{ type: "text", text: m.content }] : [])],
-      };
+      });
+    } else {
+      out.push({ role: m.role, content: m.content });
     }
-    return { role: m.role, content: m.content };
-  });
+  }
+  return out;
 }
 
 export async function* streamAnthropic(
@@ -48,6 +56,7 @@ export async function* streamAnthropic(
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
+  tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
   const url = `${baseFor(cfg)}/v1/messages`;
   const body = {
@@ -55,10 +64,14 @@ export async function* streamAnthropic(
     max_tokens: 8192,
     stream: true,
     ...(system ? { system } : {}),
+    // ToolSpec is the OpenAI function shape — unwrap to Anthropic's.
+    ...(tools?.length
+      ? { tools: tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters })) }
+      : {}),
     messages: toAnthropicMessages(messages),
   };
   dlog("anthropic →", url, body);
-  const res = await fetch(url, {
+  const res = await sseRequest("anthropic", url, {
     method: "POST",
     signal,
     headers: {
@@ -70,15 +83,12 @@ export async function* streamAnthropic(
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    dlog("anthropic ✗", res.status, res.statusText, errText);
-    yield { type: "error", message: `${res.status} ${res.statusText} ${errText}`.trim() };
-    return;
-  }
-
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
+  // tool_use blocks stream as: content_block_start (id + name) → input_json_delta
+  // fragments → content_block_stop. Accumulate per block index, emit on stop so
+  // each tool_call carries the full arguments JSON.
+  const toolAcc = new Map<number, { id: string; name: string; args: string }>();
 
   for await (const data of parseSSE(res, signal)) {
     if (!data) continue;
@@ -97,10 +107,27 @@ export async function* streamAnthropic(
         }
         break;
       }
+      case "content_block_start": {
+        const cb = evt.content_block;
+        if (cb?.type === "tool_use") toolAcc.set(evt.index, { id: cb.id, name: cb.name, args: "" });
+        break;
+      }
       case "content_block_delta": {
         const d = evt.delta;
         if (d?.type === "text_delta" && d.text) yield { type: "text", delta: d.text };
         else if (d?.type === "thinking_delta" && d.thinking) yield { type: "thinking", delta: d.thinking };
+        else if (d?.type === "input_json_delta" && typeof d.partial_json === "string") {
+          const cur = toolAcc.get(evt.index);
+          if (cur) cur.args += d.partial_json;
+        }
+        break;
+      }
+      case "content_block_stop": {
+        const cur = toolAcc.get(evt.index);
+        if (cur) {
+          toolAcc.delete(evt.index);
+          yield { type: "tool_call", call: { id: cur.id, name: cur.name, arguments: cur.args } };
+        }
         break;
       }
       case "message_delta": {

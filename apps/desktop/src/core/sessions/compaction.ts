@@ -1,5 +1,5 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import { streamModel } from "../../providers/index.ts";
+import { collectText } from "../../providers/index.ts";
 import { getProvider } from "../../lib/settings.ts";
 import { sessionBus as bus } from "./events.ts";
 import {
@@ -54,13 +54,9 @@ export async function compact(sid: string, cfg: ModelConfig): Promise<void> {
       thinkingBudget: COMPACT_THINKING_BUDGET,
       maxTokens: reserve,
     };
-    let summary = "";
-    let summaryTokens = 0;
-    for await (const evt of streamModel(compactCfg, messages, controller.signal, COMPACT_SYSTEM)) {
-      if (evt.type === "text") summary += evt.delta;
-      else if (evt.type === "usage") summaryTokens = (evt.usage.outputTokens ?? 0) - (evt.usage.thinkingTokens ?? 0);
-      else if (evt.type === "error") throw new Error(evt.message);
-    }
+    const { text, usage } = await collectText(compactCfg, messages, controller.signal, COMPACT_SYSTEM);
+    const summary = text;
+    const summaryTokens = (usage?.outputTokens ?? 0) - (usage?.thinkingTokens ?? 0);
     if (summary.trim()) {
       // Seed usedTokens with the summary's real size (from usage), so the context
       // meter reflects what the retained summary actually occupies — not 0.
