@@ -2,7 +2,7 @@ import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
-import { detectStorage, IdbStorage } from "../../lib/storage/index.ts";
+import { detectStorage } from "../../lib/storage/index.ts";
 import { createListeners } from "../../lib/store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
@@ -128,35 +128,13 @@ export function ensureLoaded(sid: string): Promise<void> {
   return p;
 }
 
-// Cross-tier import: a desktop build's first run with SQLite while previous
-// runs' data sits in IndexedDB — copy every domain key over once.
-async function importFromIdb(target: { name: string; set(k: string, v: string): Promise<void> }): Promise<boolean> {
-  if (target.name === "idb") return false; // idb IS the selected tier
-  try {
-    const legacy = await IdbStorage.create();
-    const keys = await legacy.keys("v84-harness:");
-    for (const k of keys) {
-      const v = await legacy.get(k);
-      if (v !== null) await target.set(k, v);
-    }
-    if (keys.length) log.info("imported", { from: "idb", keys: keys.length });
-    return keys.length > 0;
-  } catch {
-    return false; // no IndexedDB here — nothing to import
-  }
-}
-
 // Hydrate from the durable tier — the authoritative store. Reads the INDEX and
 // the ACTIVE session's messages only; everything else lazy-loads via
-// ensureLoaded. Falls back through: granular index → cross-tier IDB import →
-// fresh.
+// ensureLoaded.
 void (async () => {
   try {
     const storage = await storageReady;
-    let index = await loadIndex(storage);
-    if (!index && (await importFromIdb(storage))) {
-      index = await loadIndex(storage);
-    }
+    const index = await loadIndex(storage);
     if (index) {
       sessions = index.sessions.map((meta) => ({ ...normalize(meta), loaded: false }));
       activeId = sessions.some((s) => s.id === index.activeId) ? index.activeId : sessions[0].id;

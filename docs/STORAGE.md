@@ -125,7 +125,7 @@ sequenceDiagram
     participant D as durable tier
 
     Note over Store,D: boot
-    Store->>P: loadIndex (importFromIdb on first SQLite run)
+    Store->>P: loadIndex
     P->>D: get index
     Store->>P: loadMessages(activeId)
     P->>D: get msgs + media blobs
