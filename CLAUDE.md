@@ -36,6 +36,14 @@ applies symmetrically: code changes wait for settled decisions, doc updates wait
 for finished debates (or the user's "time to write docs" signal). Nothing is
 marked Accepted until the user has actually read and confirmed it.
 
+This applies to the INITIAL request too, not just mid-session objections. A bug
+report or feature ask that sounds clear is not yet settled scope — the user's
+idea often sharpens over the next few messages, and edits started in the middle
+of that get rewritten. First investigate and debate: diagnose, lay out the
+design and its consequences, surface the corner cases, and restate what will be
+done — then start editing once the user confirms the shape. Reading code and
+docs while the debate runs is fine; changing files is not.
+
 ## When the user says it's time to write docs
 
 This step runs only on the user's signal, at the end of a session:

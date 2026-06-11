@@ -55,8 +55,10 @@ export function SessionView() {
   // A sub-agent run is a window, not a chat: no composer, no stop — control
   // lives in the parent (its Stop cascades here). The transcript stays as the
   // record of what the worker did.
-  const parent = useSessions().find((s) => s.id === session.parentId);
+  const sessions = useSessions();
+  const parent = sessions.find((s) => s.id === session.parentId);
   const isChildRun = !!session.parentId;
+
 
   // Map each tool call's id → its result text, so the assistant's tool card can
   // show the OUT next to the IN. Memoized on the messages array so renders
@@ -224,18 +226,34 @@ export function SessionView() {
 
       <div className="px-6 pb-6">
         {isChildRun ? (
-          <p className="mx-auto flex max-w-3xl items-center justify-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
-            {t("agents.childRun")}
+          // Three separate pieces, not one pill: the read-only notice, the way
+          // back to the parent, and the run-log delete ("log" on purpose — the
+          // answer survives in the parent's tool result, only this transcript goes).
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-2">
+            <span className="px-1 text-xs text-neutral-500">{t("agents.childRun")}</span>
             {parent && (
               <button
                 type="button"
                 onClick={() => setActive(parent.id)}
-                className="font-medium text-neutral-700 underline-offset-2 hover:underline"
+                className="rounded-2xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
               >
                 {t("agents.toParent", { title: parent.title })}
               </button>
             )}
-          </p>
+            <button
+              type="button"
+              onClick={() => {
+                // Land on the parent, not the session-list fallback — capture
+                // the id before the delete switches the active session.
+                const pid = parent?.id;
+                deleteSession(session.id);
+                if (pid) setActive(pid);
+              }}
+              className="flex items-center gap-1.5 rounded-2xl border border-red-200 bg-white px-4 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50"
+            >
+              <Trash2 size={12} /> {t("agents.deleteRun")}
+            </button>
+          </div>
         ) : (
           <>
             {compacting ? (

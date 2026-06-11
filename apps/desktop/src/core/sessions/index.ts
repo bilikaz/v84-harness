@@ -15,9 +15,10 @@ export {
   createSession,
   newSession,
   renameSession,
+  unlinkAgent,
   getSessionsForWorkspace,
 } from "./store.ts";
-export { send, sendTo, runAgent, stopTurn } from "./driver.ts";
+export { send, sendTo, runAgent, stopTurn, sessionToolModes } from "./driver.ts";
 export type { TurnResult, SendOptions, Validate } from "./driver.ts";
 export type { Session, Message, Role, MediaRef, FileAttachment, Tool, ToolCall } from "./types.ts";
 

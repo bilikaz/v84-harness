@@ -2,7 +2,7 @@ import type { ModelConfig, ToolSpec } from "../../providers/client.ts";
 import type { ToolCall } from "../../providers/types.ts";
 import { MAX_HEAL_ATTEMPTS, healCorrection, streamModel } from "../../providers/client.ts";
 import { llmLog } from "../../providers/debug.ts";
-import type { FileAttachment, MediaRef } from "./types.ts";
+import type { FileAttachment, MediaRef, Session } from "./types.ts";
 import { harness } from "../../lib/harness.ts";
 import { resolveMediaProvider } from "../../core/media.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
@@ -118,6 +118,25 @@ function effectiveMode(ws: Workspace | undefined, agent: Agent | undefined, name
   return Math.min(wsMode, ceiling) as ToolMode;
 }
 
+// What governs a session's capabilities right now: the live agent (its ceiling —
+// looked up per step, so edits apply immediately and a deleted agent degrades to
+// the plain workspace policy) and the workspace as a TOOL GRANT. For a chat-only
+// agent the workspace is masked to undefined: the session's workspaceId is
+// placement (which sidebar group it lives in), never a grant — advertising,
+// execution, cwd and the fs system prompt all flow from the masked value.
+function capabilityContext(session: Session | undefined): { ws: Workspace | undefined; agent: Agent | undefined } {
+  const agent = session?.agentId ? getAgent(session.agentId) : undefined;
+  const ws = agent && !agent.workspace ? undefined : getWorkspace(session?.workspaceId);
+  return { ws, agent };
+}
+
+// The effective per-tool modes for a session, exactly as the turn loop computes
+// them — rendered by the right-panel agent-permissions card.
+export function sessionToolModes(session: Session): Record<GatedTool, ToolMode> {
+  const { ws, agent } = capabilityContext(session);
+  return Object.fromEntries(ALL_TOOLS.map((t) => [t, effectiveMode(ws, agent, t)])) as Record<GatedTool, ToolMode>;
+}
+
 async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: SendOptions): Promise<TurnResult> {
   const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
   const autoName = opts.autoName !== false;
@@ -125,13 +144,11 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
   // turn:start appends the user + assistant placeholder; then we read history.
   bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, video: opts.video, files: opts.files });
 
-  const ws = getWorkspace(getSession(sid)?.workspaceId);
   const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
-  // The agent this session runs (if any) — its tool ceiling applies to every
-  // step of the turn, advertising and execution alike. Looked up live, so
-  // editing an agent's permissions affects the next step, and a deleted agent
-  // degrades to the plain workspace policy.
-  const agent = getSession(sid)?.agentId ? getAgent(getSession(sid)!.agentId!) : undefined;
+  // The live agent (tool ceiling) + the workspace as a tool grant — masked out
+  // for a chat-only agent (see capabilityContext). Applies to every step of the
+  // turn, advertising and execution alike.
+  const { ws, agent } = capabilityContext(getSession(sid));
   // ctx for the bridge (main) tool path — present only in Electron. The media
   // provider is read here and handed in; main never reads the renderer store.
   const toolCtx = harness ? { cwd: ws?.root ?? "", media: resolveMediaProvider() ?? undefined } : null;
@@ -388,7 +405,11 @@ async function execAgentTool(
 
       const { sid: childSid, result } = runAgent(resolved, task, cfg, {
         parentId: sid,
-        workspaceId: ws?.id ?? null,
+        // The PARENT SESSION's workspace, not the capability-masked `ws` — a
+        // chat-only orchestrator placed in a workspace spawns its children
+        // there too. Capability stays gated: its catalog only offers chat
+        // agents, and the child's own turn masks the workspace the same way.
+        workspaceId: getSession(sid)?.workspaceId ?? null,
         activate: false,
       });
       children.push(childSid);
@@ -438,11 +459,13 @@ export async function send(text: string, cfg: ModelConfig, opts: SendOptions = {
 
 // Run a stored agent in a fresh session: the agent's system MD is the system
 // message, `task` the user message (the saved template for manual runs, the
-// orchestrator's text for sub-agent runs). A workspace agent binds to the given
-// workspace (manual runs pass the active one); a chat agent ALWAYS runs unbound
-// — the toggle is a capability boundary, file tools never leak in by launch
-// context. No auto-naming — the agent's name is the title. Targets the created
-// session BY ID — the active session can change between create and send.
+// orchestrator's text for sub-agent runs). The session is PLACED in the launch
+// context's workspace either way — the given one, or the active one for manual
+// runs (null = launched from Chat). The chat/workspace toggle is a capability
+// limitation, not a placement rule: for a chat-only agent the turn loop masks
+// the workspace out of the tool path, so file tools still never leak in. No
+// auto-naming — the agent's name is the title. Targets the created session BY
+// ID — the active session can change between create and send.
 export function runAgent(
   agent: Agent,
   task: string,
@@ -454,7 +477,7 @@ export function runAgent(
     {
       title: agent.name,
       system: agent.system,
-      workspaceId: agent.workspace ? (workspaceId ?? getActiveWorkspaceId()) : null,
+      workspaceId: workspaceId !== undefined ? workspaceId : getActiveWorkspaceId(),
       agentId: agent.id,
       parentId,
     },

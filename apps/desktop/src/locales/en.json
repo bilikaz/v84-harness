@@ -38,7 +38,18 @@
     "childRun": "Sub-agent run — read-only.",
     "toParent": "Open {{title}}",
     "permissionsHelp": "This agent's ceiling. For each call the stricter of this and the workspace policy applies — an agent can restrict what the workspace grants, never extend it.",
-    "workspaceSection": "Workspace & permissions"
+    "workspaceSection": "Workspace & permissions",
+    "permissionsTitle": "Agent permissions",
+    "permissionsWorkspace": "This session runs \"{{name}}\" — the agent's limits apply on top of the workspace permissions.",
+    "permissionsChat": "\"{{name}}\" is a chat agent — workspace file tools are off in this session.",
+    "permissionsDeleted": "The linked agent no longer exists — plain workspace permissions apply.",
+    "unlink": "Unlink agent",
+    "unlinkHint": "The session keeps its transcript and system prompt; plain workspace / chat permissions apply from the next message.",
+    "confirmUnlink": "Unlink the agent from this session?",
+    "deleteSubAgents": "Delete {{n}} run logs",
+    "deleteRun": "Delete run log",
+    "deletedRun": "Run log deleted",
+    "deletedRunHint": "This sub-agent run log was deleted. Its answer stays in the tool result."
   },
   "menu": {
     "settings": "Settings",

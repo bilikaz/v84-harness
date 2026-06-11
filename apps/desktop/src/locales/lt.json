@@ -38,7 +38,18 @@
     "childRun": "Sub-agento vykdymas — tik peržiūra.",
     "toParent": "Atidaryti {{title}}",
     "permissionsHelp": "Šio agento riba. Kiekvienam kvietimui galioja griežtesnis iš šio ir darbo srities nustatymo — agentas gali apriboti tai, ką suteikia darbo sritis, bet ne praplėsti.",
-    "workspaceSection": "Darbo sritis ir leidimai"
+    "workspaceSection": "Darbo sritis ir leidimai",
+    "permissionsTitle": "Agento leidimai",
+    "permissionsWorkspace": "Šioje sesijoje veikia „{{name}}“ — agento ribojimai taikomi virš darbo srities leidimų.",
+    "permissionsChat": "„{{name}}“ yra pokalbio agentas — darbo srities failų įrankiai šioje sesijoje išjungti.",
+    "permissionsDeleted": "Susieto agento nebėra — galioja įprasti darbo srities leidimai.",
+    "unlink": "Atsieti agentą",
+    "unlinkHint": "Sesijos tekstas ir sisteminė žinutė lieka; nuo kitos žinutės galioja įprasti darbo srities / pokalbio leidimai.",
+    "confirmUnlink": "Atsieti agentą nuo šios sesijos?",
+    "deleteSubAgents": "Ištrinti vykdymo įrašus ({{n}})",
+    "deleteRun": "Ištrinti vykdymo įrašą",
+    "deletedRun": "Įrašas ištrintas",
+    "deletedRunHint": "Šio sub-agento vykdymo įrašas ištrintas. Jo atsakymas lieka įrankio rezultate."
   },
   "menu": {
     "settings": "Nustatymai",
