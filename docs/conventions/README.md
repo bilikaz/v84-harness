@@ -22,6 +22,7 @@ This repo's instance-specific documentation lives in
 | [llm-interfaces.md](llm-interfaces.md) | Stable schemas, catalogs as data; batch params; normalized name addressing; announce context edits; bound resubmitted payloads |
 | [react.md](react.md) | Named function components; hooks-only state access; stable list keys; no floating rejections |
 | [constants-and-identifiers.md](constants-and-identifiers.md) | Behavioral literals are named; one id generator (seeds are not ids); namespaced persisted keys |
+| [destructive-actions.md](destructive-actions.md) | Delete affordances name exactly what is destroyed; deleted items leave tombstones, not gaps |
 
 ## What qualifies as a convention
 

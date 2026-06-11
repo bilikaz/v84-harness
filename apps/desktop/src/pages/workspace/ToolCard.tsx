@@ -86,11 +86,22 @@ export const ToolCard = memo(function ToolCard({
 
 // The "view run" door — activates the sub-agent's session (live or settled).
 // Labeled with the child session's title so a fan-out's links are tellable
-// apart. Disappears if the child session was deleted.
+// apart. A deleted child leaves an unclickable tombstone, not a gap — chips
+// silently vanishing reads as lost context, but only the door is gone: the
+// run's answer lives in the parent's tool result. Generic label by necessity:
+// the title belonged to the deleted session.
 function ChildRunLink({ sid }: { sid: string }) {
   const { t } = useTranslation();
   const child = useSessions().find((s) => s.id === sid);
-  if (!child) return null;
+  if (!child)
+    return (
+      <span
+        title={t("agents.deletedRunHint")}
+        className="flex shrink-0 cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-neutral-300 line-through"
+      >
+        <SquareArrowOutUpRight size={11} /> {t("agents.deletedRun")}
+      </span>
+    );
   return (
     <button
       type="button"

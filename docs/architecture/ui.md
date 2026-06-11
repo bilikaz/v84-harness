@@ -9,17 +9,24 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   contributions. Features plug in without touching `App.tsx`. The `Region` type
   only lists surfaces the shell actually renders — the former `menu` region was
   deleted when it lost its renderer ([ADR-0024](../adr/0024-agent-runs-through-composer.md)).
-- **Right panel**: the context-window card (`ProgressPanel`, order 0) and the
-  agents library (`AgentsPanel`, order 1) — one row per agent, filtered to the
-  active context, hover play/pencil.
+- **Right panel**: the context-window card (`ProgressPanel`, order 0), the
+  agents library (`AgentsPanel`, order 1 — one row per agent, filtered to the
+  active context, hover play/pencil), the sub-agent run-log cleanup button
+  (`SubAgentCleanup`, order 2 — red "Delete N run logs", rendered only when the
+  active session has child runs), and the agent-permissions card
+  (`AgentPermissionsPanel`, order 3 — agent-based sessions only: governing
+  regime, accordion of effective tool modes, Unlink;
+  [ADR-0026](../adr/0026-agent-session-placement-vs-capability.md)).
 - **Agents UX** ([ADR-0024](../adr/0024-agent-runs-through-composer.md)): clicking
   an agent opens the primed run page (`agents/<id>`) — a pseudo session whose
   composer is seeded with the agent's user template; the real session
   materializes on send. `agents/<id>/edit` is the editor (description = the
   orchestrator-facing contract, workspace & permissions block). The shared
   `Composer` component is the one run form everywhere; sub-agent child sessions
-  render read-only (no composer) with a back-to-parent note, indented under
-  their parent in the sidebar.
+  render read-only (no composer) with a footer of three pieces — the read-only
+  notice (plain text), Open-parent, and "Delete run log" (lands on the parent) —
+  indented under their parent in the sidebar. A deleted child's ToolCard chip
+  stays as an unclickable "Run log deleted" tombstone, never a silent gap.
 - **Routing**: minimal hash router (`lib/router.ts`) — `useRoute()` + `navigate()`.
 - **Modals**: the shared `components/Modal.tsx` shell for all dialogs. Major
   feature modals are route-driven (Settings); short-lived confirmations use local

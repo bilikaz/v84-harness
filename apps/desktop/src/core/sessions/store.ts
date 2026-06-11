@@ -244,6 +244,16 @@ export function renameSession(id: string, title: string): void {
   notify();
 }
 
+// Detach the agent from a session, converting it to a plain one: the transcript
+// and the stamped system prompt stay, but from the next turn plain workspace /
+// chat permissions apply — no ceiling, no chat-only mask. One-way by design;
+// the right-panel agent-permissions card disappears with the link.
+export function unlinkAgent(id: string): void {
+  sessions = sessions.map((s) => (s.id === id ? { ...s, agentId: undefined } : s));
+  persistIndex();
+  notify();
+}
+
 export function deleteSession(id: string): void {
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";

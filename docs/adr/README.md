@@ -32,9 +32,10 @@ procedures don't land here. The map of current structure is
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
 | [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | accepted |
 | [0022](0022-subagent-orchestration.md) | Sub-agent orchestration: child sessions + ListAgents/RunAgent pair | accepted |
-| [0023](0023-agent-definition-binding-and-ceiling.md) | Agent definition: workspace binding toggle + per-agent tool ceiling | accepted |
+| [0023](0023-agent-definition-binding-and-ceiling.md) | Agent definition: workspace binding toggle + per-agent tool ceiling | accepted (placement clause superseded by 0026) |
 | [0024](0024-agent-runs-through-composer.md) | Agent runs go through the composer (pseudo-session priming) | accepted |
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
+| [0026](0026-agent-session-placement-vs-capability.md) | Agent sessions: placement follows launch context, capability masked separately + unlink | accepted |
 
 ## Needs review / important missing parts
 

@@ -1,6 +1,6 @@
 # ADR-0023: Agent definition — workspace binding toggle + per-agent tool ceiling
 
-Status: accepted
+Status: accepted — placement clause ("a chat agent ALWAYS runs unbound") superseded by [ADR-0026](0026-agent-session-placement-vs-capability.md)
 Date: 2026-06-10
 
 ## Context

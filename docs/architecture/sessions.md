@@ -44,10 +44,23 @@ into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
   additionally **capability-gated**: withheld from the advertised schemas — and
   refused at run time — when the model doesn't declare the matching input
   ([ADR-0018](../adr/0018-capability-gated-media-tools.md)).
+- **Placement ≠ capability**
+  ([ADR-0026](../adr/0026-agent-session-placement-vs-capability.md)):
+  `session.workspaceId` only says where the session lives (sidebar group);
+  agent runs always take the launch context's workspace (children: the
+  parent's). What the session may touch is resolved per turn by
+  `capabilityContext` — the live agent's ceiling, with the workspace masked
+  out entirely for chat-only agents. `sessionToolModes` exposes the same
+  computation to the UI; `unlinkAgent` (store) severs the link one-way,
+  converting the session to plain workspace/chat permissions.
 - Sub-agents: `ListAgents` returns the catalog as data; one
   `RunAgent {runs: […]}` call spawns all its child sessions concurrently and
   returns their combined answers; the ToolCard links to the live runs
-  ([ADR-0022](../adr/0022-subagent-orchestration.md)).
+  ([ADR-0022](../adr/0022-subagent-orchestration.md)). A worker's answer lives
+  as a tool-result message in the PARENT's transcript — deleting child sessions
+  (per-run, or all of a parent's via the right-panel cleanup button) costs only
+  the child transcripts; mid-flight deletes stop the run first and the parent's
+  RunAgent call settles as "stopped".
 - When gated file tools are advertised, the `workspace.system` prompt asset is
   appended to the system message — the `/` virtual root (ADR-0007) is stated to
   the model, never assumed known.
