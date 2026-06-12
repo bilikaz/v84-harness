@@ -112,7 +112,7 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
           value={m.label}
           onChange={(e) => updateMediaModel(m.id, { label: e.target.value })}
           placeholder={t("media.labelPlaceholder")}
-          className="w-full rounded-md border border-transparent px-1 py-0.5 text-sm font-medium text-neutral-900 hover:border-neutral-200 focus:border-neutral-400 focus:outline-none"
+          className="w-full rounded-md border border-neutral-200 px-2 py-1 text-sm font-medium text-neutral-900 focus:border-neutral-400 focus:outline-none"
         />
         <button
           onClick={() => removeMediaModel(m.id)}

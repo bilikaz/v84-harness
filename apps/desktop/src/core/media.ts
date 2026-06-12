@@ -78,13 +78,19 @@ export function useMediaRegistry(): MediaRegistry {
   return store.use();
 }
 
-// Append a blank entry (the settings UI fills it in) and return its id.
+// Append a fresh entry (the settings UI fills it in) and return its id. It
+// gets a default label immediately — a bare /generate server never supplies a
+// model id, so without one the entry would be unnameable in the coverage
+// dropdowns ("—") and effectively unassignable.
 export function addMediaModel(): string {
   const id = newId();
   const cur = store.get();
+  const taken = new Set(cur.entries.map((e) => e.label));
+  let n = cur.entries.length + 1;
+  while (taken.has(`Model ${n}`)) n++;
   store.set({
     ...cur,
-    entries: [...cur.entries, { id, label: "", baseUrl: "", capabilities: [], api: "openai-images" }],
+    entries: [...cur.entries, { id, label: `Model ${n}`, baseUrl: "", capabilities: [], api: "openai-images" }],
   });
   return id;
 }
