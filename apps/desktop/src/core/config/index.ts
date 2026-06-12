@@ -95,11 +95,14 @@ function validate(c: AppConfig): AppConfig {
       maxDurationS: posNum(c.videoGen.maxDurationS, d.videoGen.maxDurationS),
       quality: presets(c.videoGen.quality, d.videoGen.quality),
     },
+    llm: { maxHealAttempts: posInt(c.llm.maxHealAttempts, d.llm.maxHealAttempts) },
     upsample: { maxAttempts: posInt(c.upsample.maxAttempts, d.upsample.maxAttempts) },
     session: {
       contextReserve: posInt(c.session.contextReserve, d.session.contextReserve),
       reserveMinFraction: fraction(c.session.reserveMinFraction, d.session.reserveMinFraction),
       maxSteps: posInt(c.session.maxSteps, d.session.maxSteps),
+      titleMaxTokens: posInt(c.session.titleMaxTokens, d.session.titleMaxTokens),
+      compactThinkingBudget: posInt(c.session.compactThinkingBudget, d.session.compactThinkingBudget),
     },
   };
 }

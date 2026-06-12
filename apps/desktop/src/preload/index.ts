@@ -17,8 +17,9 @@ const api: HarnessApi = {
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
     schemas: () => ipcRenderer.invoke(IPC.toolsSchemas),
-    // `signal` is process-local and not cloneable — strip it before the wire.
-    exec: (call: ToolCallRequest, { signal: _local, ...ctx }: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
+    // `signal` and `client` are process-local and not cloneable — strip them
+    // before the wire; main re-mints both (execTool).
+    exec: (call: ToolCallRequest, { signal: _signal, client: _client, ...ctx }: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
     cancel: (callId: string) => ipcRenderer.invoke(IPC.toolsCancel, callId),
   },
   media: {

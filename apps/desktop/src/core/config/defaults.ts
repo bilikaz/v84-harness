@@ -55,6 +55,11 @@ export interface AppConfig {
     maxDurationS: number;
     quality: Record<Quality, QualityPreset>;
   };
+  // The llm client's heal cycle (validated calls re-prompt until accepted).
+  llm: {
+    // Heal RETRIES after the initial attempt (so up to N+1 model calls).
+    maxHealAttempts: number;
+  };
   // The prompt-upsampling heal loop (re-prompts until the output validates).
   upsample: { maxAttempts: number };
   session: {
@@ -65,6 +70,12 @@ export interface AppConfig {
     reserveMinFraction: number;
     // Runaway guard for the tool loop (steps per turn).
     maxSteps: number;
+    // Auto-naming output budget: stray thinking AND the short title must both
+    // fit, or the title comes back empty (reasoning "off" doesn't actually
+    // stop some models from thinking).
+    titleMaxTokens: number;
+    // Auto-compaction thinking budget — a summary doesn't need deep reasoning.
+    compactThinkingBudget: number;
   };
 }
 
@@ -96,10 +107,13 @@ export const CONFIG_DEFAULTS: AppConfig = {
       super: { steps: 80, guidance: 6 },
     },
   },
+  llm: { maxHealAttempts: 3 },
   upsample: { maxAttempts: 3 },
   session: {
     contextReserve: 50_000,
     reserveMinFraction: 0.1,
     maxSteps: 50,
+    titleMaxTokens: 4096,
+    compactThinkingBudget: 2048,
   },
 };

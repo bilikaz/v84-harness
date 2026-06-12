@@ -189,7 +189,7 @@ export function Composer(props: {
             title={t("session.changeModel")}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100"
           >
-            {provider.model || t("session.selectModel")}
+            {provider.model.id || t("session.selectModel")}
             <ChevronDown size={14} />
           </button>
           <button

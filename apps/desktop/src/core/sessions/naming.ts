@@ -1,5 +1,7 @@
-import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
-import { collectText } from "../../providers/client.ts";
+import type { ChatMessage } from "../../llm/types.ts";
+import { bufferedTextHandler } from "../../llm/index.ts";
+import { getAppConfig } from "../config/index.ts";
+import { client } from "../client.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { pt } from "../../lib/prompts.ts";
@@ -8,8 +10,6 @@ import { getSession, setTitle, toChatMessages } from "./store.ts";
 
 const log = rootLog.child("session.naming");
 
-// Budget must fit stray thinking AND the short answer (see comment below).
-const TITLE_MAX_TOKENS = 4096;
 const TITLE_MAX_CHARS = 80;
 
 // Auto-naming service — self-contained: owns both the logic and its
@@ -17,7 +17,7 @@ const TITLE_MAX_CHARS = 80;
 // real conversation (system + the actual user/assistant turns) plus a final
 // user message asking for a title, then assign the reply. Reasoning-off with a
 // tiny cap; it does NOT go through the driver / mark the session as streaming.
-async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
+async function nameSession(sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session) {
     log.warn("no_session", { sid });
@@ -28,18 +28,22 @@ async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
     ...toChatMessages(session.messages),
     { role: "user", content: pt("chatTitle.user") },
   ];
-  // reasoning_effort "off" doesn't actually stop some models (e.g. Holo) from
-  // thinking, so give a real budget — thinking + the short title must both fit,
-  // or the title comes back empty. The demux drops <think>; only the answer text
-  // becomes the title.
-  const namingCfg: ModelConfig = { ...cfg, reasoningEffort: "off", maxTokens: TITLE_MAX_TOKENS };
-  log.debug("request", { sid, model: namingCfg.model, messages });
+  log.debug("request", { sid, messages });
 
   let title = "";
   let thinkingChars = 0;
   try {
-    const controller = new AbortController();
-    ({ text: title, thinkingChars } = await collectText(namingCfg, messages, controller.signal, session.system || undefined));
+    // reasoning_effort "off" doesn't actually stop some models (e.g. Holo) from
+    // thinking, so give a real budget — thinking + the short title must both fit,
+    // or the title comes back empty. The demux drops <think>; only the answer text
+    // becomes the title.
+    ({ text: title, thinkingChars } = await client.call({
+      service: "main",
+      messages,
+      system: session.system || undefined,
+      params: { reasoningEffort: "off", maxTokens: getAppConfig().session.titleMaxTokens },
+      handler: bufferedTextHandler(),
+    }));
   } catch (e) {
     log.error("request_failed", { error: errorMessage(e) });
     return;
@@ -57,7 +61,7 @@ async function nameSession(sid: string, cfg: ModelConfig): Promise<void> {
 }
 
 const off = bus.on("message:done", (e) => {
-  if (e.firstExchange && e.autoName && !e.errored) void nameSession(e.sessionId, e.cfg);
+  if (e.firstExchange && e.autoName && !e.errored) void nameSession(e.sessionId);
 });
 
 // Tear down on HMR so the subscription isn't duplicated on a hot reload.

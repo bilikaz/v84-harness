@@ -1,17 +1,19 @@
-import type { ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
-import { parseSSE } from "./sse.ts";
-import { sseRequest } from "./transport.ts";
-import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "./util.ts";
-import { llmLog } from "./debug.ts";
+import type { CallTarget, ModelInfo } from "../../types.ts";
+import { BaseTextProvider } from "./base.ts";
+import type { ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
+import { parseSSE } from "../../sse.ts";
+import { sseRequest } from "../../transport.ts";
+import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "../../util.ts";
+import { llmLog } from "../../debug.ts";
 
 const FALLBACK_BASE = "https://generativelanguage.googleapis.com";
 
-function v1beta(cfg: Pick<ModelConfig, "baseUrl">): string {
+function v1beta(cfg: { baseUrl: string }): string {
   return baseWithPrefix(cfg.baseUrl, FALLBACK_BASE, "/v1beta");
 }
 
 // Gemini auths via a query param; attach it only when a key is actually set.
-function keyParam(cfg: Pick<ModelConfig, "apiKey">, sep: "?" | "&"): string {
+function keyParam(cfg: { apiKey?: string }, sep: "?" | "&"): string {
   return cfg.apiKey ? `${sep}key=${encodeURIComponent(cfg.apiKey)}` : "";
 }
 
@@ -20,10 +22,10 @@ function keyParam(cfg: Pick<ModelConfig, "apiKey">, sep: "?" | "&"): string {
 // budget when set, else dynamic; includeThoughts surfaces the thought parts our
 // stream parser already handles (p.thought). Effort off → omit the config and
 // let the model default (0 would 400 on models that can't disable thinking).
-function reasoningFields(cfg: ModelConfig): Record<string, unknown> {
-  const effort = cfg.reasoningEffort;
+function reasoningFields(target: CallTarget): Record<string, unknown> {
+  const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
-  const budget = cfg.thinkingBudget && cfg.thinkingBudget > 0 ? cfg.thinkingBudget : -1;
+  const budget = target.model.thinkingBudget && target.model.thinkingBudget > 0 ? target.model.thinkingBudget : -1;
   return { generationConfig: { thinkingConfig: { thinkingBudget: budget, includeThoughts: true } } };
 }
 
@@ -71,15 +73,15 @@ function toGeminiContents(messages: ChatMessage[]): unknown[] {
 
 // Gemini streaming: streamGenerateContent with alt=sse returns SSE.
 export async function* streamGemini(
-  cfg: ModelConfig,
+  target: CallTarget,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
   tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
-  const url = `${v1beta(cfg)}/models/${encodeURIComponent(cfg.model)}:streamGenerateContent?alt=sse${keyParam(cfg, "&")}`;
+  const url = `${v1beta(target.provider)}/models/${encodeURIComponent(target.model.id ?? "")}:streamGenerateContent?alt=sse${keyParam(target.provider, "&")}`;
   const body = {
-    ...reasoningFields(cfg),
+    ...reasoningFields(target),
     ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
     // ToolSpec is the OpenAI function shape — Gemini's functionDeclarations use
     // the same {name, description, parameters} fields.
@@ -138,11 +140,20 @@ export async function* streamGemini(
   yield { type: "done" };
 }
 
-export async function listGeminiModels(cfg: Pick<ModelConfig, "baseUrl" | "apiKey">): Promise<string[]> {
-  const res = await expectOk(await fetch(`${v1beta(cfg)}/models${keyParam(cfg, "?")}`));
-  const data = await res.json();
-  return (data.models ?? [])
-    .filter((m: any) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
-    .map((m: any) => (m.name ?? "").replace(/^models\//, ""))
-    .filter(Boolean);
+// This file IS the text:gemini provider — the factory (llm/client) resolves
+// providers/text/gemini.ts and constructs this class.
+export class Provider extends BaseTextProvider {
+  protected stream(): AsyncGenerator<StreamEvent> {
+    return streamGemini(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
+  }
+
+  // The provider's own /models catalog (only chat-capable models; ids only).
+  static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {
+    const res = await expectOk(await fetch(`${v1beta(conn)}/models${keyParam(conn, "?")}`));
+    const data = await res.json();
+    return (data.models ?? [])
+      .filter((m: any) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
+      .map((m: any) => ({ id: (m.name ?? "").replace(/^models\//, "") }))
+      .filter((m: ModelInfo) => m.id);
+  }
 }

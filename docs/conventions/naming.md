@@ -24,7 +24,12 @@ merging. Both directions count: a name must not raise false expectations either
    one-shot). A reader opening `client.ts` must find the thing they call.
 5. **Contracts live in `types.ts`** (see [types-placement.md](types-placement.md));
    `shared.ts` is reserved for genuine cross-cutting helper collections; `index.ts` is
-   only ever a folder's public face — a barrel or a registry.
+   only ever a folder's public face — a barrel or a registry. A barrel exists only at
+   a LAYER's public face and exports the audited list of what outside consumers
+   actually use — not everything the layer contains. Inner folders normally need no
+   barrel (internals import each other directly); delete barrels that serve nobody.
+   An `index.ts` that holds real content is content — give it a content name
+   (`catalog.ts`), don't let it pose as a barrel.
 6. **Error subclasses are `<X>Error`** (`LLMValidationError`), never sentence
    fragments (`<X>Failed`).
 7. **One-function consumer-facing modules fold into the client module** rather than

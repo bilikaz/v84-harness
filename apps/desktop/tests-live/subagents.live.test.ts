@@ -9,7 +9,7 @@ import { createAgent, deleteAgent, getAgents, saveAgent, type Agent } from "../s
 import { runAgent, sendTo, stopTurn } from "../src/core/sessions/index.ts";
 import { createSession, getSession, getSessions, getStreamingIds } from "../src/core/sessions/store.ts";
 import { sessionBus } from "../src/core/sessions/events.ts";
-import type { ModelConfig } from "../src/providers/types.ts";
+import type { ModelConfig } from "../src/llm/types.ts";
 
 const cfg: ModelConfig = {
   id: "live",

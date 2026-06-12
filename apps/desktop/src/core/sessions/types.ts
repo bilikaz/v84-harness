@@ -2,7 +2,7 @@
 // producer (the sessions feature) per conventions/types-placement.md. UI code
 // reaches these via the lib/types.ts shim or the sessions barrel.
 
-import type { ToolCall } from "../../providers/types.ts";
+import type { ToolCall } from "../../llm/types.ts";
 
 export type { ToolCall };
 

@@ -1,6 +1,7 @@
 import { type MediaRef, type Tool, type ToolResult } from "./types.ts";
 import { mimeToExt } from "../../lib/dataUrl.ts";
-import { askImage } from "../../providers/media.ts";
+import { imageHandler } from "../../llm/index.ts";
+import { errorMessage } from "../../lib/errors.ts";
 import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt } from "./media.ts";
 import { COSMOS_T2I } from "./cosmos.ts";
 import { getAppConfig } from "../config/index.ts";
@@ -13,8 +14,8 @@ import { getAppConfig } from "../config/index.ts";
 // vision agent can inspect its own result).
 //
 // Model-agnostic by registry config, not by sniffing:
-//   - entry.api picks the WIRE — askImage (providers/media.ts) owns the
-//     endpoint dialects and response shapes;
+//   - entry.api picks the WIRE — the client's imageHandler (llm/responseHandlers) owns
+//     the endpoint dialects and response shapes;
 //   - entry.promptStyle picks the PROMPT (plain pass-through, or the Cosmos
 //     structured-JSON upsampler — see ./cosmos.ts).
 
@@ -64,8 +65,8 @@ export const generateImageTool: Tool = {
     if (!prompt) {
       return { ok: false, output: `GenerateImage rejected: missing required "prompt".` };
     }
-    const media = ctx.media?.imageGen;
-    if (!media?.baseUrl) {
+    const media = ctx.config.media.imageGen;
+    if (!ctx.client || !media) {
       return {
         ok: false,
         output: "GenerateImage is not configured. Assign an image generation model in Settings → Media models.",
@@ -76,7 +77,7 @@ export const generateImageTool: Tool = {
     // we derive height and clamp both to the configured max, so the request is
     // always something the model can actually produce. We compute size/ratio —
     // the model never sets height, and the upsampler never sets resolution.
-    const max = parseDims(media.maxImageSize);
+    const max = parseDims(media.model.maxImageSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
       return { ok: false, output: `GenerateImage rejected: width must be a positive integer.` };
@@ -89,31 +90,35 @@ export const generateImageTool: Tool = {
     // endpoint can't; its chat returns images). Upsampling produces only
     // CONTENT — dimensions live solely in the size we computed.
     const finalPrompt =
-      media.promptStyle === "cosmos-json"
-        ? await upsamplePrompt({ prompt, system: COSMOS_T2I.system, requiredKey: COSMOS_T2I.requiredKey, signal: ctx.signal })
+      media.model.promptStyle === "cosmos-json"
+        ? await upsamplePrompt({ client: ctx.client, prompt, system: COSMOS_T2I.system, requiredKey: COSMOS_T2I.requiredKey, signal: ctx.signal })
         : prompt;
 
-    const r = await askImage(
-      media,
-      finalPrompt,
-      {
-        w,
-        h,
-        negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
-        seed: randomSeed(),
-        preset: getAppConfig().imageGen.quality[pickQuality(args.quality)],
-      },
-      ctx.signal,
-    );
-    if (!r.ok) return { ok: false, output: `GenerateImage failed: ${r.error}` };
+    try {
+      const { b64, mime } = await ctx.client.call({
+        service: "imageGen",
+        messages: [{ role: "user", content: finalPrompt }],
+        signal: ctx.signal,
+        handler: imageHandler(),
+        params: {
+          w,
+          h,
+          negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
+          seed: randomSeed(),
+          preset: getAppConfig().imageGen.quality[pickQuality(args.quality)],
+        },
+      });
 
-    // Return as a data-URL — it rides on the message and persists with the
-    // session like any attached image. No files, no workspace.
-    const image: MediaRef = { url: `data:${r.mime};base64,${r.b64}`, mime: r.mime, name: `generated.${mimeToExt(r.mime)}` };
-    return {
-      ok: true,
-      output: `Generated an image (shown to you above). Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
-      images: [image],
-    };
+      // Return as a data-URL — it rides on the message and persists with the
+      // session like any attached image. No files, no workspace.
+      const image: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      return {
+        ok: true,
+        output: `Generated an image (shown to you above). Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
+        images: [image],
+      };
+    } catch (e) {
+      return { ok: false, output: `GenerateImage failed: ${errorMessage(e)}` };
+    }
   },
 };

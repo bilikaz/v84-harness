@@ -43,17 +43,21 @@ export interface MediaRef {
 // What a media model is FOR — the use-case slots of the model registry
 // (core/media.ts). Each slot holds at most one assigned model; the list is the
 // app's "covered / not covered" map and grows as new modality tools land.
-// Slots can exist with no tool consuming them yet (audio today).
-export type MediaUseCase = "imageGen" | "videoGen" | "imageRec" | "videoRec" | "audioGen" | "audioRec";
+// Slots can exist with no tool consuming them yet (audio today). The union is
+// owned by the provider layer (it's also the call() service vocabulary minus
+// "main") — re-exported here under the registry's historical name.
+export type MediaUseCase = MediaService;
 export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
 
 // The wire family an endpoint speaks — owned by the provider layer
-// (providers/types.ts), re-exported here for the registry's vocabulary. The
+// (llm/types.ts), re-exported here for the registry's vocabulary. The
 // API type says HOW to talk; the use-case slot an entry is assigned to says
 // WHICH path of that API a tool uses (imageGen → /images/generations,
 // videoGen → the async jobs flow, recognition → /chat/completions).
-export type { MediaApiFlavor } from "../../providers/types.ts";
-import type { MediaApiFlavor } from "../../providers/types.ts";
+export type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
+import type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
+import type { CallTarget } from "../../llm/types.ts";
+import type { Client } from "../../llm/client/types.ts";
 
 // How the model wants its prompt: "plain" passes the agent's prompt through;
 // "cosmos-json" runs the upsampler that fills Cosmos's structured-JSON prompt
@@ -84,25 +88,33 @@ export interface MediaProvider {
   models: MediaModel[];
 }
 
-// The FLAT config a tool receives for its slot — provider + model merged by
-// resolveMediaProvider(). Tools and the IPC bridge see only this; the
-// provider/model split is a settings-side concern. Threaded into tools via
-// ToolCtx by the renderer (main never reads the renderer's settings store).
-export interface MediaModelConfig {
-  id: string; // the MediaModel registry id
-  label: string; // "provider : model" display name (error messages)
-  baseUrl: string;
-  apiKey?: string;
-  model?: string; // wire model id (empty → omitted from requests)
-  api: MediaApiFlavor;
-  promptStyle?: MediaPromptStyle;
-  maxImageSize?: string;
-  maxVideoSize?: string;
+// What a slot resolves to — the unified {provider, model} target format
+// (resolveMediaProvider builds it straight from the registry rows), with the
+// model's TOOL-side settings riding on the model half: promptStyle and size
+// caps shape prompts and params, not the wire, so the llm layer ignores
+// them. One format everywhere — the client consumes it as a CallTarget
+// as-is. Threaded into tools via ToolCtx by the renderer (main never reads
+// the renderer's settings store).
+export interface MediaSlotConfig extends CallTarget {
+  model: CallTarget["model"] & {
+    promptStyle?: MediaPromptStyle;
+    maxImageSize?: string;
+    maxVideoSize?: string;
+  };
 }
 
 // The per-use-case media map handed to tools: each generation/recognition tool
 // picks its slot (e.g. media.imageGen). Plain JSON — crosses the IPC bridge.
-export type MediaProviders = Partial<Record<MediaUseCase, MediaModelConfig>>;
+export type MediaProviders = Partial<Record<MediaUseCase, MediaSlotConfig>>;
+
+// The configuration snapshot a tool call travels with — resolved by the
+// renderer at turn start (the only process that can read the stores) and the
+// material each process mints its ToolCtx.client from. Plain JSON — crosses
+// the IPC bridge.
+export interface ToolConfig {
+  main: CallTarget | null; // the chat provider; null = unconfigured (no baseUrl/model)
+  media: MediaProviders;
+}
 
 // The connection subset model detection needs — what crosses the bridge for
 // the /models listing (main does the fetch; no CORS).
@@ -128,7 +140,15 @@ export interface MediaEndpoint {
 // the gated tool.
 export interface ToolCtx {
   cwd: string;
-  media?: MediaProviders; // per-use-case media models (GenerateImage → media.imageGen, DescribeImage → media.imageRec, …)
+  // The turn's configuration snapshot (JSON, crosses the bridge) — model
+  // params a tool's domain logic reads (promptStyle, size caps) live here.
+  config: ToolConfig;
+  // The call() client over `config` — how a tool TALKS to a model: it names a
+  // service (ctx.client.call({service: "imageRec", …})) and never sees
+  // connection details. Process-local like `signal` (functions can't cross
+  // IPC): the renderer passes its client in; the main dispatcher mints one
+  // from `config` per call (see execTool).
+  client?: Client;
   // Cancellation. An AbortSignal cannot cross the IPC bridge (not cloneable), so
   // this field is process-local: the renderer sets it for renderer tools; for
   // gated tools the main dispatcher mints its own per call and aborts it when

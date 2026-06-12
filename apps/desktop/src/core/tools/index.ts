@@ -9,6 +9,7 @@
 // CreateFolder, Bash.
 
 import type { Tool, ToolCtx, ToolCallRequest, ToolResult, ToolSchema } from "./types.ts";
+import { clientFromToolConfig } from "./client.ts";
 import { readTool } from "./read.ts";
 import { listTool } from "./list.ts";
 import { grepTool } from "./grep.ts";
@@ -83,7 +84,10 @@ export async function execTool(call: ToolCallRequest, ctx: ToolCtx): Promise<Too
   const controller = new AbortController();
   if (call.id) running.set(call.id, controller);
   try {
-    return await tool.execute(args, { ...ctx, signal: controller.signal });
+    // Functions don't cross the bridge — when the ctx arrives client-less
+    // (the IPC path), mint one from the config snapshot it carries.
+    const client = ctx.client ?? clientFromToolConfig(ctx.config);
+    return await tool.execute(args, { ...ctx, client, signal: controller.signal });
   } catch (e) {
     return { ok: false, output: `error running ${name}: ${errorMessage(e)}` };
   } finally {

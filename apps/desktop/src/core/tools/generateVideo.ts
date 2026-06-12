@@ -1,6 +1,7 @@
 import { type MediaRef, type Tool, type ToolResult } from "./types.ts";
 import { mimeToExt } from "../../lib/dataUrl.ts";
-import { askVideo } from "../../providers/media.ts";
+import { videoHandler } from "../../llm/index.ts";
+import { errorMessage } from "../../lib/errors.ts";
 import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt } from "./media.ts";
 import { COSMOS_T2V } from "./cosmos.ts";
 import { getAppConfig } from "../config/index.ts";
@@ -9,10 +10,11 @@ import { getAppConfig } from "../config/index.ts";
 // slot of the media registry. Self-contained renderer tool (like
 // GenerateImage): when the entry says promptStyle "cosmos-json", the prompt is
 // upsampled into Cosmos's text→video JSON schema with our main chat LLM, then
-// handed to askVideo (providers/media.ts — the async jobs flow); the
-// resulting clip rides on the message as a data-URL and renders in the tool
-// card. Generation is SLOW (~minutes per second of video). Timings + quality
-// presets live in core/config (videoGen.*) and travel as parameters.
+// handed to the client's videoHandler (llm/responseHandlers — the handler owns the async
+// jobs flow: submit, keep checking, deliver); the resulting clip rides on the
+// message as a data-URL and renders in the tool card. Generation is SLOW
+// (~minutes per second of video). Timings + quality presets live in
+// core/config (videoGen.*) and travel as parameters.
 
 export const generateVideoTool: Tool = {
   schema: {
@@ -50,14 +52,14 @@ export const generateVideoTool: Tool = {
   async execute(args, ctx): Promise<ToolResult> {
     const prompt = String(args.prompt ?? "").trim();
     if (!prompt) return { ok: false, output: `GenerateVideo rejected: missing required "prompt".` };
-    const media = ctx.media?.videoGen;
-    if (!media?.baseUrl) {
+    const media = ctx.config.media.videoGen;
+    if (!ctx.client || !media) {
       return { ok: false, output: "GenerateVideo is not configured. Assign a video generation model in Settings → Models." };
     }
     const cfg = getAppConfig().videoGen;
 
     // Dimensions: width + aspect → WxH, clamped to max, ×16. We own these.
-    const max = parseDims(media.maxVideoSize);
+    const max = parseDims(media.model.maxVideoSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
       return { ok: false, output: `GenerateVideo rejected: width must be a positive integer.` };
@@ -74,8 +76,9 @@ export const generateVideoTool: Tool = {
     // Dimensions/timing are injected into the upsampled JSON by us — the
     // upsampler produces content only.
     const finalPrompt =
-      media.promptStyle === "cosmos-json"
+      media.model.promptStyle === "cosmos-json"
         ? await upsamplePrompt({
+            client: ctx.client,
             prompt,
             system: COSMOS_T2V.system,
             requiredKey: COSMOS_T2V.requiredKey,
@@ -89,29 +92,34 @@ export const generateVideoTool: Tool = {
           })
         : prompt;
 
-    const r = await askVideo(
-      media,
-      finalPrompt,
-      {
-        size: `${w}x${h}`,
-        numFrames,
-        fps: cfg.fps,
-        seed: randomSeed(),
-        preset: cfg.quality[quality],
-        pollIntervalMs: cfg.pollIntervalMs,
-        timeoutMs: cfg.timeoutMs,
-      },
-      ctx.signal,
-    );
-    if (!r.ok) return { ok: false, output: `GenerateVideo failed: ${r.error}` };
+    try {
+      const { b64, mime } = await ctx.client.call({
+        service: "videoGen",
+        messages: [{ role: "user", content: finalPrompt }],
+        signal: ctx.signal,
+        handler: videoHandler(),
+        params: {
+          w,
+          h,
+          numFrames,
+          fps: cfg.fps,
+          seed: randomSeed(),
+          preset: cfg.quality[quality],
+          pollIntervalMs: cfg.pollIntervalMs,
+          timeoutMs: cfg.timeoutMs,
+        },
+      });
 
-    const video: MediaRef = { url: `data:${r.mime};base64,${r.b64}`, mime: r.mime, name: `generated.${mimeToExt(r.mime)}` };
-    return {
-      ok: true,
-      // Whether the model sees the video depends on its input capability (the
-      // driver feeds video back only then) — phrase for both cases.
-      output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
-      video: [video],
-    };
+      const video: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      return {
+        ok: true,
+        // Whether the model sees the video depends on its input capability (the
+        // driver feeds video back only then) — phrase for both cases.
+        output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
+        video: [video],
+      };
+    } catch (e) {
+      return { ok: false, output: `GenerateVideo failed: ${errorMessage(e)}` };
+    }
   },
 };

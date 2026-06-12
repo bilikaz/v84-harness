@@ -28,11 +28,11 @@ flowchart TD
         ui["pages/ + components/<br/>React UI, registered into Slot regions"]
         lib["lib/<br/>stores · bus · i18n · router · registry · logger"]
         core["core/<br/>host-agnostic domain logic<br/>(React only in hooks.ts files)"]
-        providers["providers/<br/>LLM streaming adapters (fetch + SSE)"]
+        llm["llm/<br/>the model client: call() + providers + response handlers"]
         ui --> lib
         ui --> core
         core --> lib
-        core --> providers
+        core --> llm
     end
     preload["preload/<br/>thin typed wrappers over ipcRenderer"]
     main["main/<br/>Electron main process (trust boundary):<br/>window · dialogs · context menus · core/tools execution"]
@@ -60,7 +60,7 @@ Layering rules:
 | `src/preload/` | Context-isolated bridge; exposes `window.harness` |
 | `src/bridge.ts` | IPC contract: `IPC` channel constants + `HarnessApi` interface |
 | `src/core/` | Host-agnostic domain logic (sessions engine, tools, workspaces, approvals, settings/media/agents stores) |
-| `src/providers/` | LLM provider adapters with a unified `StreamEvent` interface |
+| `src/llm/` | The model layer: `client.call()` (service-named calls), Provider classes per `<modality>/<type>`, response handlers |
 | `src/lib/` | Renderer utilities: store factory, event bus, i18n, router, registry, errors, ui state |
 | `src/lib/logger/` | `Logger` port (scoped children, structured events) + console / memory sinks |
 | `src/lib/storage/` | `Storage` port + detected backends: SQLite (bridge) > IndexedDB > localStorage |
@@ -85,7 +85,7 @@ Deep dives, one per subsystem — read the one for the area you're touching
 | [architecture/state.md](architecture/state.md) | Store factory + hooks pattern; the typed event bus |
 | [architecture/sessions.md](architecture/sessions.md) | Sessions engine module shape; the turn loop; sub-agents; media resend window |
 | [architecture/tools.md](architecture/tools.md) | Tool system: gated vs permissionless vs driver-level; virtual root; caps |
-| [architecture/providers.md](architecture/providers.md) | Provider adapters, `StreamEvent`, transport/retry conventions |
+| [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, CallTarget, Provider classes, response handlers, heal |
 | [architecture/ui.md](architecture/ui.md) | Contribution registry/regions, routing, agents UX, UI patterns, i18n |
 | [architecture/storage.md](architecture/storage.md) | Durable persistence: key scheme, shapes, accessor surface |
 
@@ -100,7 +100,8 @@ Deep dives, one per subsystem — read the one for the area you're touching
   cancel/failure of save/pick operations.
 - **Providers**: transport failures are classified by `withRetry`; JSON parse
   errors on individual SSE frames are skipped silently (frames are best-effort);
-  non-streaming HTTP errors must include status *and* response body.
+  non-streaming HTTP errors must include status *and* response body. The
+  client's heal cycle consumes only `HealError`; everything else propagates.
 - **Driver**: stream errors become `session:turn:error` events appended to the
   transcript; user Stop (abort) is a clean exit, not an error.
 
@@ -126,8 +127,10 @@ ADR-0011); they are not restated below.
 - **Known seed.** `randomSeed()` in `core/tools/media.ts` is a generation seed,
   not an id (constants-and-identifiers.md rule 4).
 - **Naming (repo-specific).** Files: `camelCase.ts` modules, `PascalCase.tsx`
-  components. Tools: `<name>Tool` const in `<name>.ts`. Provider functions:
-  `stream<Provider>`, `list<Provider>Models`, `to<Provider>Messages`. Bus events:
+  components. Tools: `<name>Tool` const in `<name>.ts`. LLM providers: the class
+  is always `Provider` in `llm/providers/<modality>/<type>.ts` (the path IS the
+  name); abstract bases are `Base<Modality>Provider` in each folder's `base.ts`;
+  wire mappers stay `stream<Provider>` / `to<Provider>Messages`. Bus events:
   `<domain>:<topic>[:<subtopic>]`. Hooks: `use<Thing>()`, colocated (or
   `hooks.ts` in folder modules). Don't reuse a filename across `lib/` and `main/`
   for different concerns (`lib/saveMedia.ts` vs `main/saveDataUrl.ts`).

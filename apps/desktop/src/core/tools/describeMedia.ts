@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { type MediaRef, type MediaUseCase, type Tool, type ToolResult } from "./types.ts";
 import { toReal } from "./paths.ts";
-import { ask } from "../../providers/ask.ts";
+import { textHandler } from "../../llm/index.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { CONFIG_DEFAULTS } from "../config/defaults.ts";
@@ -25,7 +25,7 @@ import { CONFIG_DEFAULTS } from "../config/defaults.ts";
 // there's no CORS.
 //
 // The wire is NOT this tool's business: it names its slot's model and what to
-// ask, and ask() (providers/ask.ts) identifies the dialect and does the
+// ask, and call() (llm/client) identifies the dialect and does the
 // transport — the adapter maps message images/video to image_url/video_url
 // parts and brings retry classification and inline-think demuxing.
 
@@ -96,8 +96,7 @@ function makeDescribeTool(opts: {
     async execute(args, ctx): Promise<ToolResult> {
       const p = String(args.path ?? "");
       if (!p) return { ok: false, output: `${name} rejected: missing required "path". Example: {"path":"/assets/file.${exts[0]}"}` };
-      const media = ctx.media?.[slot];
-      if (!media?.baseUrl) {
+      if (!ctx.client || !ctx.config.media[slot]) {
         return { ok: false, output: `${name} is not configured. Assign a ${kind} recognition model in Settings → Media models.` };
       }
       const query = typeof args.query === "string" && args.query.trim() ? args.query.trim() : defaultQuery;
@@ -119,8 +118,12 @@ function makeDescribeTool(opts: {
         const dataUrl = `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`;
 
         const fileRef = { url: dataUrl, mime };
-        const r = await ask({
-          model: media,
+        // The tool declares the shape it expects: text. (Relying on the
+        // target default would let a misassigned generate endpoint return
+        // an image here.)
+        const answer = await ctx.client.call({
+          service: slot,
+          handler: textHandler(),
           system: SYSTEM[kind],
           signal: ctx.signal,
           messages: [
@@ -131,12 +134,11 @@ function makeDescribeTool(opts: {
             },
           ],
         });
-        if (!r.ok) return { ok: false, output: `${name} failed: ${r.error}` };
 
         const preview: MediaRef = { url: dataUrl, mime, name: path.basename(real) };
         return {
           ok: true,
-          output: r.value || "(the recognition model returned an empty answer)",
+          output: answer || "(the recognition model returned an empty answer)",
           // The file rides the result for the user's preview — the driver
           // applies the usual input-capability guard before the chat model
           // sees it (and downscales images to its pixel cap).

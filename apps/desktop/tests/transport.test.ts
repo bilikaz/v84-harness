@@ -3,8 +3,8 @@
 // throw. Streams are fed in as plain generators — no network involved.
 import { describe, expect, it } from "vitest";
 
-import { HttpError, withRetry } from "../src/providers/transport.ts";
-import type { StreamEvent } from "../src/providers/types.ts";
+import { HttpError, withRetry } from "../src/llm/transport.ts";
+import type { StreamEvent } from "../src/llm/types.ts";
 
 async function drain(gen: AsyncGenerator<StreamEvent>): Promise<StreamEvent[]> {
   const out: StreamEvent[] = [];

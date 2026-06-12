@@ -55,9 +55,9 @@ describe("migrations", () => {
     expect(m.promptStyle).toBe("cosmos-json");
     expect(m.maxImageSize).toBe("1280x1280");
     expect(m.maxVideoSize).toBe("1280x1280");
-    const flat = media.resolveMediaProvider("imageGen");
-    expect(flat?.baseUrl).toBe("http://gen:8000/v1");
-    expect(flat?.model).toBe("cosmos-predict2");
+    const target = media.resolveMediaProvider("imageGen");
+    expect(target?.provider.baseUrl).toBe("http://gen:8000/v1");
+    expect(target?.model.id).toBe("cosmos-predict2");
     expect(media.resolveMediaProvider("imageRec")).toBeNull();
   });
 
@@ -71,8 +71,8 @@ describe("migrations", () => {
     });
     const reg = media.getMediaRegistry();
     expect(reg.providers.map((p) => p.api)).toEqual(["openai", "generate"]);
-    expect(media.resolveMediaProvider("imageGen")?.label).toBe("bansai");
-    expect(media.resolveMediaProvider("videoGen")?.model).toBe("cosmos-x");
+    expect(media.resolveMediaProvider("imageGen")?.provider.name).toBe("bansai");
+    expect(media.resolveMediaProvider("videoGen")?.model.id).toBe("cosmos-x");
   });
 
   it("flat entries without capabilities infer them from the old assignments", async () => {
@@ -82,7 +82,7 @@ describe("migrations", () => {
     });
     const m = media.getMediaRegistry().providers[0].models[0];
     expect(m.capabilities).toEqual(["imageGen"]);
-    expect(media.resolveMediaProvider("imageGen")?.model).toBe("m1");
+    expect(media.resolveMediaProvider("imageGen")?.model.id).toBe("m1");
   });
 });
 
@@ -150,8 +150,11 @@ describe("assignment + resolution", () => {
     const media = await loadRegistry();
     const { pid, mid } = await seedProvider(media);
     media.updateModel(pid, mid, { maxImageSize: "1024x1024" });
-    const flat = media.resolveMediaProvider("imageGen");
-    expect(flat).toMatchObject({ baseUrl: "http://a/v1", model: "m1", api: "openai", maxImageSize: "1024x1024", label: "A : m1" });
+    const target = media.resolveMediaProvider("imageGen");
+    expect(target).toMatchObject({
+      provider: { name: "A", type: "openai", baseUrl: "http://a/v1" },
+      model: { id: "m1", maxImageSize: "1024x1024" },
+    });
 
     media.updateProvider(pid, { baseUrl: "" });
     expect(media.resolveMediaProvider("imageGen")).toBeNull();
@@ -176,6 +179,6 @@ describe("assignment + resolution", () => {
     media.updateModel(pid, mid, { capabilities: ["imageGen", "videoGen"] });
     const map = media.resolveMediaProviders();
     expect(Object.keys(map).sort()).toEqual(["imageGen", "videoGen"]);
-    expect(map.imageGen?.model).toBe("m1");
+    expect(map.imageGen?.model.id).toBe("m1");
   });
 });

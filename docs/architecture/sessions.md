@@ -26,6 +26,12 @@ into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
   resolves with a `TurnResult { text, errored, aborted }` — the shared entry
   point under the composer (`send` targets the active session), manual agent
   runs (`runAgent`), and the RunAgent tool awaiting a sub-agent's answer.
+  Callers pass no config: the driver resolves `main` itself (`resolveMain`)
+  for capability math, and each step is one
+  `client.call({service: "main", tools, handler: chatStepHandler(…)})` — the
+  handler streams events onto the bus and returns `{text, thinking, calls}`;
+  the tool-execution cycle stays here, not in the llm layer
+  ([architecture/llm.md](llm.md)).
 - Per-session `AbortController` map for stop; stopping is not an error. Stop
   also cancels running tools (renderer tools via `ToolCtx.signal`; gated tools
   via the IPC cancel channel), denies the session's queued approvals, and

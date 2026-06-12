@@ -5,7 +5,6 @@ import { ChevronRight, RefreshCw, Shrink } from "lucide-react";
 import { compact, contextLimit, useActiveSession, useCompacting } from "../../core/sessions/index.ts";
 import { useProvider } from "../../core/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
-import type { ModelConfig } from "../../providers/types.ts";
 import { cn } from "../../lib/cn.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { Modal } from "../../components/Modal.tsx";
@@ -18,10 +17,9 @@ export function ProgressPanel() {
   return (
     <ContextWindow
       used={session.usedTokens ?? 0}
-      total={provider.contextLength}
+      total={provider.model.contextLength}
       limit={contextLimit(provider)}
       sid={session.id}
-      cfg={provider}
     />
   );
 }
@@ -29,19 +27,7 @@ export function ProgressPanel() {
 // `total` is the model's full context window; `limit` is the usable budget
 // (window − reserve). Usage is shown against the LIMIT, with the reserved
 // headroom called out below.
-function ContextWindow({
-  used,
-  total,
-  limit,
-  sid,
-  cfg,
-}: {
-  used: number;
-  total?: number;
-  limit: number;
-  sid: string;
-  cfg: ModelConfig;
-}) {
+function ContextWindow({ used, total, limit, sid }: { used: number; total?: number; limit: number; sid: string }) {
   const { t } = useTranslation();
   if (!total || limit <= 0) {
     return (
@@ -55,7 +41,7 @@ function ContextWindow({
   const reserve = total - limit;
   const full = used >= limit;
   return (
-    <Card title={t("progress.contextWindow")} action={<SummarizeControl sid={sid} cfg={cfg} ratio={used / limit} />}>
+    <Card title={t("progress.contextWindow")} action={<SummarizeControl sid={sid} ratio={used / limit} />}>
       <div className="mb-2 flex items-center justify-between text-xs">
         <span className="text-neutral-500">
           {t("progress.used", { used: fmtTokens(used), total: fmtTokens(limit) })}
@@ -82,7 +68,7 @@ function ContextWindow({
 
 // Summarize = compact the conversation to free context. Gray under 70% usage,
 // red above. Click opens a dialog explaining what it does before confirming.
-function SummarizeControl({ sid, cfg, ratio }: { sid: string; cfg: ModelConfig; ratio: number }) {
+function SummarizeControl({ sid, ratio }: { sid: string; ratio: number }) {
   const { t } = useTranslation();
   const compacting = useCompacting();
   const [confirm, setConfirm] = useState(false);
@@ -116,7 +102,7 @@ function SummarizeControl({ sid, cfg, ratio }: { sid: string; cfg: ModelConfig; 
               onCancel={() => setConfirm(false)}
               onConfirm={() => {
                 setConfirm(false);
-                void compact(sid, cfg);
+                void compact(sid);
               }}
             />
           </div>

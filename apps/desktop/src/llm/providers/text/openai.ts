@@ -1,8 +1,9 @@
-import type { ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
-import { parseSSE } from "./sse.ts";
-import { sseRequest } from "./transport.ts";
-import { baseWithPrefix, expectOk } from "./util.ts";
-import { llmLog } from "./debug.ts";
+import type { CallTarget, ChatMessage, ModelInfo, StreamEvent, ToolSpec } from "../../types.ts";
+import { BaseTextProvider } from "./base.ts";
+import { parseSSE } from "../../sse.ts";
+import { sseRequest } from "../../transport.ts";
+import { baseWithPrefix, expectOk } from "../../util.ts";
+import { llmLog } from "../../debug.ts";
 
 // No fallback host: an empty base intentionally yields relative "/v1/…" URLs
 // (the web dev proxy case). "/openai/v1" bases also pass the endsWith check.
@@ -52,34 +53,35 @@ function toOpenAIMessages(messages: ChatMessage[], system?: string): unknown[] {
 //    `chat_template_kwargs.enable_thinking` — these models think by DEFAULT, so we
 //    must send `false` to turn it OFF — and caps it with `thinking_token_budget`.
 // We never send the vLLM-only params to api.openai.com (it 400s on unknown fields).
-function reasoningFields(cfg: ModelConfig): Record<string, unknown> {
-  const on = !!(cfg.reasoningEffort && cfg.reasoningEffort !== "off");
-  if (/api\.openai\.com/i.test(cfg.baseUrl)) {
-    return on ? { reasoning_effort: cfg.reasoningEffort } : {};
+function reasoningFields(target: CallTarget): Record<string, unknown> {
+  const m = target.model;
+  const on = !!(m.reasoningEffort && m.reasoningEffort !== "off");
+  if (/api\.openai\.com/i.test(target.provider.baseUrl)) {
+    return on ? { reasoning_effort: m.reasoningEffort } : {};
   }
   const fields: Record<string, unknown> = { chat_template_kwargs: { enable_thinking: on } };
-  if (on && cfg.thinkingBudget && cfg.thinkingBudget > 0) fields.thinking_token_budget = cfg.thinkingBudget;
+  if (on && m.thinkingBudget && m.thinkingBudget > 0) fields.thinking_token_budget = m.thinkingBudget;
   return fields;
 }
 
 export async function* streamOpenAI(
-  cfg: ModelConfig,
+  target: CallTarget,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
   tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
-  const url = joinUrl(cfg.baseUrl, "/chat/completions");
+  const url = joinUrl(target.provider.baseUrl, "/chat/completions");
   const body = {
-    model: cfg.model,
+    model: target.model.id,
     stream: true,
     stream_options: { include_usage: true },
     messages: toOpenAIMessages(messages, system),
     // Send a cap only when it's a real limit. When it equals the model's
     // context window (the "filled = max" case), skip it — vLLM errors if
     // prompt + max_tokens exceeds the window; let the server default instead.
-    ...(cfg.maxTokens && cfg.maxTokens !== cfg.contextLength ? { max_tokens: cfg.maxTokens } : {}),
-    ...reasoningFields(cfg),
+    ...(target.model.maxTokens && target.model.maxTokens !== target.model.contextLength ? { max_tokens: target.model.maxTokens } : {}),
+    ...reasoningFields(target),
     ...(tools?.length ? { tools, tool_choice: "auto" } : {}),
   };
   llmLog.debug("openai.request", { url, body });
@@ -88,7 +90,7 @@ export async function* streamOpenAI(
     signal,
     headers: {
       "Content-Type": "application/json",
-      ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+      ...(target.provider.apiKey ? { Authorization: `Bearer ${target.provider.apiKey}` } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -146,25 +148,28 @@ export async function* streamOpenAI(
   yield { type: "done" };
 }
 
-export async function listOpenAIModels(cfg: Pick<ModelConfig, "baseUrl" | "apiKey">): Promise<string[]> {
-  return (await listOpenAIModelInfos(cfg)).map((m) => m.id);
-}
+// This file IS the text:openai provider — the factory (llm/client) resolves
+// providers/text/openai.ts and constructs this class with its model data.
+export class Provider extends BaseTextProvider {
+  protected stream(): AsyncGenerator<StreamEvent> {
+    return streamOpenAI(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
+  }
 
-// Richer listing: id + context window (vLLM `max_model_len`, or `context_length`
-// / `context_window` on other OpenAI-compatible servers).
-export async function listOpenAIModelInfos(
-  cfg: Pick<ModelConfig, "baseUrl" | "apiKey">,
-): Promise<{ id: string; maxModelLen?: number }[]> {
-  const url = joinUrl(cfg.baseUrl, "/models");
-  const res = await expectOk(
-    await fetch(url, { headers: { ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) } }),
-  );
-  const data = await res.json();
-  const list: any[] = data.data ?? data.models ?? [];
-  return list
-    .map((m) => ({
-      id: m.id ?? m.name,
-      maxModelLen: m.max_model_len ?? m.context_length ?? m.context_window,
-    }))
-    .filter((m) => m.id);
+  // The provider's own /models catalog: id + context window (vLLM
+  // `max_model_len`, or `context_length` / `context_window` on other
+  // OpenAI-compatible servers).
+  static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {
+    const url = joinUrl(conn.baseUrl, "/models");
+    const res = await expectOk(
+      await fetch(url, { headers: { ...(conn.apiKey ? { Authorization: `Bearer ${conn.apiKey}` } : {}) } }),
+    );
+    const data = await res.json();
+    const list: any[] = data.data ?? data.models ?? [];
+    return list
+      .map((m) => ({
+        id: m.id ?? m.name,
+        maxModelLen: m.max_model_len ?? m.context_length ?? m.context_window,
+      }))
+      .filter((m) => m.id);
+  }
 }

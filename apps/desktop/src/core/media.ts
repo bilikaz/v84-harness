@@ -1,7 +1,7 @@
 import type {
   MediaApiFlavor,
   MediaModel,
-  MediaModelConfig,
+  MediaSlotConfig,
   MediaProvider,
   MediaProviders,
   MediaUseCase,
@@ -18,7 +18,7 @@ import { errorMessage } from "../lib/errors.ts";
 // gateway can serve many models (OpenRouter-style): connection details live
 // once on the provider, what-each-model-can-do lives per model. Tools never
 // see the split — resolveMediaProvider(useCase) flattens the assigned
-// provider+model into the MediaModelConfig threaded through ToolCtx. The slot
+// provider+model into the MediaSlotConfig threaded through ToolCtx. The slot
 // list (MEDIA_USE_CASES) is the app's coverage map — a slot may be empty
 // (tool inert) or have no tool yet (audio today).
 const KEY = "v84-harness:media";
@@ -296,9 +296,11 @@ export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ 
   return out;
 }
 
-// The flat config for a use-case slot, or null when the slot is unassigned or
-// the provider isn't usable yet (no endpoint). Tools stay inert on null.
-export function resolveMediaProvider(useCase: MediaUseCase): MediaModelConfig | null {
+// A use-case slot's assignment in the unified {provider, model} target
+// format — built straight from the registry rows, the same split the data is
+// stored in. Null when the slot is unassigned or the provider isn't usable
+// yet (no endpoint); tools stay inert on null.
+export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | null {
   const reg = store.get();
   const ref = reg.assignments[useCase];
   if (!ref) return null;
@@ -306,15 +308,18 @@ export function resolveMediaProvider(useCase: MediaUseCase): MediaModelConfig | 
   const model = provider?.models.find((m) => m.id === ref.modelId);
   if (!provider?.baseUrl || !model) return null;
   return {
-    id: model.id,
-    label: model.modelId ? `${provider.name} : ${model.modelId}` : provider.name,
-    baseUrl: provider.baseUrl,
-    apiKey: provider.apiKey,
-    model: model.modelId || undefined,
-    api: provider.api,
-    promptStyle: model.promptStyle,
-    maxImageSize: model.maxImageSize,
-    maxVideoSize: model.maxVideoSize,
+    provider: {
+      name: provider.name,
+      type: provider.api,
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+    },
+    model: {
+      id: model.modelId || undefined,
+      promptStyle: model.promptStyle,
+      maxImageSize: model.maxImageSize,
+      maxVideoSize: model.maxVideoSize,
+    },
   };
 }
 

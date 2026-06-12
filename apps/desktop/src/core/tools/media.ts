@@ -1,8 +1,7 @@
-import { getProvider } from "../../core/settings.ts";
 import { getAppConfig } from "../config/index.ts";
 import type { Quality } from "../config/defaults.ts";
 import { stripFences } from "../../lib/format.ts";
-import { ask } from "../../providers/ask.ts";
+import { jsonHandler, type Client } from "../../llm/index.ts";
 
 // Shared plumbing for the generation tools (GenerateImage / GenerateVideo):
 // argument coercion, the dimension math, and the prompt-upsampling loop. Each
@@ -66,32 +65,36 @@ export function randomSeed(): number {
 }
 
 // Upsample a short prompt into a Cosmos structured-JSON prompt with the app's
-// main chat LLM at full strength, heal-validated: ask()'s parser throws on
-// invalid output, which re-prompts up to the configured attempt cap.
+// main chat LLM at full strength, heal-validated: the jsonHandler turns a
+// validator throw into a heal, re-prompting up to the configured attempt cap.
 // `requiredKey` is the schema's caption field; `finalize` lets the caller
 // inject computed fields (resolution/duration) before serialization. Falls
 // back to the raw prompt if no chat model is configured or it can't produce
 // valid JSON.
 export async function upsamplePrompt(opts: {
+  client: Client; // the calling tool's ctx.client — upsampling asks "main"
   prompt: string;
   system: string;
   requiredKey: string;
   finalize?: (obj: Record<string, unknown>) => void;
   signal?: AbortSignal; // cancels the LLM call when the user stops the turn
 }): Promise<string> {
-  const cfg = getProvider();
-  if (!cfg.baseUrl || !cfg.model) return opts.prompt;
-  const r = await ask<Record<string, unknown>>({
-    model: cfg,
-    messages: [{ role: "user", content: opts.prompt }],
-    system: opts.system,
-    signal: opts.signal,
-    parse: upsampleValidator(opts.requiredKey),
-    maxHealAttempts: getAppConfig().upsample.maxAttempts,
-  });
-  if (!r.ok) return opts.prompt;
-  opts.finalize?.(r.value);
-  return JSON.stringify(r.value);
+  // No pre-check: an unconfigured "main" makes call() throw, and ANY failure
+  // here falls back to the raw prompt below.
+  try {
+    const obj = await opts.client.call({
+      service: "main",
+      messages: [{ role: "user", content: opts.prompt }],
+      system: opts.system,
+      signal: opts.signal,
+      handler: jsonHandler(upsampleValidator(opts.requiredKey)),
+      maxHeals: getAppConfig().upsample.maxAttempts,
+    });
+    opts.finalize?.(obj);
+    return JSON.stringify(obj);
+  } catch {
+    return opts.prompt;
+  }
 }
 
 // Validate upsampler output: a single JSON object with a non-empty caption

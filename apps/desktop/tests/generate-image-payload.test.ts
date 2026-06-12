@@ -3,7 +3,7 @@
 // pin the recognized shapes (and that a URL is never misread as base64).
 import { describe, expect, it } from "vitest";
 
-import { extractImagePayload } from "../src/providers/media.ts";
+import { extractImagePayload } from "../src/llm/providers/image/generate.ts";
 
 describe("extractImagePayload", () => {
   it("reads the OpenAI-ish data[0].b64_json", () => {

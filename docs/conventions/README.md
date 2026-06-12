@@ -11,6 +11,9 @@ This repo's instance-specific documentation lives in
 | Topic | Rule in one line |
 | --- | --- |
 | [naming.md](naming.md) | Name modules and types by role, not implementation; the bells test gates every name |
+| [module-registries.md](module-registries.md) | The folder layout IS the registry: one module per implementation, canonical export, resolve by path |
+| [base-classes.md](base-classes.md) | Family plumbing as protected base members; one constructor shape + `init()` hook; wire per-call state at construction |
+| [canonical-shapes.md](canonical-shapes.md) | One concept, one shape, end to end — stores hold it; shape-sniffing unions mean the canonical shape is missing |
 | [types-placement.md](types-placement.md) | `types.ts` holds vocabulary (promotion test: 2+ importers / boundary / family); `shared.ts` holds cross-cutting helpers; everything else colocates |
 | [consolidation.md](consolidation.md) | Extract only essential duplication or near-universal sharing; 2-of-N look-alikes stay duplicated |
 | [error-handling.md](error-handling.md) | Normalize unknown throws; context-prefixed messages; per-item catch in batches |
