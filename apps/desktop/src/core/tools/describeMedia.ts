@@ -1,12 +1,13 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type GeneratedImage, type GeneratedMedia, type MediaModelConfig, type MediaUseCase, type Tool, type ToolResult } from "./types.ts";
+import { type GeneratedImage, type GeneratedMedia, type MediaUseCase, type Tool, type ToolResult } from "./types.ts";
 import { toReal } from "./paths.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
-import { trimBase } from "../../lib/format.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { CONFIG_DEFAULTS } from "../config/defaults.ts";
+import { collectText } from "../../providers/client.ts";
+import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 
 // Describe a workspace image/video with the model linked to the matching
 // recognition slot (imageRec / videoRec) — describe it, answer a question
@@ -19,18 +20,41 @@ import { CONFIG_DEFAULTS } from "../config/defaults.ts";
 // guard as every other tool-produced media.
 //
 // Both tools are one factory: they differ only in slot, extension whitelist,
-// byte caps, the chat-completions content part, and which ToolResult field
+// byte caps, which message field carries the file, and which ToolResult field
 // carries the preview. File handling mirrors loadMedia.ts (gated, main
 // process, virtual-root confinement); the HTTP call also runs in main, so
 // there's no CORS.
 //
-// Wire: OpenAI chat completions with an image_url / video_url content part —
-// the de-facto shape vision servers (vLLM et al.) speak. recognize() below is
-// the one provider-specific piece.
+// The wire is NOT hand-rolled: the call goes through the provider layer
+// (collectText → streamOpenAI), which already maps message images/video to
+// image_url/video_url parts and brings retry classification and inline-think
+// demuxing. Recognition requires the OpenAI dialect, so the flat media config
+// translates directly to a ModelConfig.
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
 const CAPS = CONFIG_DEFAULTS.media;
+
+// The recognizer's framing — it serves an AGENT that cannot see the file, so
+// the contract is: grounded, complete, no invention, positions in a usable
+// vocabulary. Inline like the Cosmos upsampler prompts (model-facing, not UI
+// text — never i18n).
+const SYSTEM: Record<"image" | "video", string> = {
+  image:
+    "You are a precise image analysis assistant. You receive ONE image and an instruction from an automated " +
+    "agent that cannot see the image — your answer is its only view of it. Follow the instruction exactly: " +
+    "report what is actually visible, transcribe any text faithfully, and when asked to locate something give " +
+    "clear approximate positions (e.g. 'top-left quadrant', 'center', 'bottom edge') or relative coordinates. " +
+    "Say plainly when something is not visible or you are unsure — never invent details. Answer compactly, " +
+    "no preamble.",
+  video:
+    "You are a precise video analysis assistant. You receive ONE video and an instruction from an automated " +
+    "agent that cannot see the video — your answer is its only view of it. Follow the instruction exactly: " +
+    "describe what actually happens IN ORDER over time (subjects, actions, scene changes, camera movement), " +
+    "transcribe any visible text or speech you can perceive, and anchor moments to approximate timestamps when " +
+    "useful. Say plainly when something is not visible or you are unsure — never invent details. Answer " +
+    "compactly, no preamble.",
+};
 
 function fmtMB(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -43,10 +67,9 @@ function makeDescribeTool(opts: {
   exts: string[];
   maxBytes: number;
   extCaps?: Record<string, number>;
-  part: "image_url" | "video_url";
   defaultQuery: string;
 }): Tool {
-  const { name, kind, slot, exts, maxBytes, extCaps, part, defaultQuery } = opts;
+  const { name, kind, slot, exts, maxBytes, extCaps, defaultQuery } = opts;
   return {
     schema: {
       type: "function",
@@ -103,11 +126,28 @@ function makeDescribeTool(opts: {
         const bytes = await readFile(real);
         const dataUrl = `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`;
 
-        const answer = await recognize(media, part, dataUrl, query, ctx.signal);
+        // The flat media config IS an OpenAI-compatible provider config — hand
+        // it to the standard provider client instead of a bespoke fetch.
+        const cfg: ModelConfig = {
+          id: media.id,
+          label: media.label,
+          provider: "openai",
+          baseUrl: media.baseUrl,
+          model: media.model ?? "",
+          apiKey: media.apiKey ?? "",
+        };
+        const fileRef = { url: dataUrl, mime };
+        const message: ChatMessage = {
+          role: "user",
+          content: query,
+          ...(kind === "image" ? { images: [fileRef] } : { video: [fileRef] }),
+        };
+        const { text } = await collectText(cfg, [message], ctx.signal ?? new AbortController().signal, SYSTEM[kind]);
+
         const preview: GeneratedImage | GeneratedMedia = { url: dataUrl, mime, name: path.basename(real) };
         return {
           ok: true,
-          output: answer || "(the recognition model returned an empty answer)",
+          output: text.trim() || "(the recognition model returned an empty answer)",
           // The file rides the result for the user's preview — the driver
           // applies the usual input-capability guard before the chat model
           // sees it (and downscales images to its pixel cap).
@@ -120,51 +160,6 @@ function makeDescribeTool(opts: {
   };
 }
 
-// The provider call: OpenAI chat completions with a media content part.
-async function recognize(
-  media: MediaModelConfig,
-  part: "image_url" | "video_url",
-  dataUrl: string,
-  query: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const res = await fetch(`${trimBase(media.baseUrl)}/chat/completions`, {
-    method: "POST",
-    signal,
-    headers: {
-      "content-type": "application/json",
-      ...(media.apiKey ? { authorization: `Bearer ${media.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: media.model || undefined,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: query },
-            { type: part, [part]: { url: dataUrl } },
-          ],
-        },
-      ],
-      stream: false,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`recognition endpoint returned ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 500)}`);
-  }
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
-  const content = data.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content.trim();
-  // Some servers return content as an array of parts — concatenate the text ones.
-  if (Array.isArray(content)) {
-    return content
-      .map((p) => (typeof p === "object" && p !== null && "text" in p ? String((p as { text: unknown }).text) : ""))
-      .join("")
-      .trim();
-  }
-  throw new Error("recognition response had no message content (expected choices[0].message.content)");
-}
-
 export const describeImageTool = makeDescribeTool({
   name: "DescribeImage",
   kind: "image",
@@ -172,7 +167,6 @@ export const describeImageTool = makeDescribeTool({
   exts: IMAGE_EXTS,
   maxBytes: CAPS.imageMaxBytes,
   extCaps: { gif: CAPS.gifMaxBytes },
-  part: "image_url",
   defaultQuery: "Describe this image in detail: subjects, layout, text, and anything notable.",
 });
 
@@ -182,6 +176,5 @@ export const describeVideoTool = makeDescribeTool({
   slot: "videoRec",
   exts: VIDEO_EXTS,
   maxBytes: CAPS.videoMaxBytes,
-  part: "video_url",
   defaultQuery: "Describe this video in detail: what happens over time, the subjects and their actions, the setting, and anything notable.",
 });

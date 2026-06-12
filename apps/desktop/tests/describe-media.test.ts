@@ -3,6 +3,8 @@
 // whitelist, byte caps), inert without an assigned slot model, OpenAI dialect
 // required, the recognizer's text becomes the output, and the file rides the
 // result as the user's preview (images/video field) exactly like LoadImage.
+// The call goes through the provider layer (collectText → streamOpenAI), so
+// the mock speaks SSE — the same wire the chat engine uses.
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,13 +24,10 @@ const REC: MediaModelConfig = {
   api: "openai",
 };
 
-function mockAnswer(text: string): ReturnType<typeof vi.fn> {
-  return vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
-  );
+function sse(text: string): Response {
+  const body =
+    `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n` + `data: [DONE]\n\n`;
+  return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
 }
 
 beforeAll(async () => {
@@ -64,8 +63,8 @@ describe("DescribeImage", () => {
     expect(gif.output).toContain("limit");
   });
 
-  it("sends the file + query to the slot model and returns its answer with the preview attached", async () => {
-    const fetchMock = mockAnswer("A red square on white.");
+  it("goes through the provider wire: system framing + image part, answer + preview back", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sse("A red square on white."));
     vi.stubGlobal("fetch", fetchMock);
 
     const res = await describeImageTool.execute({ path: "/pic.png", query: "What is it?" }, { cwd: root, media: { imageRec: REC } });
@@ -80,26 +79,32 @@ describe("DescribeImage", () => {
     expect(url).toBe("http://rec:8000/v1/chat/completions");
     const body = JSON.parse(String(init.body)) as {
       model: string;
-      messages: Array<{ content: Array<{ type: string; text?: string; image_url?: { url: string } }> }>;
+      stream: boolean;
+      messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>;
     };
     expect(body.model).toBe("qwen-vl");
-    expect(body.messages[0].content[0]).toEqual({ type: "text", text: "What is it?" });
-    expect(body.messages[0].content[1].type).toBe("image_url");
-    expect(body.messages[0].content[1].image_url!.url.startsWith("data:image/png;base64,")).toBe(true);
+    expect(body.stream).toBe(true);
+    expect(body.messages[0].role).toBe("system");
+    expect(String(body.messages[0].content)).toContain("image analysis assistant");
+    const parts = body.messages[1].content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    expect(parts[0]).toEqual({ type: "text", text: "What is it?" });
+    expect(parts[1].type).toBe("image_url");
+    expect(parts[1].image_url!.url.startsWith("data:image/png;base64,")).toBe(true);
   });
 
   it("surfaces an endpoint error as ok:false with status + body", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 500, statusText: "Internal" })));
+    // 400 — a non-retryable class, so the failure surfaces immediately.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 400, statusText: "Bad Request" })));
     const res = await describeImageTool.execute({ path: "/pic.png" }, { cwd: root, media: { imageRec: REC } });
     expect(res.ok).toBe(false);
-    expect(res.output).toContain("500");
+    expect(res.output).toContain("400");
     expect(res.output).toContain("boom");
   });
 });
 
 describe("DescribeVideo", () => {
   it("uses the videoRec slot and the video_url content part, preview on the video field", async () => {
-    const fetchMock = mockAnswer("A short clip of nothing much.");
+    const fetchMock = vi.fn().mockResolvedValue(sse("A short clip of nothing much."));
     vi.stubGlobal("fetch", fetchMock);
 
     const res = await describeVideoTool.execute({ path: "/clip.mp4" }, { cwd: root, media: { videoRec: REC } });
@@ -110,8 +115,13 @@ describe("DescribeVideo", () => {
     expect(res.images).toBeUndefined();
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const body = JSON.parse(String(init.body)) as { messages: Array<{ content: Array<{ type: string }> }> };
-    expect(body.messages[0].content[1].type).toBe("video_url");
+    const body = JSON.parse(String(init.body)) as {
+      messages: Array<{ role: string; content: string | Array<{ type: string }> }>;
+    };
+    expect(body.messages[0].role).toBe("system");
+    expect(String(body.messages[0].content)).toContain("video analysis assistant");
+    const parts = body.messages[1].content as Array<{ type: string }>;
+    expect(parts[1].type).toBe("video_url");
   });
 
   it("is inert without an assigned videoRec model (imageRec alone doesn't count)", async () => {
