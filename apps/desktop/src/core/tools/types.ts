@@ -64,28 +64,56 @@ export type MediaApiFlavor = "openai" | "generate";
 // schema with the app's chat LLM first.
 export type MediaPromptStyle = "plain" | "cosmos-json";
 
-// One entry in the media model registry — an endpoint + how to talk to it.
-// There is NO capability field: what an entry can do is declared by assigning
-// it to use-case slots (the registry's assignment map) — the API type alone
-// already constrains which slots it's offered for. Threaded into tools via
-// ToolCtx by the renderer (main never reads the renderer's settings store),
-// keyed by use case.
-export interface MediaModelConfig {
-  id: string; // registry entry id (crypto.randomUUID)
-  label: string; // display name in settings + coverage list
-  baseUrl: string; // endpoint base, e.g. http://localhost:8000/v1
-  apiKey?: string;
-  model?: string;
-  api: MediaApiFlavor;
+// The registry's stored shapes (core/media.ts): a PROVIDER is an endpoint +
+// auth + API dialect; a MODEL lives under a provider and carries what it can
+// do (capabilities) plus its per-modality settings. A provider can host many
+// models (an OpenRouter-style gateway); a bare /generate provider has exactly
+// one implicit default model (empty modelId).
+export interface MediaModel {
+  id: string; // registry entry id (crypto.randomUUID) — assignment target
+  modelId: string; // the id sent on the wire; "" for a generate provider's default
+  capabilities: MediaUseCase[];
   promptStyle?: MediaPromptStyle; // undefined → "plain"
   maxImageSize?: string; // largest WxH for image generation — clamp target + fallback size
   maxVideoSize?: string; // largest WxH for video generation
-  models?: string[]; // detected model ids (picker cache; filled by the Detect button)
+}
+
+export interface MediaProvider {
+  id: string;
+  name: string; // display name; slot options read "name : modelId"
+  baseUrl: string; // endpoint base, e.g. http://localhost:8000/v1
+  apiKey?: string;
+  api: MediaApiFlavor;
+  detected?: string[]; // /models cache (openai flavor; filled by Detect)
+  models: MediaModel[];
+}
+
+// The FLAT config a tool receives for its slot — provider + model merged by
+// resolveMediaProvider(). Tools and the IPC bridge see only this; the
+// provider/model split is a settings-side concern. Threaded into tools via
+// ToolCtx by the renderer (main never reads the renderer's settings store).
+export interface MediaModelConfig {
+  id: string; // the MediaModel registry id
+  label: string; // "provider : model" display name (error messages)
+  baseUrl: string;
+  apiKey?: string;
+  model?: string; // wire model id (empty → omitted from requests)
+  api: MediaApiFlavor;
+  promptStyle?: MediaPromptStyle;
+  maxImageSize?: string;
+  maxVideoSize?: string;
 }
 
 // The per-use-case media map handed to tools: each generation/recognition tool
 // picks its slot (e.g. media.imageGen). Plain JSON — crosses the IPC bridge.
 export type MediaProviders = Partial<Record<MediaUseCase, MediaModelConfig>>;
+
+// The connection subset model detection needs — what crosses the bridge for
+// the /models listing (main does the fetch; no CORS).
+export interface MediaEndpoint {
+  baseUrl: string;
+  apiKey?: string;
+}
 
 // Per-call context handed to every tool. `cwd` is the session's workspace root.
 //

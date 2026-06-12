@@ -1,9 +1,10 @@
-// The media model registry: older stored shapes migrate losslessly (v1 single
-// config → one Cosmos entry on both generation slots; v2 capability-list
-// entries → two-flavor entries, the shared maxSize split per modality),
-// assignment IS the classification (slotCandidates filters by API type), and
-// tools resolve strictly by assignment — an unassigned or endpoint-less slot
-// resolves null (tool inert), never "whatever entry exists".
+// The provider/model registry: providers hold the connection, models hold
+// capabilities; assignment points a use-case slot at one model and tools get
+// the FLATTENED provider+model config. Older stored shapes (v1 single config,
+// flat entries with/without capability lists) migrate losslessly. Assignments
+// must stay honest: anything pointing at a removed model/provider or a lost
+// capability is pruned, and an unassigned/endpoint-less slot resolves null
+// (tool inert), never "whatever exists".
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const KEY = "v84-harness:media";
@@ -34,7 +35,7 @@ afterEach(() => {
 });
 
 describe("migrations", () => {
-  it("v1 single config → one Cosmos entry assigned to both generation slots", async () => {
+  it("v1 single config → one provider with one Cosmos model on both generation slots", async () => {
     const media = await loadRegistry({
       baseUrl: "http://gen:8000/v1",
       apiKey: "k",
@@ -43,113 +44,138 @@ describe("migrations", () => {
       models: ["cosmos-predict2"],
     });
     const reg = media.getMediaRegistry();
-    expect(reg.entries).toHaveLength(1);
-    const e = reg.entries[0];
-    expect(e.api).toBe("openai");
-    expect(e.promptStyle).toBe("cosmos-json");
-    expect(e.maxImageSize).toBe("1280x1280");
-    expect(e.maxVideoSize).toBe("1280x1280");
-    expect(reg.assignments).toEqual({ imageGen: e.id, videoGen: e.id });
-    expect(media.resolveMediaProvider("imageGen")?.baseUrl).toBe("http://gen:8000/v1");
+    expect(reg.providers).toHaveLength(1);
+    const p = reg.providers[0];
+    expect(p.api).toBe("openai");
+    expect(p.detected).toEqual(["cosmos-predict2"]);
+    expect(p.models).toHaveLength(1);
+    const m = p.models[0];
+    expect(m.modelId).toBe("cosmos-predict2");
+    expect(m.capabilities).toEqual(["imageGen", "videoGen"]);
+    expect(m.promptStyle).toBe("cosmos-json");
+    expect(m.maxImageSize).toBe("1280x1280");
+    expect(m.maxVideoSize).toBe("1280x1280");
+    const flat = media.resolveMediaProvider("imageGen");
+    expect(flat?.baseUrl).toBe("http://gen:8000/v1");
+    expect(flat?.model).toBe("cosmos-predict2");
     expect(media.resolveMediaProvider("imageRec")).toBeNull();
   });
 
-  it("v1 with no baseUrl is ignored (nothing was configured)", async () => {
-    const media = await loadRegistry({ baseUrl: "", model: "x" });
-    expect(media.getMediaRegistry().entries).toHaveLength(0);
-  });
-
-  it("v2 entries: three-way flavors collapse to two, capabilities drop, maxSize splits", async () => {
+  it("flat entries (capability-era) → one provider each, one model with the entry's capabilities", async () => {
     const media = await loadRegistry({
       entries: [
-        { id: "a", label: "cosmos", baseUrl: "http://a/v1", capabilities: ["imageGen", "videoGen"], api: "openai-images", maxSize: "1280x1280" },
+        { id: "a", label: "cosmos", baseUrl: "http://a/v1", capabilities: ["imageGen", "videoGen"], api: "openai-images", model: "cosmos-x", maxSize: "1280x1280", promptStyle: "cosmos-json" },
         { id: "b", label: "bansai", baseUrl: "http://b/", capabilities: ["imageGen"], api: "plain-generate" },
-        { id: "c", label: "rec", baseUrl: "http://c/v1", capabilities: ["imageRec"], api: "openai-chat" },
       ],
-      assignments: { imageGen: "b", videoGen: "a", imageRec: "c" },
+      assignments: { imageGen: "b", videoGen: "a" },
     });
-    const [a, b, c] = media.getMediaRegistry().entries;
-    expect(a.api).toBe("openai");
-    expect(a.maxImageSize).toBe("1280x1280");
-    expect(a.maxVideoSize).toBe("1280x1280");
-    expect(b.api).toBe("generate");
-    expect(c.api).toBe("openai");
-    expect("capabilities" in a).toBe(false);
-    expect(media.resolveMediaProvider("imageGen")?.id).toBe("b");
-    expect(media.resolveMediaProvider("imageRec")?.id).toBe("c");
+    const reg = media.getMediaRegistry();
+    expect(reg.providers.map((p) => p.api)).toEqual(["openai", "generate"]);
+    expect(media.resolveMediaProvider("imageGen")?.label).toBe("bansai");
+    expect(media.resolveMediaProvider("videoGen")?.model).toBe("cosmos-x");
+  });
+
+  it("flat entries without capabilities infer them from the old assignments", async () => {
+    const media = await loadRegistry({
+      entries: [{ id: "a", label: "gen", baseUrl: "http://a/v1", api: "openai", model: "m1" }],
+      assignments: { imageGen: "a" },
+    });
+    const m = media.getMediaRegistry().providers[0].models[0];
+    expect(m.capabilities).toEqual(["imageGen"]);
+    expect(media.resolveMediaProvider("imageGen")?.model).toBe("m1");
   });
 });
 
-describe("classification by assignment", () => {
-  it("slotCandidates filters by API type — bare /generate fits only image generation", async () => {
+describe("providers + models", () => {
+  it("a generate provider keeps exactly one default model with generation-only capabilities", async () => {
     const media = await loadRegistry();
-    const open = media.addMediaModel();
-    media.updateMediaModel(open, { baseUrl: "http://a/v1" }); // api defaults to openai
-    const bare = media.addMediaModel();
-    media.updateMediaModel(bare, { baseUrl: "http://b/", api: "generate" });
+    const pid = media.addProvider();
+    media.updateProvider(pid, { baseUrl: "http://b/" });
+    media.addModel(pid, "x1");
+    media.addModel(pid, "x2");
 
-    const entries = media.getMediaRegistry().entries;
-    expect(media.slotCandidates("imageGen", entries).map((e) => e.id)).toEqual([open, bare]);
-    expect(media.slotCandidates("videoGen", entries).map((e) => e.id)).toEqual([open]);
-    expect(media.slotCandidates("imageRec", entries).map((e) => e.id)).toEqual([open]);
+    media.updateProvider(pid, { api: "generate" });
+    const p = media.getMediaRegistry().providers[0];
+    expect(p.models).toHaveLength(1);
+    expect(p.models[0].modelId).toBe("");
+    expect(p.detected).toBeUndefined();
   });
 
-  it("assignment is explicit — nothing resolves until a slot is pointed at an entry", async () => {
+  it("providerCaps constrains what a model can declare", async () => {
     const media = await loadRegistry();
-    const id = media.addMediaModel();
-    media.updateMediaModel(id, { baseUrl: "http://a/v1" });
+    expect(media.providerCaps("generate")).toEqual(["imageGen"]);
+    expect(media.providerCaps("openai")).toHaveLength(6);
+  });
+
+  it("a cosmos wire id arrives pre-marked for the JSON enhancer", async () => {
+    const media = await loadRegistry();
+    const pid = media.addProvider();
+    const mid = media.addModel(pid, "nvidia/Cosmos3-T2I");
+    const m = media.getMediaRegistry().providers[0].models.find((x) => x.id === mid);
+    expect(m?.promptStyle).toBe("cosmos-json");
+  });
+});
+
+describe("assignment + resolution", () => {
+  async function seedProvider(media: Awaited<ReturnType<typeof loadRegistry>>): Promise<{ pid: string; mid: string }> {
+    const pid = media.addProvider();
+    media.updateProvider(pid, { baseUrl: "http://a/v1", name: "A" });
+    const mid = media.addModel(pid, "m1");
+    media.updateModel(pid, mid, { capabilities: ["imageGen"] });
+    return { pid, mid };
+  }
+
+  it("capability tick auto-fills an empty slot, never overrides, and a lost capability prunes", async () => {
+    const media = await loadRegistry();
+    const { pid, mid } = await seedProvider(media);
+    expect(media.getMediaRegistry().assignments.imageGen).toEqual({ providerId: pid, modelId: mid });
+
+    const mid2 = media.addModel(pid, "m2");
+    media.updateModel(pid, mid2, { capabilities: ["imageGen"] });
+    expect(media.getMediaRegistry().assignments.imageGen?.modelId).toBe(mid); // first pick survives
+
+    media.updateModel(pid, mid, { capabilities: [] });
+    expect(media.getMediaRegistry().assignments.imageGen).toBeUndefined();
+  });
+
+  it("slotOptions lists 'provider : model' for capable models only", async () => {
+    const media = await loadRegistry();
+    const { pid, mid } = await seedProvider(media);
+    const opts = media.slotOptions("imageGen", media.getMediaRegistry());
+    expect(opts).toEqual([{ ref: { providerId: pid, modelId: mid }, label: "A : m1" }]);
+    expect(media.slotOptions("videoGen", media.getMediaRegistry())).toEqual([]);
+  });
+
+  it("resolution flattens provider + model and goes inert without an endpoint", async () => {
+    const media = await loadRegistry();
+    const { pid, mid } = await seedProvider(media);
+    media.updateModel(pid, mid, { maxImageSize: "1024x1024" });
+    const flat = media.resolveMediaProvider("imageGen");
+    expect(flat).toMatchObject({ baseUrl: "http://a/v1", model: "m1", api: "openai", maxImageSize: "1024x1024", label: "A : m1" });
+
+    media.updateProvider(pid, { baseUrl: "" });
     expect(media.resolveMediaProvider("imageGen")).toBeNull();
-
-    media.assignMediaModel("imageGen", id);
-    expect(media.resolveMediaProvider("imageGen")?.id).toBe(id);
-
-    media.assignMediaModel("imageGen", "");
-    expect(media.resolveMediaProvider("imageGen")).toBeNull();
   });
 
-  it("an API-type change clears assignments the new type can't serve", async () => {
+  it("removing a model or provider prunes its assignments", async () => {
     const media = await loadRegistry();
-    const id = media.addMediaModel();
-    media.updateMediaModel(id, { baseUrl: "http://a/v1" });
-    media.assignMediaModel("imageGen", id);
-    media.assignMediaModel("imageRec", id);
+    const { pid, mid } = await seedProvider(media);
+    media.removeModel(pid, mid);
+    expect(media.getMediaRegistry().assignments.imageGen).toBeUndefined();
 
-    media.updateMediaModel(id, { api: "generate" });
-    expect(media.getMediaRegistry().assignments.imageGen).toBe(id); // generate still fits imageGen
-    expect(media.getMediaRegistry().assignments.imageRec).toBeUndefined();
-  });
-
-  it("removal clears every slot pointing at the entry", async () => {
-    const media = await loadRegistry();
-    const id = media.addMediaModel();
-    media.updateMediaModel(id, { baseUrl: "http://a/v1" });
-    media.assignMediaModel("imageGen", id);
-    media.assignMediaModel("videoGen", id);
-
-    media.removeMediaModel(id);
-    expect(media.getMediaRegistry().entries).toHaveLength(0);
-    expect(media.resolveMediaProvider("imageGen")).toBeNull();
-    expect(media.resolveMediaProvider("videoGen")).toBeNull();
-  });
-
-  it("does not resolve an entry that has no endpoint yet", async () => {
-    const media = await loadRegistry();
-    const id = media.addMediaModel(); // baseUrl empty
-    media.assignMediaModel("imageGen", id);
+    const mid2 = media.addModel(pid, "m2");
+    media.updateModel(pid, mid2, { capabilities: ["imageGen"] });
+    media.removeProvider(pid);
+    expect(media.getMediaRegistry().providers).toHaveLength(0);
     expect(media.resolveMediaProvider("imageGen")).toBeNull();
   });
 
   it("resolveMediaProviders maps only usable slots", async () => {
     const media = await loadRegistry();
-    const gen = media.addMediaModel();
-    media.updateMediaModel(gen, { baseUrl: "http://gen/v1" });
-    media.assignMediaModel("imageGen", gen);
-    media.assignMediaModel("videoGen", gen);
-    const empty = media.addMediaModel(); // no baseUrl → unusable
-    media.assignMediaModel("imageRec", empty);
-
+    const { pid, mid } = await seedProvider(media);
+    media.updateModel(pid, mid, { capabilities: ["imageGen", "videoGen"] });
     const map = media.resolveMediaProviders();
     expect(Object.keys(map).sort()).toEqual(["imageGen", "videoGen"]);
-    expect(map.imageGen?.id).toBe(gen);
+    expect(map.imageGen?.model).toBe("m1");
   });
 });

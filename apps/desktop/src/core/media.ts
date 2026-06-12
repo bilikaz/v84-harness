@@ -1,56 +1,60 @@
-import type { MediaApiFlavor, MediaModelConfig, MediaProviders, MediaUseCase } from "./tools/types.ts";
+import type {
+  MediaApiFlavor,
+  MediaModel,
+  MediaModelConfig,
+  MediaProvider,
+  MediaProviders,
+  MediaUseCase,
+} from "./tools/types.ts";
 import { MEDIA_USE_CASES } from "./tools/types.ts";
 import { trimBase } from "../lib/format.ts";
 import { harness } from "../lib/harness.ts";
 import { createStore } from "../lib/store.ts";
 import { errorMessage } from "../lib/errors.ts";
 
-// The media model REGISTRY — replaces the single image/video provider config.
-// Endpoints differ per task (a Cosmos container generates, a vision model
-// describes, a bare /generate server only generates), so the registry holds a
-// pool of entries (endpoint + API type) and an assignment map from use-case
-// slot → entry. ASSIGNMENT IS THE CLASSIFICATION: an entry has no capability
-// list — what it can do is declared by the slots it's assigned to, and the
-// API type alone constrains which slots it's offered for (slotCandidates).
-// Tools resolve their model by slot (resolveMediaProvider("imageGen")); the
-// slot list (MEDIA_USE_CASES) is the app's coverage map — a slot may be
-// empty (tool inert) or have no tool yet (audio today).
+// The media model registry — PROVIDERS (endpoint + auth + API dialect) each
+// hosting MODELS (capabilities + per-modality settings), and an assignment
+// map from use-case slot → one model. The separation exists because one
+// gateway can serve many models (OpenRouter-style): connection details live
+// once on the provider, what-each-model-can-do lives per model. Tools never
+// see the split — resolveMediaProvider(useCase) flattens the assigned
+// provider+model into the MediaModelConfig threaded through ToolCtx. The slot
+// list (MEDIA_USE_CASES) is the app's coverage map — a slot may be empty
+// (tool inert) or have no tool yet (audio today).
 const KEY = "v84-harness:media";
 
-export interface MediaRegistry {
-  entries: MediaModelConfig[];
-  // use case → entry id. At most one active model per slot; reassigning the
-  // slot is how you switch models.
-  assignments: Partial<Record<MediaUseCase, string>>;
+// Assignment target: a model under a provider (ids, not array positions).
+export interface ModelRef {
+  providerId: string;
+  modelId: string; // MediaModel.id (the registry id, not the wire id)
 }
 
-const DEFAULTS: MediaRegistry = { entries: [], assignments: {} };
+export interface MediaRegistry {
+  providers: MediaProvider[];
+  assignments: Partial<Record<MediaUseCase, ModelRef>>;
+}
 
-// Which slots an API type can plausibly serve — the coverage dropdowns offer
-// only fitting entries. A bare /generate has exactly one implemented wire
-// (image generation); the OpenAI envelope covers every slot (the slot picks
-// the path: /images/generations, the video jobs flow, /chat/completions).
-const SLOT_FLAVORS: Record<MediaUseCase, readonly MediaApiFlavor[]> = {
-  imageGen: ["openai", "generate"],
-  videoGen: ["openai"],
-  imageRec: ["openai"],
-  videoRec: ["openai"],
-  audioGen: ["openai"],
-  audioRec: ["openai"],
-};
+const DEFAULTS: MediaRegistry = { providers: [], assignments: {} };
 
-export function slotCandidates(useCase: MediaUseCase, entries: MediaModelConfig[]): MediaModelConfig[] {
-  return entries.filter((e) => SLOT_FLAVORS[useCase].includes(e.api));
+// What a model under each API dialect can plausibly do — the capability
+// checkboxes offer only these. A bare /generate has exactly one implemented
+// wire (image generation); the OpenAI envelope covers every slot.
+export function providerCaps(api: MediaApiFlavor): readonly MediaUseCase[] {
+  return api === "generate" ? ["imageGen"] : MEDIA_USE_CASES;
 }
 
 function newId(): string {
   return crypto.randomUUID();
 }
 
+// ── migrations ───────────────────────────────────────────────────────────────
 // Earlier stored shapes, migrated on load:
 //   v1 — one single config (the Cosmos container for image+video).
-//   v2 — registry entries with a `capabilities` list and three-way api
-//        flavors; capabilities collapsed into assignments, flavors into two.
+//   v2/v3 — flat `entries` (with or without a capabilities list, three- or
+//   two-way api flavors, shared or split maxSize). Each entry becomes a
+//   provider with one model; capabilities come from the entry's list when
+//   present, else from the slots it was assigned to.
+
 interface LegacyV1 {
   baseUrl?: string;
   apiKey?: string;
@@ -58,46 +62,83 @@ interface LegacyV1 {
   maxSize?: string;
   models?: string[];
 }
-interface LegacyV2Entry extends Omit<MediaModelConfig, "api"> {
-  api: MediaApiFlavor | "openai-images" | "plain-generate" | "openai-chat";
+interface LegacyEntry {
+  id: string;
+  label?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  api?: MediaApiFlavor | "openai-images" | "plain-generate" | "openai-chat";
   capabilities?: MediaUseCase[];
+  promptStyle?: MediaModel["promptStyle"];
   maxSize?: string;
+  maxImageSize?: string;
+  maxVideoSize?: string;
+  models?: string[];
 }
 
-function migrateEntry(e: LegacyV2Entry): MediaModelConfig {
-  const api: MediaApiFlavor = e.api === "plain-generate" ? "generate" : e.api === "generate" ? "generate" : "openai";
-  const { capabilities: _caps, maxSize, ...rest } = e;
-  return {
-    ...rest,
-    api,
-    // The old single maxSize served both generation tools — keep it for both.
-    maxImageSize: e.maxImageSize ?? maxSize,
-    maxVideoSize: e.maxVideoSize ?? maxSize,
-  };
+function legacyApi(api: LegacyEntry["api"]): MediaApiFlavor {
+  return api === "plain-generate" || api === "generate" ? "generate" : "openai";
+}
+
+function migrateEntries(entries: LegacyEntry[], oldAssignments: Partial<Record<MediaUseCase, string>>): MediaRegistry {
+  const providers: MediaProvider[] = [];
+  const assignments: MediaRegistry["assignments"] = {};
+  for (const e of entries) {
+    const assignedSlots = MEDIA_USE_CASES.filter((uc) => oldAssignments[uc] === e.id);
+    const model: MediaModel = {
+      id: newId(),
+      modelId: e.model ?? "",
+      capabilities: e.capabilities ?? assignedSlots,
+      promptStyle: e.promptStyle,
+      maxImageSize: e.maxImageSize ?? e.maxSize,
+      maxVideoSize: e.maxVideoSize ?? e.maxSize,
+    };
+    providers.push({
+      id: e.id,
+      name: e.label || e.model || e.baseUrl || "Provider",
+      baseUrl: e.baseUrl ?? "",
+      apiKey: e.apiKey,
+      api: legacyApi(e.api),
+      detected: e.models,
+      models: [model],
+    });
+    for (const uc of assignedSlots) assignments[uc] = { providerId: e.id, modelId: model.id };
+  }
+  return { providers, assignments };
 }
 
 function load(): MediaRegistry | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<MediaRegistry> & LegacyV1 & { entries?: LegacyV2Entry[] };
+    const parsed = JSON.parse(raw) as Partial<MediaRegistry> & LegacyV1 & { entries?: LegacyEntry[] };
+    if (Array.isArray(parsed.providers)) {
+      return { providers: parsed.providers, assignments: parsed.assignments ?? {} };
+    }
     if (Array.isArray(parsed.entries)) {
-      return { entries: parsed.entries.map(migrateEntry), assignments: parsed.assignments ?? {} };
+      return migrateEntries(parsed.entries, (parsed.assignments ?? {}) as Partial<Record<MediaUseCase, string>>);
     }
     if (typeof parsed.baseUrl === "string" && parsed.baseUrl) {
-      const entry: MediaModelConfig = {
+      const model: MediaModel = {
         id: newId(),
-        label: parsed.model || "Cosmos",
-        baseUrl: parsed.baseUrl,
-        apiKey: parsed.apiKey,
-        model: parsed.model,
+        modelId: parsed.model ?? "",
+        capabilities: ["imageGen", "videoGen"],
+        promptStyle: "cosmos-json",
         maxImageSize: parsed.maxSize,
         maxVideoSize: parsed.maxSize,
-        models: parsed.models,
-        api: "openai",
-        promptStyle: "cosmos-json",
       };
-      return { entries: [entry], assignments: { imageGen: entry.id, videoGen: entry.id } };
+      const provider: MediaProvider = {
+        id: newId(),
+        name: parsed.model || "Cosmos",
+        baseUrl: parsed.baseUrl,
+        apiKey: parsed.apiKey,
+        api: "openai",
+        detected: parsed.models,
+        models: [model],
+      };
+      const ref = { providerId: provider.id, modelId: model.id };
+      return { providers: [provider], assignments: { imageGen: ref, videoGen: ref } };
     }
     return null;
   } catch {
@@ -115,63 +156,166 @@ export function useMediaRegistry(): MediaRegistry {
   return store.use();
 }
 
-// Append a fresh entry (the settings UI fills it in) and return its id. It
-// gets a default label immediately — a bare /generate server never supplies a
-// model id, so without one the entry would be unnameable in the coverage
-// dropdowns ("—") and effectively unassignable.
-export function addMediaModel(): string {
+// ── provider CRUD ────────────────────────────────────────────────────────────
+
+// New providers are born named so they're recognizable everywhere immediately.
+export function addProvider(): string {
   const id = newId();
   const cur = store.get();
-  const taken = new Set(cur.entries.map((e) => e.label));
-  let n = cur.entries.length + 1;
-  while (taken.has(`Model ${n}`)) n++;
+  const taken = new Set(cur.providers.map((p) => p.name));
+  let n = cur.providers.length + 1;
+  while (taken.has(`Provider ${n}`)) n++;
   store.set({
     ...cur,
-    entries: [...cur.entries, { id, label: `Model ${n}`, baseUrl: "", api: "openai" }],
+    providers: [...cur.providers, { id, name: `Provider ${n}`, baseUrl: "", api: "openai", models: [] }],
   });
   return id;
 }
 
-// Patch an entry. A slot assigned to an entry whose API type no longer fits
-// it (e.g. switched to bare /generate while assigned to recognition) is
-// cleared — assignment is the classification, and it must stay plausible.
-export function updateMediaModel(id: string, patch: Partial<Omit<MediaModelConfig, "id">>): void {
+// Patch a provider. Switching the API dialect re-fits its models: a generate
+// provider has exactly ONE implicit default model (empty wire id, image
+// generation at most), so extra models are dropped and capabilities the new
+// dialect can't serve are stripped — with the assignments that pointed at
+// anything removed cleared too.
+export function updateProvider(id: string, patch: Partial<Omit<MediaProvider, "id" | "models">>): void {
   const cur = store.get();
-  const entries = cur.entries.map((e) => (e.id === id ? { ...e, ...patch, id } : e));
-  const entry = entries.find((e) => e.id === id);
-  const assignments = { ...cur.assignments };
-  if (entry) {
-    for (const uc of MEDIA_USE_CASES) {
-      if (assignments[uc] === id && !SLOT_FLAVORS[uc].includes(entry.api)) delete assignments[uc];
+  const providers = cur.providers.map((p) => {
+    if (p.id !== id) return p;
+    const next = { ...p, ...patch, id };
+    if (patch.api && patch.api !== p.api && patch.api === "generate") {
+      const first = next.models[0];
+      next.models = [
+        {
+          id: first?.id ?? newId(),
+          modelId: "",
+          capabilities: (first?.capabilities ?? []).filter((c) => providerCaps("generate").includes(c)),
+          maxImageSize: first?.maxImageSize,
+          maxVideoSize: undefined,
+          promptStyle: undefined,
+        },
+      ];
+      next.detected = undefined;
+    }
+    return next;
+  });
+  store.set({ providers, assignments: pruneAssignments(cur.assignments, providers) });
+}
+
+export function removeProvider(id: string): void {
+  const cur = store.get();
+  const providers = cur.providers.filter((p) => p.id !== id);
+  store.set({ providers, assignments: pruneAssignments(cur.assignments, providers) });
+}
+
+// ── model CRUD ───────────────────────────────────────────────────────────────
+
+// Add a model under a provider (from the detected list or a typed id). A
+// cosmos wire id arrives pre-marked for the JSON prompt enhancer.
+export function addModel(providerId: string, wireId: string): string {
+  const id = newId();
+  const cur = store.get();
+  const providers = cur.providers.map((p) =>
+    p.id === providerId
+      ? {
+          ...p,
+          models: [
+            ...p.models,
+            {
+              id,
+              modelId: wireId,
+              capabilities: [],
+              ...(wireId.toLowerCase().includes("cosmos") ? { promptStyle: "cosmos-json" as const } : {}),
+            },
+          ],
+        }
+      : p,
+  );
+  store.set({ ...cur, providers });
+  return id;
+}
+
+// Patch a model. Capability changes keep assignments honest: an empty slot
+// the model now serves is auto-assigned (never overriding an existing pick);
+// a slot assigned to this model for a capability it lost is cleared.
+export function updateModel(providerId: string, modelId: string, patch: Partial<Omit<MediaModel, "id">>): void {
+  const cur = store.get();
+  const providers = cur.providers.map((p) =>
+    p.id === providerId ? { ...p, models: p.models.map((m) => (m.id === modelId ? { ...m, ...patch, id: m.id } : m)) } : p,
+  );
+  const model = providers.find((p) => p.id === providerId)?.models.find((m) => m.id === modelId);
+  const assignments = pruneAssignments(cur.assignments, providers);
+  if (model) {
+    for (const uc of model.capabilities) {
+      assignments[uc] ??= { providerId, modelId };
     }
   }
-  store.set({ entries, assignments });
+  store.set({ providers, assignments });
 }
 
-export function removeMediaModel(id: string): void {
+export function removeModel(providerId: string, modelId: string): void {
   const cur = store.get();
-  const assignments = { ...cur.assignments };
-  for (const uc of MEDIA_USE_CASES) if (assignments[uc] === id) delete assignments[uc];
-  store.set({ entries: cur.entries.filter((e) => e.id !== id), assignments });
+  const providers = cur.providers.map((p) => (p.id === providerId ? { ...p, models: p.models.filter((m) => m.id !== modelId) } : p));
+  store.set({ providers, assignments: pruneAssignments(cur.assignments, providers) });
 }
 
-// Point a slot at an entry ("" clears it). Only fitting entries are offered
-// by the UI (slotCandidates); this doesn't re-validate.
-export function assignMediaModel(useCase: MediaUseCase, id: string): void {
+// Drop assignments whose target no longer exists or no longer declares the
+// slot's capability — assignment is the user's pick, but it must stay honest.
+function pruneAssignments(
+  assignments: MediaRegistry["assignments"],
+  providers: MediaProvider[],
+): MediaRegistry["assignments"] {
+  const out: MediaRegistry["assignments"] = {};
+  for (const uc of MEDIA_USE_CASES) {
+    const ref = assignments[uc];
+    if (!ref) continue;
+    const model = providers.find((p) => p.id === ref.providerId)?.models.find((m) => m.id === ref.modelId);
+    if (model?.capabilities.includes(uc)) out[uc] = ref;
+  }
+  return out;
+}
+
+// ── assignment + resolution ──────────────────────────────────────────────────
+
+export function assignModel(useCase: MediaUseCase, ref: ModelRef | null): void {
   const cur = store.get();
   const assignments = { ...cur.assignments };
-  if (id) assignments[useCase] = id;
+  if (ref) assignments[useCase] = ref;
   else delete assignments[useCase];
   store.set({ ...cur, assignments });
 }
 
-// The model serving a use-case slot, or null when the slot is unassigned or
-// the entry isn't usable yet (no endpoint). Tools stay inert on null.
+// Every model that can serve a slot, as UI options — "provider : model".
+export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ ref: ModelRef; label: string }> {
+  const out: Array<{ ref: ModelRef; label: string }> = [];
+  for (const p of reg.providers) {
+    for (const m of p.models) {
+      if (!m.capabilities.includes(useCase)) continue;
+      out.push({ ref: { providerId: p.id, modelId: m.id }, label: m.modelId ? `${p.name} : ${m.modelId}` : p.name });
+    }
+  }
+  return out;
+}
+
+// The flat config for a use-case slot, or null when the slot is unassigned or
+// the provider isn't usable yet (no endpoint). Tools stay inert on null.
 export function resolveMediaProvider(useCase: MediaUseCase): MediaModelConfig | null {
-  const cur = store.get();
-  const id = cur.assignments[useCase];
-  const entry = id ? cur.entries.find((e) => e.id === id) : undefined;
-  return entry?.baseUrl ? entry : null;
+  const reg = store.get();
+  const ref = reg.assignments[useCase];
+  if (!ref) return null;
+  const provider = reg.providers.find((p) => p.id === ref.providerId);
+  const model = provider?.models.find((m) => m.id === ref.modelId);
+  if (!provider?.baseUrl || !model) return null;
+  return {
+    id: model.id,
+    label: model.modelId ? `${provider.name} : ${model.modelId}` : provider.name,
+    baseUrl: provider.baseUrl,
+    apiKey: provider.apiKey,
+    model: model.modelId || undefined,
+    api: provider.api,
+    promptStyle: model.promptStyle,
+    maxImageSize: model.maxImageSize,
+    maxVideoSize: model.maxVideoSize,
+  };
 }
 
 // The full per-slot map threaded into ToolCtx each turn.
@@ -184,37 +328,30 @@ export function resolveMediaProviders(): MediaProviders {
   return out;
 }
 
-// Detect an entry's models (also a reachability test) + cache them. In
-// Electron it goes through main (no CORS); in the browser it fetches
-// directly. Auto-selects the first model when none set. Only the OpenAI
-// flavor has /models — the UI doesn't offer Detect for bare /generate.
-// Known models are recognized: a cosmos model id marks the entry as needing
-// the structured-JSON prompt upsampler unless the user already chose.
-export async function detectMediaModels(id: string): Promise<{ ok: boolean; count: number; error?: string }> {
-  const entry = store.get().entries.find((e) => e.id === id);
-  if (!entry) return { ok: false, count: 0, error: "model entry not found" };
+// ── detection ────────────────────────────────────────────────────────────────
+
+// List a provider's models (also a reachability test) into provider.detected
+// — the add-row picks from this cache. In Electron it goes through main (no
+// CORS); in the browser it fetches directly. Only the OpenAI dialect has
+// /models — the UI doesn't offer Detect for bare /generate.
+export async function detectProviderModels(id: string): Promise<{ ok: boolean; count: number; error?: string }> {
+  const provider = store.get().providers.find((p) => p.id === id);
+  if (!provider) return { ok: false, count: 0, error: "provider not found" };
   try {
     let models: string[];
     if (harness) {
-      const r = await harness.media.models(entry);
+      const r = await harness.media.models(provider);
       if (!r.ok) return { ok: false, count: 0, error: r.error };
       models = r.models;
     } else {
-      const res = await fetch(`${trimBase(entry.baseUrl)}/models`, {
-        headers: entry.apiKey ? { authorization: `Bearer ${entry.apiKey}` } : {},
+      const res = await fetch(`${trimBase(provider.baseUrl)}/models`, {
+        headers: provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {},
       });
       if (!res.ok) return { ok: false, count: 0, error: `${res.status} ${res.statusText}` };
       const data = (await res.json()) as { data?: Array<{ id?: string }> };
       models = (data.data ?? []).map((m) => m.id).filter((mid): mid is string => !!mid);
     }
-    const model = entry.model || models[0] || "";
-    const cosmos = [model, ...models].some((m) => m.toLowerCase().includes("cosmos"));
-    updateMediaModel(id, {
-      models,
-      model,
-      ...(!entry.label && model ? { label: model } : {}),
-      ...(cosmos && !entry.promptStyle ? { promptStyle: "cosmos-json" as const } : {}),
-    });
+    updateProvider(id, { detected: models });
     return { ok: true, count: models.length };
   } catch (e) {
     return { ok: false, count: 0, error: errorMessage(e) };
