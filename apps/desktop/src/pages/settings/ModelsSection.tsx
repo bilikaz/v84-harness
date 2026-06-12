@@ -51,6 +51,14 @@ function entryName(m: MediaModelConfig): string {
   return m.label || m.model || m.baseUrl || "—";
 }
 
+// A cosmos-named model means the Cosmos structured-JSON prompt — suggest the
+// upsampler when the name says so (detection does the same from the model
+// list). Only meaningful on the wire Cosmos actually speaks.
+function suggestCosmos(patch: { label?: string; model?: string }, m: MediaModelConfig): typeof patch & { promptStyle?: "cosmos-json" } {
+  const name = `${patch.label ?? ""} ${patch.model ?? ""}`.toLowerCase();
+  return name.includes("cosmos") && m.api === "openai-images" ? { ...patch, promptStyle: "cosmos-json" } : patch;
+}
+
 export function ModelsSection() {
   const { t } = useTranslation();
   const reg = useMediaRegistry();
@@ -154,14 +162,47 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
         />
       </Row>
 
+      {/* ONE identity field. For detectable flavors the name IS the model id:
+          editable at first, Detect sits beside it, and a successful detect
+          turns it into the model picker (choosing syncs label + model). A
+          bare /generate entry has no model — the field is just its display
+          name. */}
       <Row label={t("media.name")}>
-        <input
-          value={m.label}
-          onChange={(e) => updateMediaModel(m.id, { label: e.target.value })}
-          placeholder={t("media.labelPlaceholder")}
-          className={fieldInput}
-        />
+        <div className="flex w-80 items-center gap-2">
+          {!bare && hasModels ? (
+            <select
+              value={m.model ?? ""}
+              onChange={(e) => updateMediaModel(m.id, suggestCosmos({ model: e.target.value, label: e.target.value }, m))}
+              className={fieldInputFlex}
+            >
+              <option value="">{t("media.modelDefault")}</option>
+              {m.model && !m.models!.includes(m.model) && <option value={m.model}>{m.model}</option>}
+              {m.models!.map((mm) => (
+                <option key={mm} value={mm}>
+                  {mm}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={bare ? m.label : m.label || m.model || ""}
+              onChange={(e) =>
+                updateMediaModel(
+                  m.id,
+                  suggestCosmos(bare ? { label: e.target.value } : { label: e.target.value, model: e.target.value }, m),
+                )
+              }
+              placeholder={t("media.labelPlaceholder")}
+              className={fieldInputFlex}
+            />
+          )}
+          {!bare && (
+            <DetectButton label={t("media.detect")} busy={detecting} disabled={!m.baseUrl} title={t("media.detectHint")} onClick={detect} />
+          )}
+        </div>
       </Row>
+      {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
+      {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
 
       <Row label={t("media.apiKey")}>
         <input
@@ -207,7 +248,13 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
             const api = e.target.value as MediaApiFlavor;
             // The Cosmos prompt style belongs to the openai-images wire — a
             // flavor switch away from it must not leave the flag set invisibly.
-            updateMediaModel(m.id, { api, ...(api !== "openai-images" ? { promptStyle: "plain" as const } : {}) });
+            // A bare /generate takes no model parameter, so a leftover model id
+            // is dropped too (the label keeps the display name).
+            updateMediaModel(m.id, {
+              api,
+              ...(api !== "openai-images" ? { promptStyle: "plain" as const } : {}),
+              ...(api === "plain-generate" ? { model: "" } : {}),
+            });
           }}
           className={fieldInput}
         >
@@ -218,38 +265,6 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
           ))}
         </select>
       </Row>
-
-      {!bare && (
-        <Row label={t("media.model")}>
-          <div className="flex w-80 items-center gap-2">
-            {hasModels ? (
-              <select
-                value={m.model ?? ""}
-                onChange={(e) => updateMediaModel(m.id, { model: e.target.value })}
-                className={fieldInputFlex}
-              >
-                <option value="">{t("media.modelDefault")}</option>
-                {m.model && !m.models!.includes(m.model) && <option value={m.model}>{m.model}</option>}
-                {m.models!.map((mm) => (
-                  <option key={mm} value={mm}>
-                    {mm}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={m.model ?? ""}
-                onChange={(e) => updateMediaModel(m.id, { model: e.target.value })}
-                placeholder={t("media.modelPlaceholder")}
-                className={fieldInputFlex}
-              />
-            )}
-            <DetectButton label={t("media.detect")} busy={detecting} disabled={!m.baseUrl} title={t("media.detectHint")} onClick={detect} />
-          </div>
-        </Row>
-      )}
-      {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
-      {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
 
       {/* Cosmos speaks the openai-images wire — a bare /generate server can't
           be the Cosmos container, so the upsampler toggle would be noise. */}
