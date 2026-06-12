@@ -1,6 +1,7 @@
 // Renderer-side image downscaling — the ONE place images are fitted to the
-// model's longest-side cap (ModelConfig.imageMaxDim; default below). Both
-// media doors run it in the renderer: composer attachments
+// model's longest-side cap (ModelConfig.imageMaxDim; default in
+// core/config/defaults.ts — callers resolve it via effectiveImageMaxDim).
+// Both media doors run it in the renderer: composer attachments
 // (lib/attachments.ts) and tool-produced images in the driver
 // (core/sessions/driver.ts) — LoadImage reads files at full resolution in
 // main and the result is downscaled here on its way to the model. Canvas
@@ -8,20 +9,18 @@
 
 import { bytesToB64, parseDataUrl } from "./dataUrl.ts";
 
-// Most VLMs are trained around ~2048px on the longest side — anything bigger
-// only burns visual tokens for no extra signal.
-export const DEFAULT_IMAGE_MAX_DIM = 2048;
-
 // Downscale a data-URL image to fit maxDim on its longest side, keeping the
 // aspect ratio. Returns the re-encoded data URL, or null when the image is
 // left untouched: already fits, GIF (canvas would keep only the first frame),
 // non-data URL, or decode failure — resizing is best-effort and must never
-// block a send.
+// block a send. A degenerate cap (0/negative/NaN) is also a no-op: a bad
+// config value must never collapse images to 1×1.
 export async function downscaleImage(
   url: string,
   mime: string,
   maxDim: number,
 ): Promise<{ url: string; mime: string } | null> {
+  if (!Number.isFinite(maxDim) || maxDim <= 0) return null;
   if (mime === "image/gif" || !parseDataUrl(url)) return null;
   try {
     const blob = await (await fetch(url)).blob();

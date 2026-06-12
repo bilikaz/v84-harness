@@ -4,8 +4,8 @@ import { getProvider } from "../../core/settings.ts";
 import { sessionBus as bus } from "./events.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
+import { getAppConfig } from "../config/index.ts";
 import {
-  CONTEXT_RESERVE,
   contextLimit,
   getCompactingIds,
   getSession,
@@ -20,7 +20,7 @@ import {
 const log = rootLog.child("session.compaction");
 
 // Auto-compaction — when a session crosses its usable context budget (see
-// contextLimit / CONTEXT_RESERVE), summarize the whole conversation and replace
+// contextLimit / config session.contextReserve), summarize the conversation and replace
 // it with a single hidden summary message. Self-contained service like naming.ts
 // (owns its logic + subscription, calls streamModel directly, never goes through
 // the driver so it doesn't re-trigger turn events).
@@ -51,7 +51,9 @@ export async function compact(sid: string, cfg: ModelConfig): Promise<void> {
     // Force thinking on but tightly budgeted — a summary doesn't need deep
     // reasoning. Give the OUTPUT the full reserved headroom (NOT the user's tiny
     // maxTokens) — that reserve exists precisely for this summary.
-    const reserve = cfg.contextLength ? cfg.contextLength - contextLimit(cfg) : (cfg.contextReserve ?? CONTEXT_RESERVE);
+    const reserve = cfg.contextLength
+      ? cfg.contextLength - contextLimit(cfg)
+      : (cfg.contextReserve ?? getAppConfig().session.contextReserve);
     const compactCfg: ModelConfig = {
       ...cfg,
       reasoningEffort: "low",

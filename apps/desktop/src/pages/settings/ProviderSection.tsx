@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 
 import { DetectButton, Row, fieldInput, fieldInputBare, fieldInputFlex } from "./Field.tsx";
 import { detectModels, saveProvider, useProvider } from "../../core/settings.ts";
+import { getAppConfig } from "../../core/config/index.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { useDetection } from "../../lib/hooks.ts";
 import type { ProviderKind, ReasoningEffort } from "../../providers/types.ts";
@@ -14,8 +15,9 @@ export function ProviderSection() {
   );
 
   const hasModels = (cfg.models?.length ?? 0) > 0;
-  // System reserve can't go below 10% of the context window.
-  const minReserve = cfg.contextLength ? Math.floor(cfg.contextLength * 0.1) : 0;
+  const appCfg = getAppConfig();
+  // System reserve can't go below the configured fraction of the context window.
+  const minReserve = cfg.contextLength ? Math.floor(cfg.contextLength * appCfg.session.reserveMinFraction) : 0;
   const reserveBelowMin = minReserve > 0 && !!cfg.contextReserve && cfg.contextReserve < minReserve;
 
   return (
@@ -93,9 +95,17 @@ export function ProviderSection() {
         <Row label={t("provider.imageMaxDim")}>
           <input
             type="number"
+            min={1}
             value={cfg.imageMaxDim ?? ""}
             onChange={(e) => saveProvider({ imageMaxDim: e.target.value ? Number(e.target.value) : undefined })}
-            placeholder="2048"
+            onBlur={(e) => {
+              // 0/negative would mean "downscale everything to nothing" — treat
+              // it as unset. The read seam (effectiveImageMaxDim) also guards,
+              // so this is the UI half of the fix, not the only line of defense.
+              const v = e.target.value ? Number(e.target.value) : undefined;
+              if (v !== undefined && v < 1) saveProvider({ imageMaxDim: undefined });
+            }}
+            placeholder={String(appCfg.media.imageMaxDim)}
             className={fieldInput}
           />
         </Row>

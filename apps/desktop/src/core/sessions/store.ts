@@ -1,5 +1,6 @@
 import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
+import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
 import { detectStorage } from "../../lib/storage/index.ts";
@@ -79,8 +80,8 @@ let hydrated = false;
 
 // Reserve kept free below the model's context window: "full" triggers at
 // contextLength − this, leaving headroom for the response (and for the summary
-// the auto-compaction generates).
-export const CONTEXT_RESERVE = 50_000;
+// the auto-compaction generates). Both the default and the minimum fraction
+// live in core/config (session.contextReserve / session.reserveMinFraction).
 
 const reg = createListeners();
 export const notify = reg.notify;
@@ -408,9 +409,11 @@ export function setTitle(id: string, title: string): void {
 // window so they aren't permanently "full".
 export function contextLimit(cfg: ModelConfig): number {
   if (!cfg.contextLength) return 0;
-  // Reserve at least 10% of the window — never let the user starve the headroom.
-  const min = Math.floor(cfg.contextLength * 0.1);
-  const reserve = Math.max(cfg.contextReserve ?? CONTEXT_RESERVE, min);
+  const { contextReserve, reserveMinFraction } = getAppConfig().session;
+  // Reserve at least the configured fraction of the window — never let the
+  // user starve the headroom.
+  const min = Math.floor(cfg.contextLength * reserveMinFraction);
+  const reserve = Math.max(cfg.contextReserve ?? contextReserve, min);
   return cfg.contextLength > reserve ? cfg.contextLength - reserve : cfg.contextLength;
 }
 

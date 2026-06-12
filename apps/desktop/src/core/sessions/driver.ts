@@ -4,7 +4,8 @@ import { MAX_HEAL_ATTEMPTS, healCorrection, streamModel } from "../../providers/
 import { llmLog } from "../../providers/debug.ts";
 import type { FileAttachment, MediaRef, Session } from "./types.ts";
 import { harness } from "../../lib/harness.ts";
-import { resolveMediaProvider } from "../../core/media.ts";
+import { resolveMediaProvider, resolveMediaProviders } from "../../core/media.ts";
+import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";
 import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
@@ -16,7 +17,7 @@ import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgen
 import { sessionBus as bus } from "./events.ts";
 import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import { DEFAULT_IMAGE_MAX_DIM, downscaleImage } from "../../lib/imageResize.ts";
+import { downscaleImage } from "../../lib/imageResize.ts";
 
 // A validator for the model's final (no-tool) turn. Throws to reject — the
 // engine then injects a correction and lets the model retry (see runTurn).
@@ -47,7 +48,7 @@ export interface SendOptions {
 // tools and the turn becomes a multi-step loop: stream → run tool calls → feed
 // results back → stream again, until the model answers without calling a tool.
 
-const MAX_STEPS = 50; // runaway guard for the tool loop
+// Runaway guard for the tool loop — config session.maxSteps (read per turn).
 
 // In-flight turns by session, so the UI can abort a specific chat's run. The
 // AbortController's signal is threaded into streamModel; aborting ends the
@@ -83,6 +84,10 @@ if (import.meta.hot) {
 function allowedByCapability(name: ToolName, cfg: ModelConfig): boolean {
   if (name === "LoadImage") return cfg.input?.image !== false;
   if (name === "LoadVideo") return cfg.input?.video === true;
+  // The recognizer tool is gated on its registry SLOT, not the chat model's
+  // inputs — it returns text, so even a blind chat model can use it. No
+  // assigned imageRec model → the tool doesn't exist.
+  if (name === "AnalyzeImage") return resolveMediaProvider("imageRec") !== null;
   return true;
 }
 
@@ -150,9 +155,10 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
   // for a chat-only agent (see capabilityContext). Applies to every step of the
   // turn, advertising and execution alike.
   const { ws, agent } = capabilityContext(getSession(sid));
-  // ctx for the bridge (main) tool path — present only in Electron. The media
-  // provider is read here and handed in; main never reads the renderer store.
-  const toolCtx = harness ? { cwd: ws?.root ?? "", media: resolveMediaProvider() ?? undefined } : null;
+  // ctx for the bridge (main) tool path — present only in Electron. The
+  // per-use-case media map is resolved here and handed in; main never reads
+  // the renderer store.
+  const toolCtx = harness ? { cwd: ws?.root ?? "", media: resolveMediaProviders() } : null;
   // Tools are advertised even without the bridge — the renderer set (e.g.
   // GenerateImage) runs in-renderer, so the browser build has tools too.
   const toolSpecs = await advertisedTools(ws, agent, cfg, isChild);
@@ -170,9 +176,10 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
 
   const controller = new AbortController();
   inflight.set(sid, controller);
+  const maxSteps = getAppConfig().session.maxSteps;
   let step = 0;
   try {
-    for (; step < MAX_STEPS; step++) {
+    for (; step < maxSteps; step++) {
       if (controller.signal.aborted) break;
       const history = toChatMessages(getSession(sid)?.messages ?? []);
       const baseSystem = getSession(sid)?.system || ws?.instructions || undefined;
@@ -289,7 +296,7 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
               const args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
               result = await rendererTool.execute(args, {
                 cwd: ws?.root ?? "",
-                media: resolveMediaProvider() ?? undefined,
+                media: resolveMediaProviders(),
                 signal: controller.signal,
               });
             } else if (toolCtx) {
@@ -315,7 +322,7 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
           // full resolution in main; this renderer hop is where canvas lives,
           // so everything downstream (UI, persistence, resend window, model)
           // gets the downscaled version.
-          const maxDim = cfg.imageMaxDim ?? DEFAULT_IMAGE_MAX_DIM;
+          const maxDim = effectiveImageMaxDim(cfg.imageMaxDim);
           const images = result.images
             ? await Promise.all(
                 result.images.map(async (g) => {
@@ -348,11 +355,11 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
     }
     // Fell off the end of the loop: the step budget is spent. Say so — silent
     // truncation reads as a finished answer when the agent never concluded.
-    if (step >= MAX_STEPS && !errored && !controller.signal.aborted) {
+    if (step >= maxSteps && !errored && !controller.signal.aborted) {
       errored = true;
       bus.emit("turn:error", {
         sessionId: sid,
-        message: `tool loop stopped after ${MAX_STEPS} steps without a final answer — the task may be looping or too complex for one turn.`,
+        message: `tool loop stopped after ${maxSteps} steps without a final answer — the task may be looping or too complex for one turn.`,
       });
     }
   } catch (e) {

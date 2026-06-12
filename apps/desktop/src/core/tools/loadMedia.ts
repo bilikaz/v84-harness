@@ -5,7 +5,7 @@ import { type Tool, type ToolResult, type GeneratedImage, type GeneratedMedia } 
 import { toReal } from "./paths.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import { GIF_MAX_BYTES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES } from "../../lib/mediaCaps.ts";
+import { CONFIG_DEFAULTS } from "../config/defaults.ts";
 
 // Load an image/video file from the workspace so the model can review it.
 // Read-only and path-confined like Read, so it auto-runs. The bytes come back
@@ -88,11 +88,16 @@ function makeLoadTool(opts: {
   };
 }
 
+// Byte caps come from CONFIG_DEFAULTS (transport sanity bounds, not model
+// limits — ADR-0027): this module is imported by Electron main, which never
+// sees the renderer's override store, so the caps are defaults by design.
+const CAPS = CONFIG_DEFAULTS.media;
+
 export const loadImageTool = makeLoadTool({
   name: "LoadImage",
   kind: "image",
   exts: IMAGE_EXTS,
-  maxBytes: IMAGE_MAX_BYTES,
-  extCaps: { gif: GIF_MAX_BYTES },
+  maxBytes: CAPS.imageMaxBytes,
+  extCaps: { gif: CAPS.gifMaxBytes },
 });
-export const loadVideoTool = makeLoadTool({ name: "LoadVideo", kind: "video", exts: VIDEO_EXTS, maxBytes: VIDEO_MAX_BYTES });
+export const loadVideoTool = makeLoadTool({ name: "LoadVideo", kind: "video", exts: VIDEO_EXTS, maxBytes: CAPS.videoMaxBytes });

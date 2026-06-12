@@ -17,12 +17,14 @@ import { editTool } from "./edit.ts";
 import { createFolderTool } from "./createFolder.ts";
 import { bashTool } from "./bash.ts";
 import { loadImageTool, loadVideoTool } from "./loadMedia.ts";
+import { analyzeImageTool } from "./analyzeImage.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
-// NOTE: media tools (e.g. GenerateImage) are NOT here — they're self-contained
-// renderer tools (see core/tools/renderer.ts), so they don't go through the
-// main process dispatcher. Only the fs/Bash tools that need Node live here.
-const TOOLS: Tool[] = [readTool, listTool, grepTool, writeTool, editTool, createFolderTool, bashTool, loadImageTool, loadVideoTool];
+// NOTE: the GENERATION tools (GenerateImage/GenerateVideo) are NOT here —
+// they're self-contained renderer tools (see core/tools/renderer.ts), so they
+// don't go through the main process dispatcher. Only tools that need Node
+// (fs/Bash) or main's CORS-free fetch (AnalyzeImage) live here.
+const TOOLS: Tool[] = [readTool, listTool, grepTool, writeTool, editTool, createFolderTool, bashTool, loadImageTool, loadVideoTool, analyzeImageTool];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.schema.function.name, t]));
 const VALID_NAMES = TOOLS.map((t) => t.schema.function.name);

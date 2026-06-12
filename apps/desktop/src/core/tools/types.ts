@@ -44,17 +44,46 @@ export interface GeneratedMedia {
   name: string;
 }
 
-// The media-generation provider a workspace points at (Cosmos container, etc).
-// Threaded into the tool via ToolCtx by the renderer — main never reads the
-// renderer's settings store. One provider for now; the access path (a resolver
-// in core/media.ts) leaves room for more later.
-export interface MediaProviderConfig {
-  baseUrl: string; // generation endpoint base, e.g. http://localhost:8000/v1
+// What a media model is FOR — the use-case slots of the model registry
+// (core/media.ts). Each slot holds at most one assigned model; the list is the
+// app's "covered / not covered" map and grows as new modality tools land.
+// Slots can exist with no tool consuming them yet (audio today).
+export type MediaUseCase = "imageGen" | "videoGen" | "imageRec" | "videoRec" | "audioGen" | "audioRec";
+export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
+
+// The wire shape an endpoint speaks. Detection can list models where /models
+// exists; the flavor itself is a config choice (with cosmos recognized by
+// model id) — "in between" servers get marked manually, not sniffed by
+// firing generation requests at them.
+//   openai-images  — POST /images/generations (+ Cosmos's /videos job flow)
+//   plain-generate — a bare POST /generate; no /models, no OpenAI envelope
+//   openai-chat    — chat completions with image parts (recognition models)
+export type MediaApiFlavor = "openai-images" | "plain-generate" | "openai-chat";
+
+// How the model wants its prompt: "plain" passes the agent's prompt through;
+// "cosmos-json" runs the upsampler that fills Cosmos's structured-JSON prompt
+// schema with the app's chat LLM first.
+export type MediaPromptStyle = "plain" | "cosmos-json";
+
+// One entry in the media model registry — an endpoint + what it can do + how
+// to talk to it. Threaded into tools via ToolCtx by the renderer (main never
+// reads the renderer's settings store), keyed by use case.
+export interface MediaModelConfig {
+  id: string; // registry entry id (crypto.randomUUID)
+  label: string; // display name in settings + coverage list
+  baseUrl: string; // endpoint base, e.g. http://localhost:8000/v1
   apiKey?: string;
   model?: string;
-  maxSize?: string; // largest WxH the model supports — guidance to the model + the fallback size
+  capabilities: MediaUseCase[]; // what this endpoint can serve (an entry may cover several)
+  api: MediaApiFlavor;
+  promptStyle?: MediaPromptStyle; // undefined → "plain"
+  maxSize?: string; // largest WxH the model supports — clamp target + fallback size
   models?: string[]; // detected model ids (picker cache; filled by the Detect button)
 }
+
+// The per-use-case media map handed to tools: each generation/recognition tool
+// picks its slot (e.g. media.imageGen). Plain JSON — crosses the IPC bridge.
+export type MediaProviders = Partial<Record<MediaUseCase, MediaModelConfig>>;
 
 // Per-call context handed to every tool. `cwd` is the session's workspace root.
 //
@@ -73,7 +102,7 @@ export interface MediaProviderConfig {
 // the gated tool.
 export interface ToolCtx {
   cwd: string;
-  media?: MediaProviderConfig; // generation endpoint for the media tools (GenerateImage)
+  media?: MediaProviders; // per-use-case media models (GenerateImage → media.imageGen, AnalyzeImage → media.imageRec, …)
   // Cancellation. An AbortSignal cannot cross the IPC bridge (not cloneable), so
   // this field is process-local: the renderer sets it for renderer tools; for
   // gated tools the main dispatcher mints its own per call and aborts it when
@@ -95,13 +124,13 @@ export interface Tool {
 //   1 = enabled   (available, but each call asks for approval)
 //   2 = auto      (available, runs without a prompt)
 // Gated tools: configured per-workspace via the 0/1/2 policy + the workspace UI.
-export type GatedTool = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash" | "LoadImage" | "LoadVideo";
+export type GatedTool = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash" | "LoadImage" | "LoadVideo" | "AnalyzeImage";
 // The full tool vocabulary. Permissionless tools (below) extend it but aren't
 // part of the per-workspace policy.
 export type ToolName = GatedTool | "GenerateImage" | "GenerateVideo";
 export type ToolMode = 0 | 1 | 2;
 
-export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash", "LoadImage", "LoadVideo"];
+export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash", "LoadImage", "LoadVideo", "AnalyzeImage"];
 
 // Permissionless tools: always advertised, auto-run (no approval prompt), and
 // usable without a bound workspace. They must not REQUIRE ctx.cwd — GenerateImage
@@ -121,4 +150,5 @@ export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
   Bash: 1,
   LoadImage: 2,
   LoadVideo: 2,
+  AnalyzeImage: 2, // read-only + path-confined like LoadImage — auto-runs
 };
