@@ -2,7 +2,7 @@ import { getProvider } from "../../core/settings.ts";
 import { getAppConfig } from "../config/index.ts";
 import type { Quality } from "../config/defaults.ts";
 import { stripFences } from "../../lib/format.ts";
-import { chatOnce, healLoop } from "../../providers/client.ts";
+import { ask } from "../../providers/ask.ts";
 
 // Shared plumbing for the generation tools (GenerateImage / GenerateVideo):
 // argument coercion, the dimension math, and the prompt-upsampling loop. Each
@@ -66,11 +66,12 @@ export function randomSeed(): number {
 }
 
 // Upsample a short prompt into a Cosmos structured-JSON prompt with the app's
-// main chat LLM at full strength, heal-validated (re-prompts up to the
-// configured attempt cap if the output doesn't parse/validate). `requiredKey`
-// is the schema's caption field; `finalize` lets the caller inject computed
-// fields (resolution/duration) before serialization. Falls back to the raw
-// prompt if no chat model is configured or it can't produce valid JSON.
+// main chat LLM at full strength, heal-validated: ask()'s parser throws on
+// invalid output, which re-prompts up to the configured attempt cap.
+// `requiredKey` is the schema's caption field; `finalize` lets the caller
+// inject computed fields (resolution/duration) before serialization. Falls
+// back to the raw prompt if no chat model is configured or it can't produce
+// valid JSON.
 export async function upsamplePrompt(opts: {
   prompt: string;
   system: string;
@@ -80,18 +81,17 @@ export async function upsamplePrompt(opts: {
 }): Promise<string> {
   const cfg = getProvider();
   if (!cfg.baseUrl || !cfg.model) return opts.prompt;
-  try {
-    const { value: obj } = await healLoop<Record<string, unknown>>({
-      messages: [{ role: "user", content: opts.prompt }],
-      call: (msgs) => chatOnce(cfg, msgs, opts.system, opts.signal),
-      validate: upsampleValidator(opts.requiredKey),
-      maxAttempts: getAppConfig().upsample.maxAttempts,
-    });
-    opts.finalize?.(obj);
-    return JSON.stringify(obj);
-  } catch {
-    return opts.prompt;
-  }
+  const r = await ask<Record<string, unknown>>({
+    model: cfg,
+    messages: [{ role: "user", content: opts.prompt }],
+    system: opts.system,
+    signal: opts.signal,
+    parse: upsampleValidator(opts.requiredKey),
+    maxHealAttempts: getAppConfig().upsample.maxAttempts,
+  });
+  if (!r.ok) return opts.prompt;
+  opts.finalize?.(r.value);
+  return JSON.stringify(r.value);
 }
 
 // Validate upsampler output: a single JSON object with a non-empty caption

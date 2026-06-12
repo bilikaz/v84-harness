@@ -1,20 +1,18 @@
-import { type Tool, type ToolResult, type MediaModelConfig, type GeneratedMedia } from "./types.ts";
-import { bytesToB64, mimeToExt } from "../../lib/dataUrl.ts";
-import { trimBase } from "../../lib/format.ts";
+import { type MediaRef, type Tool, type ToolResult } from "./types.ts";
+import { mimeToExt } from "../../lib/dataUrl.ts";
+import { askVideo } from "../../providers/media.ts";
 import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt } from "./media.ts";
 import { COSMOS_T2V } from "./cosmos.ts";
 import { getAppConfig } from "../config/index.ts";
-import { errorMessage } from "../../lib/errors.ts";
 
 // Generate a short video from a prompt via the model assigned to the videoGen
 // slot of the media registry. Self-contained renderer tool (like
 // GenerateImage): when the entry says promptStyle "cosmos-json", the prompt is
 // upsampled into Cosmos's text→video JSON schema with our main chat LLM, then
-// POSTed; the resulting clip rides on the message as a data-URL and renders in
-// the tool card. Generation is SLOW (~minutes per second of video). Timings +
-// quality presets live in core/config (videoGen.*). The async job wire below
-// is the only video path implemented so far (OpenAI-compatible entries — the
-// Cosmos container's /videos flow).
+// handed to askVideo (providers/media.ts — the async jobs flow); the
+// resulting clip rides on the message as a data-URL and renders in the tool
+// card. Generation is SLOW (~minutes per second of video). Timings + quality
+// presets live in core/config (videoGen.*) and travel as parameters.
 
 export const generateVideoTool: Tool = {
   schema: {
@@ -56,12 +54,6 @@ export const generateVideoTool: Tool = {
     if (!media?.baseUrl) {
       return { ok: false, output: "GenerateVideo is not configured. Assign a video generation model in Settings → Models." };
     }
-    if (media.api !== "openai") {
-      return {
-        ok: false,
-        output: `GenerateVideo failed: the assigned model "${media.label || media.model}" has API type "${media.api}" — video generation currently supports only the async-jobs flow of OpenAI-compatible endpoints. Fix the assignment in Settings → Models.`,
-      };
-    }
     const cfg = getAppConfig().videoGen;
 
     // Dimensions: width + aspect → WxH, clamped to max, ×16. We own these.
@@ -97,73 +89,29 @@ export const generateVideoTool: Tool = {
           })
         : prompt;
 
-    try {
-      const { b64, mime } = await generate(media, finalPrompt, { size: `${w}x${h}`, numFrames, q: cfg.quality[quality] }, ctx.signal);
-      const video: GeneratedMedia = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
-      return {
-        ok: true,
-        // Whether the model sees the video depends on its input capability (the
-        // driver feeds video back only then) — phrase for both cases.
-        output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
-        video: [video],
-      };
-    } catch (e) {
-      return { ok: false, output: `GenerateVideo failed: ${errorMessage(e)}` };
-    }
+    const r = await askVideo(
+      media,
+      finalPrompt,
+      {
+        size: `${w}x${h}`,
+        numFrames,
+        fps: cfg.fps,
+        seed: randomSeed(),
+        preset: cfg.quality[quality],
+        pollIntervalMs: cfg.pollIntervalMs,
+        timeoutMs: cfg.timeoutMs,
+      },
+      ctx.signal,
+    );
+    if (!r.ok) return { ok: false, output: `GenerateVideo failed: ${r.error}` };
+
+    const video: MediaRef = { url: `data:${r.mime};base64,${r.b64}`, mime: r.mime, name: `generated.${mimeToExt(r.mime)}` };
+    return {
+      ok: true,
+      // Whether the model sees the video depends on its input capability (the
+      // driver feeds video back only then) — phrase for both cases.
+      output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
+      video: [video],
+    };
   },
 };
-
-// The provider call. Video gen takes minutes, so a synchronous request (/sync)
-// holds the connection too long and the fetch dies with a NetworkError even
-// though the server finishes. Use the ASYNC flow instead: submit a job, poll
-// status with short requests, then download the finished content.
-async function generate(
-  media: MediaModelConfig,
-  prompt: string,
-  opts: { size: string; numFrames: number; q: { steps: number; guidance: number } },
-  signal?: AbortSignal,
-): Promise<{ b64: string; mime: string }> {
-  const cfg = getAppConfig().videoGen;
-  const base = trimBase(media.baseUrl);
-  const headers: Record<string, string> = media.apiKey ? { authorization: `Bearer ${media.apiKey}` } : {};
-
-  const form = new FormData();
-  form.set("prompt", prompt);
-  if (media.model) form.set("model", media.model);
-  form.set("size", opts.size);
-  form.set("num_frames", String(opts.numFrames));
-  form.set("fps", String(cfg.fps));
-  form.set("num_inference_steps", String(opts.q.steps));
-  form.set("guidance_scale", String(opts.q.guidance));
-  form.set("seed", String(randomSeed()));
-
-  // 1. Submit the job (returns immediately).
-  const res = await fetch(`${base}/videos`, { method: "POST", headers, body: form, signal });
-  if (!res.ok) throw new Error(`video submit ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 300)}`);
-  let job = (await res.json()) as { id?: string; status?: string; error?: unknown };
-  if (!job.id) throw new Error("video submit returned no job id");
-
-  // 2. Poll until completed/failed (short requests — no long-held connection).
-  // Generation can run many minutes, so the cap is generous.
-  const deadline = Date.now() + cfg.timeoutMs;
-  while (job.status !== "completed") {
-    if (job.status === "failed") {
-      throw new Error(`video generation failed: ${typeof job.error === "string" ? job.error : JSON.stringify(job.error)}`);
-    }
-    if (Date.now() > deadline) throw new Error(`video generation timed out after ${cfg.timeoutMs / 60_000} minutes`);
-    // Stop ends the POLLING — the server job keeps running (no cancel API; ADR-0014).
-    if (signal?.aborted) throw new Error("cancelled by the user");
-    await new Promise((r) => setTimeout(r, cfg.pollIntervalMs));
-    if (signal?.aborted) throw new Error("cancelled by the user");
-    const p = await fetch(`${base}/videos/${job.id}`, { headers, signal });
-    if (!p.ok) throw new Error(`video poll ${p.status} ${p.statusText}`);
-    job = (await p.json()) as typeof job;
-  }
-
-  // 3. Download the finished video.
-  const c = await fetch(`${base}/videos/${job.id}/content`, { headers, signal });
-  if (!c.ok) throw new Error(`video content ${c.status} ${c.statusText}`);
-  const ct = c.headers.get("content-type") || "";
-  return { b64: bytesToB64(new Uint8Array(await c.arrayBuffer())), mime: ct.includes("video") ? ct : "video/mp4" };
-}
-

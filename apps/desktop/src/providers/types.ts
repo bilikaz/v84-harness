@@ -84,6 +84,27 @@ export interface StreamUsage {
   thinkingTokens?: number; // subset of outputTokens, informational
 }
 
+// ── media targets ────────────────────────────────────────────────────────────
+// The wire family a media endpoint speaks (declared here so the provider layer
+// stays self-contained on the wire side — the registry's vocabulary re-exports
+// these):
+//   openai   — OpenAI-compatible envelope (chat completions, /images/
+//              generations, the /videos jobs flow; has /models)
+//   generate — a bare POST /generate; no /models, no model parameter
+export type MediaApiFlavor = "openai" | "generate";
+
+// What ask()/askImage()/askVideo() need to address a media-registry model —
+// the connection + dialect subset of the registry's flat config (which
+// satisfies this structurally; prompt style and size caps stay caller-side).
+export interface MediaTarget {
+  id: string;
+  label: string; // names the model in error messages
+  baseUrl: string;
+  apiKey?: string;
+  model?: string;
+  api: MediaApiFlavor;
+}
+
 // A tool schema advertised to the model — OpenAI function-tool shape. (Same
 // shape as core/tools' ToolSchema; declared here so the provider layer stays
 // self-contained on the wire side.)

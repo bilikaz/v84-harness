@@ -158,17 +158,12 @@ export function defaultBaseUrl(provider: ModelConfig["provider"]): string {
 // Two callers share this contract:
 //   - the chat engine (core/sessions/driver.ts) drives it through the session
 //     store + bus rather than a plain return, so it reuses healCorrection() +
-//     MAX_HEAL_ATTEMPTS, not healLoop() itself.
-//   - standalone callers like the GenerateImage/GenerateVideo upsamplers have
-//     no session and use healLoop() + chatOnce() directly.
+//     MAX_HEAL_ATTEMPTS directly.
+//   - standalone callers (the upsamplers, the describe tools) go through
+//     ask() (./ask.ts), whose parser drives the same heal loop.
 
 // Number of heal RETRIES after the initial attempt (so up to MAX+1 model calls).
 export const MAX_HEAL_ATTEMPTS = 3;
-
-export interface HealMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
 
 // The correction turn appended after a failed validation — quotes the error and
 // asks the model to re-emit fixed output. Same shape as the task-builder runner.
@@ -181,7 +176,7 @@ export function healCorrection(error: unknown): string {
 }
 
 // Drain a stream to completion — the buffered form of streamModel, for callers
-// that don't forward deltas (naming, compaction, chatOnce). Transport retries
+// that don't forward deltas (naming, compaction, ask). Transport retries
 // arrive as "retry" events → restart the accumulators; a final transport
 // failure arrives as "error" → throw.
 export async function collectText(
@@ -206,37 +201,5 @@ export async function collectText(
   return { text, thinkingChars, usage };
 }
 
-// Run one chat completion over a heal conversation, returning the model's full
-// text. The standard `call` for healLoop users that have no session (the
-// upsamplers). Pass `signal` to make the call cancellable (e.g. tool Stop).
-export async function chatOnce(cfg: ModelConfig, msgs: HealMessage[], system?: string, signal?: AbortSignal): Promise<string> {
-  const messages: ChatMessage[] = msgs.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
-  return (await collectText(cfg, messages, signal ?? new AbortController().signal, system)).text;
-}
-
-// Run a validate→retry loop against a plain (non-streaming) chat call. `call`
-// gets the running message list and returns the model's text. `validate` turns
-// that text into T or throws; a throw triggers a heal. After `maxAttempts`
-// failed validations the last error propagates — this never returns unvalidated
-// output (matches loop.ts's "validated `parsed` or throw" invariant).
-export async function healLoop<T>(args: {
-  messages: HealMessage[];
-  call: (messages: HealMessage[]) => Promise<string>;
-  validate: (text: string) => T;
-  maxAttempts?: number;
-}): Promise<{ value: T; text: string; healAttempts: number }> {
-  const max = args.maxAttempts ?? MAX_HEAL_ATTEMPTS;
-  const messages = args.messages.slice();
-  let healAttempts = 0;
-  for (;;) {
-    const text = await args.call(messages);
-    try {
-      return { value: args.validate(text), text, healAttempts };
-    } catch (e) {
-      if (healAttempts >= max) throw e; // budget spent — propagate, never best-effort
-      healAttempts += 1;
-      messages.push({ role: "assistant", content: text });
-      messages.push({ role: "user", content: healCorrection(e) });
-    }
-  }
-}
+// chatOnce()/healLoop() used to live here — both dissolved into ask()
+// (./ask.ts): one entrypoint whose parser drives the heal loop.

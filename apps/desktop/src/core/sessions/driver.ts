@@ -334,7 +334,9 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
           const images = result.images
             ? await Promise.all(
                 result.images.map(async (g) => {
-                  const d = await downscaleImage(g.url, g.mime, maxDim);
+                  // MediaRef.mime is optional vocabulary-wide; tool media always
+                  // sets it in practice, and the resizer treats unknown as "try".
+                  const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
                   return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
                 }),
               )

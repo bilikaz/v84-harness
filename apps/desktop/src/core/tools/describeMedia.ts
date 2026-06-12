@@ -1,9 +1,9 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type GeneratedImage, type GeneratedMedia, type MediaUseCase, type Tool, type ToolResult } from "./types.ts";
+import { type MediaRef, type MediaUseCase, type Tool, type ToolResult } from "./types.ts";
 import { toReal } from "./paths.ts";
-import { mediaChat } from "./shared.ts";
+import { ask } from "../../providers/ask.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { CONFIG_DEFAULTS } from "../config/defaults.ts";
@@ -25,10 +25,9 @@ import { CONFIG_DEFAULTS } from "../config/defaults.ts";
 // there's no CORS.
 //
 // The wire is NOT this tool's business: it names its slot's model and what to
-// ask, and mediaChat (tools/shared.ts) does the registry→provider translation
-// and the transport — the adapter maps message images/video to
-// image_url/video_url parts and brings retry classification and inline-think
-// demuxing.
+// ask, and ask() (providers/ask.ts) identifies the dialect and does the
+// transport — the adapter maps message images/video to image_url/video_url
+// parts and brings retry classification and inline-think demuxing.
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
@@ -101,12 +100,6 @@ function makeDescribeTool(opts: {
       if (!media?.baseUrl) {
         return { ok: false, output: `${name} is not configured. Assign a ${kind} recognition model in Settings → Media models.` };
       }
-      if (media.api !== "openai") {
-        return {
-          ok: false,
-          output: `${name} failed: the assigned model "${media.label}" has API type "${media.api}" — recognition needs an OpenAI-compatible endpoint (chat completions with ${kind} input). Fix the assignment in Settings → Media models.`,
-        };
-      }
       const query = typeof args.query === "string" && args.query.trim() ? args.query.trim() : defaultQuery;
 
       try {
@@ -126,21 +119,24 @@ function makeDescribeTool(opts: {
         const dataUrl = `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`;
 
         const fileRef = { url: dataUrl, mime };
-        const answer = await mediaChat({
-          media,
+        const r = await ask({
+          model: media,
           system: SYSTEM[kind],
           signal: ctx.signal,
-          message: {
-            role: "user",
-            content: query,
-            ...(kind === "image" ? { images: [fileRef] } : { video: [fileRef] }),
-          },
+          messages: [
+            {
+              role: "user",
+              content: query,
+              ...(kind === "image" ? { images: [fileRef] } : { video: [fileRef] }),
+            },
+          ],
         });
+        if (!r.ok) return { ok: false, output: `${name} failed: ${r.error}` };
 
-        const preview: GeneratedImage | GeneratedMedia = { url: dataUrl, mime, name: path.basename(real) };
+        const preview: MediaRef = { url: dataUrl, mime, name: path.basename(real) };
         return {
           ok: true,
-          output: answer || "(the recognition model returned an empty answer)",
+          output: r.value || "(the recognition model returned an empty answer)",
           // The file rides the result for the user's preview — the driver
           // applies the usual input-capability guard before the chat model
           // sees it (and downscales images to its pixel cap).

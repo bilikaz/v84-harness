@@ -6,11 +6,10 @@ export {
   listModelInfos,
   defaultBaseUrl,
   collectText,
-  chatOnce,
-  healLoop,
   healCorrection,
   MAX_HEAL_ATTEMPTS,
-  type HealMessage,
   type ModelInfo,
 } from "./client.ts";
-export type { ChatMessage, ModelConfig, ProviderKind, StreamEvent, StreamUsage, ToolSpec } from "./types.ts";
+export { ask, type AskOptions, type AskResult, type AskTarget } from "./ask.ts";
+export { askImage, askVideo, type AskMediaResult, type ImageAsk, type VideoAsk } from "./media.ts";
+export type { ChatMessage, MediaApiFlavor, MediaTarget, ModelConfig, ProviderKind, StreamEvent, StreamUsage, ToolSpec } from "./types.ts";

@@ -47,10 +47,10 @@ describe("DescribeImage", () => {
     expect(res.output).toContain("not configured");
   });
 
-  it("rejects a generate-dialect assignment with a pointer to settings", async () => {
+  it("rejects a generate-dialect assignment with ask's typed refusal", async () => {
     const res = await describeImageTool.execute({ path: "/pic.png" }, { cwd: root, media: { imageRec: { ...REC, api: "generate" } } });
     expect(res.ok).toBe(false);
-    expect(res.output).toContain("OpenAI-compatible");
+    expect(res.output).toContain("cannot chat");
   });
 
   it("rejects unsupported extensions and oversized GIFs like LoadImage", async () => {

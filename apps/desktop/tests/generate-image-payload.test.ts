@@ -1,9 +1,9 @@
-// The plain-generate flavor has no spec — extractImagePayload is the tolerant
+// The bare generate dialect has no spec — extractImagePayload is the tolerant
 // parse that finds the image in whatever JSON wrapper the server uses. These
 // pin the recognized shapes (and that a URL is never misread as base64).
 import { describe, expect, it } from "vitest";
 
-import { extractImagePayload } from "../src/core/tools/generateImage.ts";
+import { extractImagePayload } from "../src/providers/media.ts";
 
 describe("extractImagePayload", () => {
   it("reads the OpenAI-ish data[0].b64_json", () => {

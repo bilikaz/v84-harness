@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type Tool, type ToolResult, type GeneratedImage, type GeneratedMedia } from "./types.ts";
+import { type MediaRef, type Tool, type ToolResult } from "./types.ts";
 import { toReal } from "./paths.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
@@ -71,7 +71,7 @@ function makeLoadTool(opts: {
           return { ok: false, output: `${name} rejected: "${p}" is ${fmtMB(st.size)} — over the ${fmtMB(capBytes)} limit.` };
         }
         const bytes = await readFile(real);
-        const media: GeneratedImage | GeneratedMedia = {
+        const media: MediaRef = {
           url: `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`,
           mime,
           name: path.basename(real),

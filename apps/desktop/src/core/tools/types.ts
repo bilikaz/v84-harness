@@ -23,25 +23,21 @@ export interface ToolCallRequest {
 export interface ToolResult {
   ok: boolean;
   output: string;
-  images?: GeneratedImage[];
-  video?: GeneratedMedia[]; // tool-produced video — shown in the tool card; fed back when the model accepts video input
+  images?: MediaRef[];
+  video?: MediaRef[]; // tool-produced video — shown in the tool card; fed back when the model accepts video input
 }
 
-// An image a tool generated. `url` is a data: URL — it rides on the message
-// (inline display + model feedback) and persists to localStorage like any
-// attached image. No file is written.
-export interface GeneratedImage {
+// A reference to a media item riding a message — named by ROLE, not origin:
+// generated, loaded, and described files all use it. `url` is a data: URL (or
+// http for attachments) — it rides on the message (inline display + model
+// feedback) and persists with the session; no file is written. Declared here
+// (tools produce them, sessions consume them) and re-exported by
+// core/sessions/types.ts.
+export interface MediaRef {
   url: string;
-  mime: string;
-  name: string;
-}
-
-// Non-image media a tool produced or loaded (video/audio) — a data: URL that
-// rides on the message; fed back to the model only when it declares video input.
-export interface GeneratedMedia {
-  url: string;
-  mime: string;
-  name: string;
+  mime?: string;
+  name?: string;
+  id?: string;
 }
 
 // What a media model is FOR — the use-case slots of the model registry
@@ -51,13 +47,13 @@ export interface GeneratedMedia {
 export type MediaUseCase = "imageGen" | "videoGen" | "imageRec" | "videoRec" | "audioGen" | "audioRec";
 export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
 
-// The wire family an endpoint speaks. The API type says HOW to talk; the
-// use-case slot an entry is assigned to says WHICH path of that API a tool
-// uses (imageGen → /images/generations, videoGen → the async jobs flow,
-// recognition → /chat/completions with image parts).
-//   openai   — OpenAI-compatible envelope; has /models, so Detect works
-//   generate — a bare POST /generate; no /models, no model parameter
-export type MediaApiFlavor = "openai" | "generate";
+// The wire family an endpoint speaks — owned by the provider layer
+// (providers/types.ts), re-exported here for the registry's vocabulary. The
+// API type says HOW to talk; the use-case slot an entry is assigned to says
+// WHICH path of that API a tool uses (imageGen → /images/generations,
+// videoGen → the async jobs flow, recognition → /chat/completions).
+export type { MediaApiFlavor } from "../../providers/types.ts";
+import type { MediaApiFlavor } from "../../providers/types.ts";
 
 // How the model wants its prompt: "plain" passes the agent's prompt through;
 // "cosmos-json" runs the upsampler that fills Cosmos's structured-JSON prompt
