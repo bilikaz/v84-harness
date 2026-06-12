@@ -3,11 +3,10 @@ import path from "node:path";
 
 import { type GeneratedImage, type GeneratedMedia, type MediaUseCase, type Tool, type ToolResult } from "./types.ts";
 import { toReal } from "./paths.ts";
+import { mediaChat } from "./shared.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { CONFIG_DEFAULTS } from "../config/defaults.ts";
-import { collectText } from "../../providers/client.ts";
-import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 
 // Describe a workspace image/video with the model linked to the matching
 // recognition slot (imageRec / videoRec) — describe it, answer a question
@@ -25,11 +24,11 @@ import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
 // process, virtual-root confinement); the HTTP call also runs in main, so
 // there's no CORS.
 //
-// The wire is NOT hand-rolled: the call goes through the provider layer
-// (collectText → streamOpenAI), which already maps message images/video to
+// The wire is NOT this tool's business: it names its slot's model and what to
+// ask, and mediaChat (tools/shared.ts) does the registry→provider translation
+// and the transport — the adapter maps message images/video to
 // image_url/video_url parts and brings retry classification and inline-think
-// demuxing. Recognition requires the OpenAI dialect, so the flat media config
-// translates directly to a ModelConfig.
+// demuxing.
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
@@ -126,28 +125,22 @@ function makeDescribeTool(opts: {
         const bytes = await readFile(real);
         const dataUrl = `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`;
 
-        // The flat media config IS an OpenAI-compatible provider config — hand
-        // it to the standard provider client instead of a bespoke fetch.
-        const cfg: ModelConfig = {
-          id: media.id,
-          label: media.label,
-          provider: "openai",
-          baseUrl: media.baseUrl,
-          model: media.model ?? "",
-          apiKey: media.apiKey ?? "",
-        };
         const fileRef = { url: dataUrl, mime };
-        const message: ChatMessage = {
-          role: "user",
-          content: query,
-          ...(kind === "image" ? { images: [fileRef] } : { video: [fileRef] }),
-        };
-        const { text } = await collectText(cfg, [message], ctx.signal ?? new AbortController().signal, SYSTEM[kind]);
+        const answer = await mediaChat({
+          media,
+          system: SYSTEM[kind],
+          signal: ctx.signal,
+          message: {
+            role: "user",
+            content: query,
+            ...(kind === "image" ? { images: [fileRef] } : { video: [fileRef] }),
+          },
+        });
 
         const preview: GeneratedImage | GeneratedMedia = { url: dataUrl, mime, name: path.basename(real) };
         return {
           ok: true,
-          output: text.trim() || "(the recognition model returned an empty answer)",
+          output: answer || "(the recognition model returned an empty answer)",
           // The file rides the result for the user's preview — the driver
           // applies the usual input-capability guard before the chat model
           // sees it (and downscales images to its pixel cap).
