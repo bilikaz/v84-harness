@@ -97,6 +97,9 @@ function CoverageRow(props: { uc: MediaUseCase; entries: MediaModelConfig[]; ass
 function ModelCard({ m }: { m: MediaModelConfig }) {
   const { t } = useTranslation();
   const hasModels = (m.models?.length ?? 0) > 0;
+  // A bare /generate server has no /models and takes no model parameter —
+  // detection and the model picker would only produce noise, so they vanish.
+  const bare = m.api === "plain-generate";
   const { detecting, msg, detect } = useDetection(
     () => detectMediaModels(m.id),
     (r) => (r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error })),
@@ -129,6 +132,7 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
         />
       </Row>
 
+      {!bare && (
       <Row label={t("media.model")}>
         <div className="flex w-80 items-center gap-2">
           {hasModels ? (
@@ -156,7 +160,9 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
           <DetectButton label={t("media.detect")} busy={detecting} disabled={!m.baseUrl} title={t("media.detectHint")} onClick={detect} />
         </div>
       </Row>
-      {msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
+      )}
+      {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
+      {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
 
       <Row label={t("media.api")}>
         <select
