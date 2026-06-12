@@ -1,7 +1,4 @@
-// The media resend window — without it every loaded image rides every later
-// request and a gallery session balloons until the transport gives up. Wrong
-// windowing either re-sends everything (the original failure) or silently
-// starves the model of the image it was just asked about.
+// Media resend window — wrong windowing either re-sends every image on every request (the original failure) or starves the model of the image it was just asked about.
 import { describe, expect, it } from "vitest";
 
 import { MAX_LIVE_MEDIA, MAX_LIVE_MEDIA_BYTES, toChatMessages } from "../src/core/sessions/store.ts";
@@ -71,9 +68,7 @@ describe("toChatMessages media window", () => {
   });
 });
 
-// Send-time capability recheck — the model can change mid-session, so history
-// media the CURRENT model can't take is withheld (with a note) instead of
-// letting the endpoint 400 the turn.
+// The model can change mid-session, so history media the CURRENT model can't take is withheld (with a note) instead of letting the endpoint 400 the turn.
 describe("toChatMessages input-capability filter", () => {
   const clip = { url: "data:video/mp4;base64,v", mime: "video/mp4", name: "clip.mp4" };
 

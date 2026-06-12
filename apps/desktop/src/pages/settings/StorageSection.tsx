@@ -1,7 +1,4 @@
-// Storage settings: which backend was selected, what the persisted sessions
-// occupy, and a per-workspace breakdown so the user can free space by dropping
-// a session or a whole workspace's history — informed manual pruning instead of
-// an automatic delete policy (the ADR-0012 growth answer).
+// Storage settings: backend + per-workspace footprint breakdown — manual pruning, not an auto-delete policy (ADR-0012).
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
@@ -12,9 +9,7 @@ import { useWorkspaces } from "../../core/workspaces.ts";
 import { detectStorage } from "../../lib/storage/index.ts";
 import { fmtBytes } from "../../lib/format.ts";
 
-// Approximate persisted footprint per session. `bytes` is set by the store at
-// persist/migration time (messages json + media blobs); the stringify fallback
-// only covers sessions never persisted since the granular tier landed.
+// `bytes` is stamped by the store at persist time; the stringify fallback covers sessions never persisted since.
 function sessionBytes(s: Session): number {
   return s.bytes ?? JSON.stringify(s).length;
 }

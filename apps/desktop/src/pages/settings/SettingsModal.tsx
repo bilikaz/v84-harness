@@ -6,9 +6,7 @@ import { cn } from "../../lib/cn.ts";
 import { contributionsFor } from "../../lib/registry.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
 
-// Route-driven: open when the route is "settings/<section>". The nav + content
-// come entirely from the registry's "settings" region — add a section by
-// registering a contribution, nothing here changes.
+// Route-driven settings modal; nav + content come entirely from the registry's "settings" region.
 export function SettingsModal() {
   const { t } = useTranslation();
   const route = useRoute();

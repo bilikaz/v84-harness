@@ -1,15 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-// The shared store kernel. Every external store in the app (settings, media,
-// agents, account, ui, workspaces, approvals, sessions) repeats the same three
-// concerns: a listener registry, localStorage persistence with defaults, and
-// the useSyncExternalStore binding. This factory holds them once.
-//
-// localStorage is the persistence today (browser/standalone stage); when the
-// SQLite/IPC layer lands, only this file changes.
+// Shared store kernel (listeners + localStorage persistence + React binding) — persistence backend swaps happen here only.
 
-// One listener registry: subscribe + notify. For stores with state too custom
-// for createStore (e.g. the sessions store with its IndexedDB hydration).
 export function createListeners(): { subscribe: (l: () => void) => () => void; notify: () => void } {
   const listeners = new Set<() => void>();
   return {
@@ -33,15 +25,12 @@ export interface Store<T> {
   patch(p: Partial<T>): void;
   subscribe(l: () => void): () => void;
   notify(): void;
-  /** React binding to the whole state. */
   use(): T;
   /** React binding to a slice — the selector must return a stable reference. */
   useSelect<S>(sel: (t: T) => S): S;
 }
 
-// `key` null = transient (not persisted). `load` overrides the initial read
-// entirely (shape migrations, legacy keys); return null to fall back to
-// defaults. Without `load`, persisted state is shallow-merged over defaults.
+// `key` null = transient; `load` overrides the initial read (null → defaults); without it, persisted state shallow-merges over defaults.
 export function createStore<T extends object>(key: string | null, defaults: T, load?: () => T | null): Store<T> {
   const { subscribe, notify } = createListeners();
 

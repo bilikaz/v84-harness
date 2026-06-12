@@ -1,6 +1,4 @@
-// IndexedDB adapter — the web tier (large quota, async). One object store of
-// string values. create() opens the database and throws where IndexedDB
-// doesn't exist, so detectStorage falls through to localStorage.
+// IndexedDB adapter (web tier) — create() throws where IndexedDB doesn't exist, so detectStorage falls through to localStorage.
 import type { Storage } from "./types.ts";
 
 const DB_NAME = "v84-harness";

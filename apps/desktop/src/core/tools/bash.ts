@@ -5,15 +5,7 @@ import { type Tool, type ToolResult } from "./types.ts";
 import { cap } from "./shared.ts";
 import { rootReal } from "./paths.ts";
 
-// Run a shell command with cwd = the workspace root. Unlike the fs tools, a
-// shell can't be path-confined, so Bash is the gated tool (the driver requires
-// approval before calling it unless the workspace set it to auto).
-//
-// VIRTUAL ROOT: the model addresses the workspace as "/". A real shell's "/" is
-// the HOST root, so we rewrite workspace-absolute paths ("/foo") in the command
-// to the real root ("<root>/foo") before running — which also keeps the model's
-// "/"-paths inside the workspace — and scrub the real root back to "/" in the
-// output so the model never sees a host path.
+// Bash (gated — a shell can't be path-confined): rewrites workspace-absolute "/" paths to real ones before running, and scrubs the real root back to "/" in output so no host path leaks.
 export const bashTool: Tool = {
   schema: {
     type: "function",
@@ -44,15 +36,12 @@ export const bashTool: Tool = {
   },
 };
 
-// Rewrite workspace-absolute paths ("/x") to real ones ("<root>/x"). Anchored at
-// shell word starts (start / whitespace / quote / "(" / "=") so we don't touch
-// `sed s/a/b/`, `http://…`, or other embedded slashes. A bare "/" → "<root>/".
+// Rewrite "/x" → "<root>/x" only at shell word starts, so `sed s/a/b/`, `http://…`, and other embedded slashes are untouched.
 function mapVirtualPaths(command: string, root: string): string {
   return command.replace(/(^|[\s"'(=])\/(\S*)/g, (_m, pre: string, rest: string) => `${pre}${root}/${rest}`);
 }
 
-// Map the real root back to the virtual "/" in tool output, so nothing leaks a
-// host path. Replace "<root>/" first, then a bare "<root>".
+// Map the real root back to "/" in output; "<root>/" must be replaced before a bare "<root>".
 function scrub(out: string, root: string): string {
   return out.split(root + path.sep).join("/").split(root).join("/");
 }

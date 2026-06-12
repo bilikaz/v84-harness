@@ -29,10 +29,17 @@ adopted; conventions state *what the rule is now*; the map shows *where things a
    never-published doc set may be cleaned wholesale — history that was never shared
    isn't history). Convention adoption is one ADR pointing at `conventions/`, not a
    restatement.
-3. **File-header comments.** Every source file opens with a comment stating its role
-   and any non-obvious contract. Inline comments explain *why* and contract edges —
-   never what the next line does, and never why a change was correct (that's
-   reviewer-talk, noise after merge).
+3. **Documentation lives in documentation, not code.** Over-commenting steals
+   context: source files are read whole, by people and by models, and every
+   comment line spends working memory the task needed. Anything that documents —
+   architecture narration, design rationale, module relationships — goes to its
+   layer (the map, ADRs), never into the source file. File headers are **one
+   line** — the file's role, plus a non-obvious contract if there is one. Inline
+   comments exist only for traps the code cannot show: a constraint, a contract
+   edge, a "this looks wrong but isn't" — one line each. Never narrate what the
+   next block does, never number-walk the steps of a function, never restate the
+   design, and never explain why a change was correct (reviewer-talk, noise
+   after merge).
 4. **Heuristics carry their rationale inline** — a threshold or magic decision in
    code states why that value, right where it's read.
 5. **README is the operator's view** (install, run, configure); architecture detail

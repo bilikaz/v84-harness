@@ -1,5 +1,4 @@
-// The dispatcher's never-throw contract (ADR-0007) and the output cap that
-// keeps a runaway command from blowing the model's context.
+// Dispatcher never-throw contract (ADR-0007) and the output cap that protects the model's context.
 import { describe, expect, it } from "vitest";
 
 import { cap, OUTPUT_CAP } from "../src/core/tools/shared.ts";

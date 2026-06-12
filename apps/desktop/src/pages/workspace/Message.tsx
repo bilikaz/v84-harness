@@ -7,14 +7,7 @@ import { Thinking } from "./Thinking.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 import type { FileAttachment, MediaRef, Role, ToolCall } from "../../lib/types.ts";
 
-// One transcript entry. User messages render right-aligned with their
-// attachments; assistant messages render thinking, markdown text, and a tool
-// card per call (the matching results/media are passed in by id).
-//
-// Memoized with a custom comparator (sameMessage below): the store keeps
-// settled messages reference-stable, so during streaming only the live message
-// re-renders. The tool maps are rebuilt by the parent every render (fresh
-// identity), so they're compared by THIS message's entries, not by reference.
+// One transcript entry; memoized via sameMessage so only the live streaming message re-renders.
 function MessageImpl({
   role,
   text,
@@ -105,8 +98,7 @@ function MessageImpl({
 
 type MessageProps = Parameters<typeof MessageImpl>[0];
 
-// Reference-compare everything except the tool maps; for those, only the
-// entries this message's calls read can affect its output.
+// Tool maps get fresh identity every parent render — compare only the entries this message's calls read.
 function sameMessage(prev: MessageProps, next: MessageProps): boolean {
   if (
     prev.role !== next.role ||

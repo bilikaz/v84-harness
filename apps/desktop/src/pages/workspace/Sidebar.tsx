@@ -41,10 +41,7 @@ import { useOutsideClick } from "../../lib/hooks.ts";
 import { LANGUAGES, setLanguage } from "../../lib/i18n.ts";
 import { WorkspaceSettings } from "./WorkspaceSettings.tsx";
 
-// Shell sidebar: brand (left-top slot), the WORKSPACES switcher, the SESSIONS
-// list scoped to the selected workspace, and the user menu. Selecting a
-// workspace scopes the session list; "+ New session" binds the new session to
-// the selected workspace (null = the "Chat" / no-workspace group).
+// Shell sidebar: workspace switcher + workspace-scoped session list + user menu (null workspace = "Chat").
 export function Sidebar() {
   const { t } = useTranslation();
   const sessions = useSessions();
@@ -61,8 +58,7 @@ export function Sidebar() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const visible = sessions.filter((s) => (s.workspaceId ?? null) === activeWorkspaceId);
-  // Sub-agent runs indent under the session that spawned them; an orphan
-  // (parent deleted mid-flight or in another group) falls back to top level.
+  // Orphaned child runs (parent deleted or in another group) fall back to top level.
   const topLevel = visible.filter((s) => !s.parentId || !visible.some((p) => p.id === s.parentId));
   const visibleSessions = topLevel.flatMap((s) => [
     { session: s, child: false },
@@ -78,7 +74,7 @@ export function Sidebar() {
     setActiveWorkspace(id);
     const first = getSessionsForWorkspace(id)[0];
     if (first) setActive(first.id);
-    else if (id !== null) createSession({ workspaceId: id }); // open a session bound to the workspace
+    else if (id !== null) createSession({ workspaceId: id });
     navigate("");
   }
 
@@ -91,16 +87,13 @@ export function Sidebar() {
     setEditing({ ws: defaultWorkspace(root, name), isNew: true });
   }
 
-  // Keep a workspace from stranding you in a different session: whenever the
-  // active workspace has no sessions (e.g. just added), open one bound to it so
-  // the composer targets a tool-enabled session.
+  // A workspace with no sessions gets one opened so the composer targets a tool-enabled session.
   useEffect(() => {
     if (activeWorkspaceId && getSessionsForWorkspace(activeWorkspaceId).length === 0) {
       createSession({ workspaceId: activeWorkspaceId });
     }
   }, [activeWorkspaceId, sessions]);
 
-  // Close the user menu when clicking anywhere outside it.
   useOutsideClick(menuOpen, menuRef, () => setMenuOpen(false));
 
   return (
@@ -109,7 +102,6 @@ export function Sidebar() {
         <Slot region="left-top" />
       </div>
 
-      {/* Workspaces switcher */}
       <div className="px-2">
         <div className="px-2 pb-1 text-xs font-medium text-neutral-400">Workspaces</div>
         <WorkspaceRow
@@ -261,8 +253,6 @@ export function Sidebar() {
   );
 }
 
-// A workspace row: select on click, with a settings gear on hover (workspaces
-// only — the "Chat" pseudo-row has no settings).
 function WorkspaceRow(props: {
   icon: typeof FolderClosed;
   label: string;
@@ -304,7 +294,6 @@ function WorkspaceRow(props: {
   );
 }
 
-// streaming → yellow, finished-but-unread → green, read/idle → transparent.
 function StatusDot({ streaming, unread }: { streaming: boolean; unread: boolean }) {
   return (
     <span

@@ -1,8 +1,6 @@
 import { createStore } from "./store.ts";
 
-// Account store — identity + how the harness connects. "offline" means fully
-// standalone (local models, no backend); "connected" links a future company
-// system (shared knowledge, plans, sync) — not wired yet.
+// Account store — identity + connection mode ("connected" company-system link is not wired yet).
 const KEY = "v84-harness:account";
 
 export type Connection = "offline" | "connected";
@@ -11,12 +9,10 @@ export interface Account {
   username: string;
   avatar: string; // an emoji from AVATARS
   connection: Connection;
-  // Bearer token for the company system. Empty while offline; once "connected"
-  // is wired this is the JWT sent on backend calls (knowledge, plans, sync).
+  // Bearer token for the company system; empty while offline.
   token?: string;
 }
 
-// Pickable avatars. Emoji keeps it dependency-free and renders everywhere.
 export const AVATARS = ["🦊", "🐙", "🐼", "🤖", "🦉", "🐯", "🦋", "🌿", "🐶", "🦁", "🐵", "🐺"];
 
 const DEFAULTS: Account = {
@@ -31,8 +27,7 @@ export function getAccount(): Account {
   return store.get();
 }
 
-// The auth header future backend calls attach. Empty while offline / no token,
-// so callers can always spread it: { ...authHeader(), ...otherHeaders }.
+// Empty while offline / no token, so callers can always spread it.
 export function authHeader(): Record<string, string> {
   const { connection, token } = store.get();
   return connection === "connected" && token ? { Authorization: `Bearer ${token}` } : {};

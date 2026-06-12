@@ -9,8 +9,7 @@ import { cn } from "../../lib/cn.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { Modal } from "../../components/Modal.tsx";
 
-// A right-panel contribution: the active session's progress (DAG steps),
-// working folder, and context/tools. Reads the session store (no props).
+// Right-panel contribution: the active session's context window (reads stores, no props).
 export function ProgressPanel() {
   const session = useActiveSession();
   const provider = useProvider();
@@ -24,9 +23,7 @@ export function ProgressPanel() {
   );
 }
 
-// `total` is the model's full context window; `limit` is the usable budget
-// (window − reserve). Usage is shown against the LIMIT, with the reserved
-// headroom called out below.
+// `total` is the full context window, `limit` the usable budget (window − reserve); usage is shown against limit.
 function ContextWindow({ used, total, limit, sid }: { used: number; total?: number; limit: number; sid: string }) {
   const { t } = useTranslation();
   if (!total || limit <= 0) {
@@ -66,8 +63,7 @@ function ContextWindow({ used, total, limit, sid }: { used: number; total?: numb
   );
 }
 
-// Summarize = compact the conversation to free context. Gray under 70% usage,
-// red above. Click opens a dialog explaining what it does before confirming.
+// Summarize = compact the conversation to free context; turns red at 70% usage.
 function SummarizeControl({ sid, ratio }: { sid: string; ratio: number }) {
   const { t } = useTranslation();
   const compacting = useCompacting();

@@ -8,12 +8,7 @@ import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 import type { MediaRef, ToolCall } from "../../lib/types.ts";
 
-// A tool call rendered as a card: the tool name on top, then IN (the call's
-// arguments) and OUT (the result, once it arrives). Collapsed by default.
-// A RunAgent call carries `childSessionIds` — the doors into its sub-agent
-// sessions (one per run), live while they run and after. Memoized — all props
-// come from settled, reference-stable message objects, so cards re-render only
-// when their own result/media lands.
+// Tool call card (IN/OUT, collapsed by default); memoized — props must come from reference-stable message objects.
 export const ToolCard = memo(function ToolCard({
   call,
   output,
@@ -84,12 +79,7 @@ export const ToolCard = memo(function ToolCard({
   );
 });
 
-// The "view run" door — activates the sub-agent's session (live or settled).
-// Labeled with the child session's title so a fan-out's links are tellable
-// apart. A deleted child leaves an unclickable tombstone, not a gap — chips
-// silently vanishing reads as lost context, but only the door is gone: the
-// run's answer lives in the parent's tool result. Generic label by necessity:
-// the title belonged to the deleted session.
+// A deleted child renders a tombstone, not a gap — the run's answer survives in the parent's tool result.
 function ChildRunLink({ sid }: { sid: string }) {
   const { t } = useTranslation();
   const child = useSessions().find((s) => s.id === sid);

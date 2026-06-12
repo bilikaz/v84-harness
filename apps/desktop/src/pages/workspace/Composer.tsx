@@ -15,11 +15,7 @@ export interface ComposerAttachments {
   files?: FileAttachment[];
 }
 
-// The message composer: text + attachments (picked, dropped, or pasted), the
-// model selector/detect pair, and send/stop. Shared by the chat (SessionView)
-// and the agent run page (AgentRunView) — the agent's user template seeds
-// `seed`, so "running an agent" IS composing a message. Owns its input state;
-// the parent owns what submit means.
+// Message composer shared by chat and agent runs — owns its input state; the parent owns what submit means.
 export function Composer(props: {
   seed?: string; // initial text (an agent's saved user template)
   disabled?: boolean; // blocks send (context full, compacting, missing workspace)
@@ -43,8 +39,7 @@ export function Composer(props: {
     !props.streaming &&
     !props.disabled;
 
-  // Auto-grow the composer with its content, up to the textarea's max-height
-  // (then it scrolls). Runs on every input change, incl. the reset after submit.
+  // Auto-grow with content up to the textarea's max-height (then it scrolls).
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -62,11 +57,7 @@ export function Composer(props: {
     }
   }
 
-  // Turn a FileList (picked, dropped, or pasted) into composer attachments,
-  // dropping media the model can't accept. Images default on; video requires
-  // the model to explicitly declare video input. Oversized media is skipped
-  // with a note — what can never be sent shouldn't enter the transcript.
-  // Images over the model's pixel cap are downscaled in place, also with a note.
+  // Images default on, video needs explicit model support; oversized media is skipped or downscaled, with a note.
   async function addAttachments(list: FileList) {
     const maxDim = effectiveImageMaxDim(provider.imageMaxDim);
     const caps = getAppConfig().media;
@@ -91,8 +82,7 @@ export function Composer(props: {
       }
     }
     if (fs.length) setFiles((prev) => [...prev, ...fs]);
-    // Notes last so they survive the accept paths clearing the field; a skip
-    // is the more severe of the two, so it wins when both apply.
+    // Notes last so the accept paths can't clear them; skip outranks resize when both apply.
     if (resized.length) setAttachNote(t("session.attachResized", { names: resized.join(", "), max: maxDim }));
     if (skipped.length) setAttachNote(t("session.attachTooBig", { names: skipped.join(", ") }));
   }
@@ -103,9 +93,7 @@ export function Composer(props: {
     el.value = ""; // allow re-picking the same file
   }
 
-  // Paste an image/video straight from the clipboard (e.g. a screenshot) as an
-  // attachment. Only intercept when the clipboard actually carries media —
-  // otherwise let the normal text paste through.
+  // Intercept paste only when the clipboard carries media — plain text pastes through normally.
   function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const list = e.clipboardData?.files;
     if (!list?.length) return;
@@ -146,8 +134,7 @@ export function Composer(props: {
           images={images}
           videos={videos}
           files={files}
-          // The note describes the last attach action — stale once the user
-          // touches the attachment set, so any removal (or send) clears it.
+          // The note describes the last attach action — any change to the attachment set clears it as stale.
           onRemoveImage={(i) => {
             setImages((prev) => prev.filter((_, j) => j !== i));
             setAttachNote("");

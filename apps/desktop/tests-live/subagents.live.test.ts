@@ -1,8 +1,4 @@
-// End-to-end verification of the agents + sub-agents chain against a live LLM:
-// the REAL driver, store, bus, and provider adapter — only React is absent.
-// Covers: manual agent run (session stamping, final text), the per-turn output
-// contract lookup, the orchestrator path (ListAgents → parallel RunAgent →
-// child sessions with parentId + tool-card links), and the stop cascade.
+// Live end-to-end of the agents + sub-agents chain — REAL driver, store, bus, and provider adapter; only React is absent.
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { createAgent, deleteAgent, getAgents, saveAgent, type Agent } from "../src/core/agents.ts";
@@ -58,8 +54,7 @@ describe("agents + sub-agents, live", () => {
     const off = sessionBus.on("heal", (e) => void heals.push(e.correction));
     try {
       const sid = createSession({ title: "validated" });
-      // The validator demands JSON the prompt never asked for — the first
-      // answer (prose) must fail, proving the heal path actually re-prompts.
+      // The validator demands JSON the prompt never asked for — the first (prose) answer must fail, proving the heal path re-prompts.
       const validate = (text: string): void => {
         const parsed = JSON.parse(text.replace(/^```(?:json)?\n?|\n?```$/g, "")) as Record<string, unknown>;
         if (!("answer" in parsed)) throw new Error('reply with a JSON object: {"answer": <string>}');
@@ -96,8 +91,7 @@ describe("agents + sub-agents, live", () => {
         expect(c.agentId).toBe(agentByName("Shouter").id);
         expect(c.title).toBe("Shouter");
       }
-      // The parent's tool-result messages carry the children's answers and the
-      // durable links the ToolCard renders.
+      // The parent's tool-result messages carry the children's answers and the durable links the ToolCard renders.
       const toolMsgs = (getSession(sid)?.messages ?? []).filter((m) => m.role === "tool");
       const outputs = toolMsgs.map((m) => m.text).join("\n");
       expect(outputs).toContain("Available agents"); // ListAgents output
@@ -106,7 +100,6 @@ describe("agents + sub-agents, live", () => {
       const linked = toolMsgs.flatMap((m) => m.childSessionIds ?? []);
       expect(new Set(linked)).toEqual(new Set(children.map((c) => c.id)));
       expect(new Set(links)).toEqual(new Set(children.map((c) => c.id))); // live links matched the durable ones
-      // Final answer reached the parent's model and was used.
       expect(outcome?.text).toMatch(/RED FISH/i);
       expect(outcome?.text).toMatch(/BLUE MOON/i);
     } finally {

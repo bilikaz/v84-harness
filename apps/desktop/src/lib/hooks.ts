@@ -1,6 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
 
-// Bind Escape → callback while `active`. Shared by Modal, Lightbox, and menus.
 export function useEscapeKey(active: boolean, onEscape: () => void): void {
   useEffect(() => {
     if (!active) return;
@@ -12,7 +11,6 @@ export function useEscapeKey(active: boolean, onEscape: () => void): void {
   }, [active, onEscape]);
 }
 
-// Dismiss a menu/popover when clicking anywhere outside `ref`, while `active`.
 export function useOutsideClick(active: boolean, ref: RefObject<HTMLElement | null>, onOutside: () => void): void {
   useEffect(() => {
     if (!active) return;
@@ -25,8 +23,6 @@ export function useOutsideClick(active: boolean, ref: RefObject<HTMLElement | nu
   }, [active]);
 }
 
-// The detect/test-endpoint button pattern (Settings → Provider / Media): a
-// busy flag + result message around an async probe returning {ok, count, error}.
 export function useDetection(
   probe: () => Promise<{ ok: boolean; count: number; error?: string }>,
   format: (r: { ok: boolean; count: number; error?: string }) => string,

@@ -1,12 +1,4 @@
-// Tool dispatcher (runs in main). Collects the tools and routes a call to the
-// right one by name. Mirrors the reviewer's tools/index.ts: error messages go
-// straight back to the model and spell out what went wrong + what to do next,
-// and the dispatcher NEVER throws — a tool failure becomes `{ ok:false }` the
-// model can react to.
-//
-// Add a tool (Phase 3): create tools/<name>.ts exporting a `Tool`, then add it
-// to the TOOLS array below. Planned: Read, List, Grep, Write, Edit,
-// CreateFolder, Bash.
+// Tool dispatcher (runs in main) — routes a call by name; NEVER throws, a tool failure becomes `{ ok:false }` the model can react to.
 
 import type { Tool, ToolCtx, ToolCallRequest, ToolResult, ToolSchema } from "./types.ts";
 import { clientFromToolConfig } from "./client.ts";
@@ -21,10 +13,7 @@ import { loadImageTool, loadVideoTool } from "./loadMedia.ts";
 import { describeImageTool, describeVideoTool } from "./describeMedia.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
-// NOTE: the GENERATION tools (GenerateImage/GenerateVideo) are NOT here —
-// they're self-contained renderer tools (see core/tools/renderer.ts), so they
-// don't go through the main process dispatcher. Only tools that need Node
-// (fs/Bash) or main's CORS-free fetch (DescribeImage/DescribeVideo) live here.
+// GenerateImage/GenerateVideo are deliberately absent — they're renderer tools and don't go through the main dispatcher.
 const TOOLS: Tool[] = [
   readTool,
   listTool,
@@ -46,8 +35,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = TOOLS.map((t) => t.schema);
 
 const available = (): string => VALID_NAMES.join(", ") || "(no tools enabled)";
 
-// Running calls by id, so the renderer can cancel one over IPC (an AbortSignal
-// can't cross the bridge — main mints its own controller per call instead).
+// Running calls by id so the renderer can cancel over IPC — an AbortSignal can't cross the bridge, so main mints its own controller per call.
 const running = new Map<string, AbortController>();
 
 export function cancelTool(callId: string): void {
@@ -84,8 +72,7 @@ export async function execTool(call: ToolCallRequest, ctx: ToolCtx): Promise<Too
   const controller = new AbortController();
   if (call.id) running.set(call.id, controller);
   try {
-    // Functions don't cross the bridge — when the ctx arrives client-less
-    // (the IPC path), mint one from the config snapshot it carries.
+    // Functions don't cross the bridge — when ctx arrives client-less (the IPC path), mint one from the config snapshot it carries.
     const client = ctx.client ?? clientFromToolConfig(ctx.config);
     return await tool.execute(args, { ...ctx, client, signal: controller.signal });
   } catch (e) {

@@ -1,7 +1,4 @@
-// SQLite adapter — the desktop tier. The database lives in main (Node owns the
-// file under userData); this adapter is a thin typed client over the bridge's
-// `harness.storage` IPC surface. create() throws when there's no bridge or
-// main couldn't open SQLite, so detectStorage falls through to IndexedDB.
+// SQLite adapter (desktop tier) — thin client over the bridge's `harness.storage` IPC; create() throws so detectStorage falls through to IndexedDB.
 import { harness } from "../harness.ts";
 import type { Storage } from "./types.ts";
 

@@ -1,5 +1,4 @@
-// Structural assertions against the memory sink (conventions/logging.md rule 6)
-// and the one scope-join format every sink must reproduce.
+// Memory sink structural assertions (conventions/logging.md rule 6) + the scope-join format every sink must reproduce.
 import { describe, expect, it } from "vitest";
 
 import { MemoryLogger } from "../src/lib/logger/memory.ts";

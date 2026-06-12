@@ -1,7 +1,4 @@
-// The config loader's contract: defaults exported, overrides deep-merged, and
-// EVERY value validated at the read seam — a bad override (zero, negative,
-// NaN) must clamp back to its default instead of propagating. This is the
-// regression net for the imageMaxDim:0 → 1×1-image bug class.
+// Config loader — overrides deep-merge over defaults and EVERY value is validated at the read seam (regression net for the imageMaxDim:0 → 1×1 bug class).
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CONFIG_DEFAULTS, effectiveImageMaxDim, getAppConfig, setConfigOverrides } from "../src/core/config/index.ts";

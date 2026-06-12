@@ -1,20 +1,9 @@
-// Renderer-side image downscaling — the ONE place images are fitted to the
-// model's longest-side cap (ModelConfig.imageMaxDim; default in
-// core/config/defaults.ts — callers resolve it via effectiveImageMaxDim).
-// Both media doors run it in the renderer: composer attachments
-// (lib/attachments.ts) and tool-produced images in the driver
-// (core/sessions/driver.ts) — LoadImage reads files at full resolution in
-// main and the result is downscaled here on its way to the model. Canvas
-// APIs only, so this must never be imported by Electron main.
+// Renderer-side image downscaling to the model's longest-side cap — Canvas APIs only, so never import from Electron main.
 
 import { bytesToB64, parseDataUrl } from "./dataUrl.ts";
 
-// Downscale a data-URL image to fit maxDim on its longest side, keeping the
-// aspect ratio. Returns the re-encoded data URL, or null when the image is
-// left untouched: already fits, GIF (canvas would keep only the first frame),
-// non-data URL, or decode failure — resizing is best-effort and must never
-// block a send. A degenerate cap (0/negative/NaN) is also a no-op: a bad
-// config value must never collapse images to 1×1.
+// Null = left untouched (fits, GIF — canvas keeps only the first frame, non-data URL, decode failure): best-effort, must never block a send.
+// A degenerate cap (0/negative/NaN) is also a no-op — a bad config value must never collapse images to 1×1.
 export async function downscaleImage(
   url: string,
   mime: string,
@@ -37,8 +26,7 @@ export async function downscaleImage(
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bmp, 0, 0, w, h);
     bmp.close();
-    // quality applies to jpeg/webp; png ignores it. An encoder that can't
-    // produce the requested type falls back to png — out.type is the truth.
+    // quality applies to jpeg/webp only; an encoder that can't produce the requested type falls back to png — out.type is the truth.
     const out = await canvas.convertToBlob({ type: mime, quality: 0.9 });
     const bytes = new Uint8Array(await out.arrayBuffer());
     return { url: `data:${out.type};base64,${bytesToB64(bytes)}`, mime: out.type };

@@ -1,7 +1,4 @@
-// Granular session persistence (ADR-0021): the index, per-session message
-// rows, and media blobs are separate keys, so a persist costs what changed.
-// Exercised through the real LocalStorage adapter (the node-env backend) per
-// testing.md — the port is the seam, the engine is real.
+// Granular session persistence (ADR-0021) — index, message rows, and media blobs are separate keys; exercised through the real LocalStorage adapter (the port is the seam).
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { LocalStorage } from "../src/lib/storage/index.ts";
@@ -24,7 +21,6 @@ describe("saveMessages / loadMessages", () => {
     const ref: MediaRef = { url: DATA_URL, mime: "image/png", name: "a.png" };
     await saveMessages(s, "s1", [msg({ images: [ref] })]);
 
-    // The stored messages carry a ref, not megabytes of base64.
     const storedRaw = (await s.get("v84-harness:sessions:msgs:s1"))!;
     expect(storedRaw).not.toContain("base64,AAAA");
     expect(storedRaw).toContain(`media:${ref.id}`);

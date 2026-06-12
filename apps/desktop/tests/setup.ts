@@ -1,6 +1,4 @@
-// Node test environment shims. The store kernel (and stores built on it)
-// persist to localStorage; give them an in-memory one so module-load reads and
-// persistence assertions work without a browser environment.
+// Node test shims — in-memory localStorage so store kernels can read/persist at module load.
 const backing = new Map<string, string>();
 
 globalThis.localStorage = {

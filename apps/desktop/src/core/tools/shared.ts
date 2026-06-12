@@ -1,10 +1,6 @@
-// Cross-cutting helpers shared by the tools — mechanics, not contract (the
-// vocabulary lives in types.ts per conventions/types-placement.md). The
-// media-endpoint client (mediaChat/collectImage/collectVideo) is its own
-// module: mediaClient.ts.
+// Cross-cutting helpers shared by the tools — mechanics, not contract.
 
-// 64 KB per tool result is plenty; truncate beyond so a runaway command can't
-// blow up the model's context.
+// 64 KB per tool result is plenty — truncate beyond so a runaway command can't blow up the model's context.
 export const OUTPUT_CAP = 64 * 1024;
 
 export function cap(s: string): string {

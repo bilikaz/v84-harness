@@ -1,6 +1,4 @@
-// localStorage adapter — the last-resort tier (quota ~5 MB; large media will
-// not fit). Exists so detectStorage always returns SOMETHING and the app keeps
-// working in odd environments; set() throws on quota like the other adapters.
+// localStorage adapter — last-resort tier (~5 MB quota) so detectStorage always returns SOMETHING.
 import type { Storage } from "./types.ts";
 
 export class LocalStorage implements Storage {

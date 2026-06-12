@@ -1,5 +1,4 @@
-// The single data-URL parse/encode source shared by renderer, providers, and
-// Electron main — drift here breaks attachments, media tools, and saving alike.
+// Data-URL parse/encode — the single source shared by renderer, providers, and Electron main.
 import { describe, expect, it } from "vitest";
 
 import { bytesToB64, mimeToExt, parseDataUrl } from "../src/lib/dataUrl.ts";

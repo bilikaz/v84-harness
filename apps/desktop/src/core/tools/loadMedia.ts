@@ -7,15 +7,7 @@ import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { CONFIG_DEFAULTS } from "../config/defaults.ts";
 
-// Load an image/video file from the workspace so the model can review it.
-// Read-only and path-confined like Read, so it auto-runs. The bytes come back
-// as a data URL on the tool result; the driver feeds it to the model as a
-// hidden user turn (the same loop GenerateImage uses) — which is why these
-// tools are only advertised when the model declares the matching input
-// capability (see advertisedTools in core/sessions/driver.ts).
-//
-// Both tools are one factory: they differ only in name, extension whitelist,
-// size cap, and which ToolResult field carries the payload.
+// LoadImage/LoadVideo: load a workspace media file for the model's review — advertised only when the model declares the matching input capability.
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
@@ -29,9 +21,7 @@ function makeLoadTool(opts: {
   kind: "image" | "video";
   exts: string[];
   maxBytes: number;
-  // Per-extension overrides of maxBytes (e.g. GIF can't be downscaled in the
-  // renderer, so it keeps a strict byte cap while other images get the
-  // generous transport bound).
+  // Per-extension overrides of maxBytes (GIF can't be downscaled in the renderer, so it keeps a strict byte cap).
   extCaps?: Record<string, number>;
 }): Tool {
   const { name, kind, exts, maxBytes, extCaps } = opts;
@@ -88,9 +78,7 @@ function makeLoadTool(opts: {
   };
 }
 
-// Byte caps come from CONFIG_DEFAULTS (transport sanity bounds, not model
-// limits — ADR-0027): this module is imported by Electron main, which never
-// sees the renderer's override store, so the caps are defaults by design.
+// Transport sanity bounds, not model limits (ADR-0027) — main never sees the renderer's override store, so the caps are defaults by design.
 const CAPS = CONFIG_DEFAULTS.media;
 
 export const loadImageTool = makeLoadTool({

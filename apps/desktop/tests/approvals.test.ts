@@ -1,5 +1,4 @@
-// The approval Promise bridge (ADR-0013): every queued Promise must settle —
-// resolution, denial, and the deny-on-stop sweep are the whole contract.
+// Approval Promise bridge (ADR-0013) — every queued Promise must settle.
 import { describe, expect, it } from "vitest";
 
 import {
@@ -36,7 +35,6 @@ describe("approval bridge", () => {
     await expect(doomed1.promise).resolves.toBe(false);
     await expect(doomed2.promise).resolves.toBe(false);
 
-    // The other session's request is untouched and still resolvable.
     expect(getPendingApprovals().some((p) => p.id === alive.id)).toBe(true);
     resolveApproval(alive.id, true);
     await expect(alive.promise).resolves.toBe(true);

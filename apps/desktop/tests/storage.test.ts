@@ -1,6 +1,4 @@
-// The storage port (ADR-0017): detection falls through best-first, and the
-// last-resort adapter honors the port contract. In this node environment there
-// is no bridge and no IndexedDB, so detection must land on localStorage.
+// Storage port (ADR-0017) — node has no bridge/IndexedDB, so detection must fall through to localStorage.
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { detectStorage, LocalStorage } from "../src/lib/storage/index.ts";

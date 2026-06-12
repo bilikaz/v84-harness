@@ -99,9 +99,7 @@ export function ProviderSection() {
             value={cfg.imageMaxDim ?? ""}
             onChange={(e) => saveProvider({ imageMaxDim: e.target.value ? Number(e.target.value) : undefined })}
             onBlur={(e) => {
-              // 0/negative would mean "downscale everything to nothing" — treat
-              // it as unset. The read seam (effectiveImageMaxDim) also guards,
-              // so this is the UI half of the fix, not the only line of defense.
+              // 0/negative would mean "downscale everything to nothing" — treat as unset (effectiveImageMaxDim guards reads too).
               const v = e.target.value ? Number(e.target.value) : undefined;
               if (v !== undefined && v < 1) saveProvider({ imageMaxDim: undefined });
             }}
@@ -126,8 +124,7 @@ export function ProviderSection() {
         </select>
       </Row>
 
-      {/* Token budget applies to OpenAI-compatible (vLLM) and Gemini; Anthropic
-          uses effort + adaptive thinking and ignores it (ADR-0006). */}
+      {/* Anthropic ignores the token budget (effort + adaptive thinking, ADR-0006), so it's hidden there. */}
       {cfg.model.reasoningEffort && cfg.model.reasoningEffort !== "off" && cfg.provider.type !== "anthropic" && (
         <Row label={t("provider.thinkingBudget")}>
           <input

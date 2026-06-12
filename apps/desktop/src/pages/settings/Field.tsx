@@ -1,18 +1,15 @@
 import type { ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 
-// The width- and border-color-free core, for callers that override either
-// (e.g. a validation-error red border).
+// Width- and border-color-free core, for callers that override either (e.g. a validation-error red border).
 export const fieldInputBare = "rounded-lg border px-3 py-1.5 text-sm outline-none";
 
 const base = `${fieldInputBare} border-neutral-200 focus:border-neutral-400`;
 
-// One width for every settings field — rows that pair an input with a button
-// use a w-80 wrapper + the flex variant, so columns line up across sections.
+// One width (w-80) for every settings field so columns line up across sections.
 export const fieldInput = `w-80 ${base}`;
-// The flex-sized variant, for inputs/selects sharing a row with a button.
+// Flex-sized variant, for inputs/selects sharing a w-80 row with a button.
 export const fieldInputFlex = `min-w-0 flex-1 ${base}`;
-// Full-width variant (workspace settings panel).
 export const fieldInputFull = `w-full ${base}`;
 
 export function Row(props: { label: string; children: ReactNode }) {
@@ -24,8 +21,6 @@ export function Row(props: { label: string; children: ReactNode }) {
   );
 }
 
-// The "Detect models" probe button (Settings → Provider / Media): spinner while
-// busy, disabled while busy or when the endpoint isn't configured yet.
 export function DetectButton(props: { label: string; busy: boolean; disabled?: boolean; title?: string; onClick: () => void }) {
   return (
     <button

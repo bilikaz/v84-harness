@@ -1,10 +1,4 @@
-// DescribeImage / DescribeVideo — workspace media → the linked recognition
-// model. The contract: same file guards as Load* (confinement, extension
-// whitelist, byte caps), inert without an assigned slot model, OpenAI dialect
-// required, the recognizer's text becomes the output, and the file rides the
-// result as the user's preview (images/video field) exactly like LoadImage.
-// The call goes through the provider layer (collectText → streamOpenAI), so
-// the mock speaks SSE — the same wire the chat engine uses.
+// DescribeImage/DescribeVideo — Load*'s file guards plus the linked recognition model; the call rides the real provider layer, so the mock speaks SSE.
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,8 +8,7 @@ import { describeImageTool, describeVideoTool } from "../src/core/tools/describe
 import { clientFromToolConfig } from "../src/core/tools/client.ts";
 import type { MediaSlotConfig, MediaUseCase, ToolCtx } from "../src/core/tools/types.ts";
 
-// Build the ctx a tool really receives: the config snapshot + the client
-// minted from it (exactly what execTool does behind the bridge).
+// ctx mirrors what execTool builds: the config snapshot + the client minted from it.
 function ctxWith(media: Partial<Record<MediaUseCase, MediaSlotConfig>>): ToolCtx {
   const config = { main: null, media };
   return { cwd: root, config, client: clientFromToolConfig(config) };

@@ -1,6 +1,4 @@
-// Confinement tests for the tools' virtual-root path mapping — the hard safety
-// rule of the tool system (ADR-0007): nothing the model addresses may resolve
-// outside the workspace root, `..` and symlinks included.
+// Virtual-root confinement (ADR-0007) — nothing the model addresses may resolve outside the workspace root, `..` and symlinks included.
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

@@ -1,17 +1,10 @@
-// Cosmos prompt presets — the structured-JSON prompt schemas (verbatim from
-// cosmos-framework, prompting_templates/external_api/) and the upsampler
-// system prompts that fill them. Extracted here so the generation tools stay
-// model-agnostic: they run this upsampling only when the registry entry says
-// promptStyle === "cosmos-json" (set by detection when a cosmos model id is
-// recognized, or marked manually in Settings → Models).
+// Cosmos prompt presets — the structured-JSON prompt schemas (verbatim from cosmos-framework) + the upsampler system prompts that fill them.
 
 export interface CosmosPreset {
   system: string;
   // The schema's caption field — the upsample heal loop validates it exists.
   requiredKey: string;
 }
-
-// ── text → image (t2i_json_schema.json) ─────────────────────────────────────
 
 const T2I_SCHEMA = `{
   "subjects": [
@@ -42,9 +35,7 @@ export const COSMOS_T2I: CosmosPreset = {
     "the image dimensions. Output ONLY the JSON object — no markdown, no code fences, no commentary.",
 };
 
-// ── text → video (t2v_i2v_video_json_schema.json) ───────────────────────────
 // The describer fills it; the tool injects resolution/aspect_ratio/duration/fps.
-
 const T2V_SCHEMA = `{
   "subjects": [
     { "description": "", "appearance_details": "", "location": "", "relative_size": "", "orientation": "", "pose": "", "action": "what the subject DOES over the clip (motion)", "state_changes": "how it changes over time", "clothing": "", "expression": "", "gender": "", "age": "", "facial_features": "", "number_of_subjects": 0 }

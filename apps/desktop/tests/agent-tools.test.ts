@@ -1,13 +1,10 @@
-// The sub-agent catalog and name resolution — what an orchestrator is allowed
-// to see and run. Wrong filtering either hides a runnable agent or lets a chat
-// session spawn a workspace worker it can't bind.
+// Sub-agent catalog + name resolution — what an orchestrator is allowed to see and run.
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAgent, deleteAgent, getAgents, saveAgent } from "../src/core/agents.ts";
 import { agentToolSchemas, catalogAgents, listAgentsOutput, resolveAgent } from "../src/core/sessions/agentTools.ts";
 
-// The agents store is a module singleton (seeded on first import) — reset it to
-// a known library before each case.
+// The agents store is a module singleton seeded on first import — reset before each case.
 function resetLibrary(): void {
   for (const a of getAgents()) deleteAgent(a.id);
 }

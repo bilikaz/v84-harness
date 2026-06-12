@@ -1,17 +1,9 @@
-// The provider/model registry: providers hold the connection, models hold
-// capabilities; assignment points a use-case slot at one model and tools get
-// the FLATTENED provider+model config. Older stored shapes (v1 single config,
-// flat entries with/without capability lists) migrate losslessly. Assignments
-// must stay honest: anything pointing at a removed model/provider or a lost
-// capability is pruned, and an unassigned/endpoint-less slot resolves null
-// (tool inert), never "whatever exists".
+// Provider/model registry — old stored shapes migrate losslessly, stale assignments prune, and an unassigned/endpoint-less slot resolves null (tool inert), never "whatever exists".
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const KEY = "v84-harness:media";
 
-// Node has no localStorage; the registry's load() runs at module init, so the
-// stub must exist BEFORE the dynamic import (vi.resetModules gives each test a
-// fresh module + store state).
+// The registry's load() runs at module init, so the localStorage stub must exist BEFORE the dynamic import (vi.resetModules gives each test fresh module + store state).
 function stubStorage(seed?: object): void {
   const m = new Map<string, string>(seed ? [[KEY, JSON.stringify(seed)]] : []);
   (globalThis as Record<string, unknown>).localStorage = {

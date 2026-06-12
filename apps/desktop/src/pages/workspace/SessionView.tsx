@@ -28,8 +28,7 @@ import { SystemBanner } from "./SystemBanner.tsx";
 import { cn } from "../../lib/cn.ts";
 import type { MediaRef } from "../../lib/types.ts";
 
-// The main center: active session transcript + the composer (model selector,
-// detect button, send). Reads the session + provider stores.
+// Main center pane: active session transcript + composer.
 export function SessionView() {
   const { t } = useTranslation();
   const session = useActiveSession();
@@ -43,28 +42,18 @@ export function SessionView() {
   const rightPanel = useRightPanel();
   const full = isFull(provider, session);
 
-  // Usable context budget (window − reserve) for the composer's "full" notice.
   const ctxLimit = contextLimit(provider);
   const used = session.usedTokens ?? 0;
 
-  // An agent-spawned session shows what it's configured with: the stamped
-  // system prompt under the agent's name (the agent may be edited or deleted
-  // later — the session's own copy is what runs).
+  // The session's stamped system prompt is what runs — the agent may be edited/deleted later.
   const agentName = session.agentId ? (getAgent(session.agentId)?.name ?? session.title) : null;
 
-  // A sub-agent run is a window, not a chat: no composer, no stop — control
-  // lives in the parent (its Stop cascades here). The transcript stays as the
-  // record of what the worker did.
+  // Child run: no composer/stop — control lives in the parent (its Stop cascades here).
   const sessions = useSessions();
   const parent = sessions.find((s) => s.id === session.parentId);
   const isChildRun = !!session.parentId;
 
-
-  // Map each tool call's id → its result text, so the assistant's tool card can
-  // show the OUT next to the IN. Memoized on the messages array so renders
-  // caused by local state (menus) don't rebuild them. `toolChildren` adds the
-  // RunAgent door: live links from the in-flight map, settled links from the
-  // tool-result messages.
+  // toolChildren merges live links (in-flight childRuns) with settled ones (tool-result messages).
   const childRuns = useChildRuns();
   const { toolResults, toolImages, toolVideo, toolChildren } = useMemo(() => {
     const toolResults = new Map<string, string>();
@@ -82,14 +71,9 @@ export function SessionView() {
     return { toolResults, toolImages, toolVideo, toolChildren };
   }, [session.messages, childRuns]);
 
-  // Close the title menu on outside click.
   useOutsideClick(menuOpen, headerRef, () => setMenuOpen(false));
 
-  // ── Transcript scrolling ─────────────────────────────────────────────────
-  // Stick to the bottom as messages stream IN — but only while the user is
-  // already at the bottom. If they've scrolled up to read, leave them be. On
-  // switching chats, restore the position they were last at (bottom on first
-  // open), so you're not dumped at the top.
+  // Transcript scrolling: follow streaming only while pinned to bottom; restore per-chat position on switch.
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const positionsRef = useRef<Record<string, number>>({});
@@ -112,7 +96,6 @@ export function SessionView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
-  // Follow new/streaming content only when pinned to the bottom.
   useEffect(() => {
     const el = scrollRef.current;
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
@@ -200,9 +183,7 @@ export function SessionView() {
             </p>
           )}
           {session.messages.map((m, i) =>
-            // Tool-result messages are folded into the assistant's tool card (by
-            // toolCallId); compaction summaries + heal corrections are hidden
-            // (sent to the model only).
+            // Tool results fold into the assistant's tool card; summaries/heal corrections are model-only.
             m.role === "tool" || m.summary || m.hidden ? null : (
               <Message
                 key={m.id}
@@ -226,9 +207,7 @@ export function SessionView() {
 
       <div className="px-6 pb-6">
         {isChildRun ? (
-          // Three separate pieces, not one pill: the read-only notice, the way
-          // back to the parent, and the run-log delete ("log" on purpose — the
-          // answer survives in the parent's tool result, only this transcript goes).
+          // Deleting removes only this run log — the answer survives in the parent's tool result.
           <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-2">
             <span className="px-1 text-xs text-neutral-500">{t("agents.childRun")}</span>
             {parent && (
@@ -243,8 +222,7 @@ export function SessionView() {
             <button
               type="button"
               onClick={() => {
-                // Land on the parent, not the session-list fallback — capture
-                // the id before the delete switches the active session.
+                // Capture parent id before the delete switches the active session.
                 const pid = parent?.id;
                 deleteSession(session.id);
                 if (pid) setActive(pid);

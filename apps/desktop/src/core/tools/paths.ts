@@ -1,11 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-// Virtual-root path mapping + confinement (see ToolCtx in shared.ts). The model
-// addresses files relative to the workspace root, which it sees as "/". We map
-// to a real host path under cwd and REJECT anything that escapes — `..`,
-// absolutes (a leading "/" just means the workspace root), and symlinks that
-// point outside.
+// Virtual-root path mapping + confinement: the model sees the workspace root as "/"; anything escaping cwd (`..`, symlinks) is REJECTED.
 
 export function rootReal(cwd: string): string {
   return realpathSync(path.resolve(cwd));
@@ -19,8 +15,7 @@ export function toReal(cwd: string, virtual: string): string {
   const inside = (p: string) => p === root || p.startsWith(root + path.sep);
   if (!inside(real)) throw new Error(`path "${virtual}" escapes the workspace root`);
 
-  // Resolve symlinks on the deepest existing ancestor and re-check, so a symlink
-  // inside the workspace can't redirect outside it.
+  // Resolve symlinks on the deepest existing ancestor and re-check, so an in-workspace symlink can't redirect outside.
   let probe = real;
   while (probe !== path.dirname(probe) && !existsSync(probe)) probe = path.dirname(probe);
   const resolved = existsSync(probe) ? realpathSync(probe) : probe;

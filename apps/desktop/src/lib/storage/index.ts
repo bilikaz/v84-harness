@@ -1,7 +1,4 @@
-// Public face of the storage port + the one place backend selection happens
-// (the reviewer's detectProvider, for storage): try adapters best-first and
-// return the first whose create() succeeds. SQLite (desktop, no quota) >
-// IndexedDB (web, large quota) > localStorage (last resort, ~5 MB).
+// Storage barrel + the ONE place backend selection happens: first create() to succeed wins, best-first (sqlite > idb > local).
 import { errorMessage } from "../errors.ts";
 import { rootLog } from "../logger/index.ts";
 import type { Storage } from "./types.ts";
@@ -32,8 +29,7 @@ async function detect(): Promise<Storage> {
       log.debug("skipped", { backend: c.name, reason: errorMessage(e) });
     }
   }
-  // LocalStorage.create() only throws where localStorage itself is missing —
-  // at that point there is nothing left to persist to.
+  // Reached only where localStorage itself is missing — nothing left to persist to.
   throw new Error("no storage backend available");
 }
 

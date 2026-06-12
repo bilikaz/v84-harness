@@ -26,16 +26,7 @@ import {
 } from "../../core/tools/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
 
-// Settings → Models, two tabs:
-//   Use cases — the defaults: one select per use-case slot, options are
-//     "provider : model" for every model declaring that capability; grayed
-//     out when nothing fits yet.
-//   Providers — the pool: expandable provider cards (endpoint + auth + API
-//     dialect), each hosting its models. OpenAI dialect: Detect fills the
-//     list, an add-row appends models one by one, each with capability
-//     checkboxes + per-modality settings. Bare /generate: one implicit
-//     default model, just tick what it does.
-// Tools go inert when their slot is unassigned — nothing here is required.
+// Settings → Models: use-case slot assignments + the provider/model pool; tools go inert when their slot is unassigned.
 
 const FLAVORS: readonly MediaApiFlavor[] = ["openai", "generate"];
 const FLAVOR_KEY: Record<MediaApiFlavor, string> = { openai: "apiOpenai", generate: "apiGenerate" };
@@ -73,8 +64,6 @@ export function ModelsSection() {
     </div>
   );
 }
-
-// ── Use cases (defaults) ─────────────────────────────────────────────────────
 
 function UseCasesTab({ reg }: { reg: MediaRegistry }) {
   const { t } = useTranslation();
@@ -121,8 +110,6 @@ function SlotRow({ uc, reg }: { uc: MediaUseCase; reg: MediaRegistry }) {
     </Row>
   );
 }
-
-// ── Providers ────────────────────────────────────────────────────────────────
 
 function ProvidersTab({ reg }: { reg: MediaRegistry }) {
   const { t } = useTranslation();
@@ -272,8 +259,6 @@ function AddModelRow({ p }: { p: MediaProvider }) {
   const remaining = (p.detected ?? []).filter((d) => !added.has(d));
   const [pick, setPick] = useState("");
 
-  // "Add until all models from the provider are added" — the row disappears
-  // only when there's neither a detected model left nor a custom id to type.
   if (remaining.length > 0) {
     return (
       <div className="mt-2 flex items-center gap-2">

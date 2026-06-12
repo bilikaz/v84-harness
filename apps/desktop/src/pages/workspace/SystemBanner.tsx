@@ -5,9 +5,7 @@ import { Bot, ChevronDown } from "lucide-react";
 import { Markdown } from "../../components/Markdown.tsx";
 import { cn } from "../../lib/cn.ts";
 
-// The collapsible "what is this session configured with" header shown at the
-// top of an agent run (the primed run page and agent-spawned chat sessions).
-// Same accordion family as Thinking — neutral instead of violet.
+// Collapsible "what is this session configured with" header for agent runs and agent-spawned chats.
 export function SystemBanner({ name, system, defaultOpen = false }: { name: string; system: string; defaultOpen?: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);

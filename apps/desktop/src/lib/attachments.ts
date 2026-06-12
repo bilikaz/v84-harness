@@ -3,8 +3,7 @@ import type { FileAttachment, MediaRef } from "./types.ts";
 
 const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context
 
-// The caps this door enforces — values come from core/config via the caller
-// (lib never imports core; the layering arrows are ui→lib and core→lib).
+// Cap values come from core/config via the caller — lib never imports core.
 export interface AttachmentLimits {
   imageMaxDim: number; // model pixel cap (already resolved via effectiveImageMaxDim)
   imageMaxBytes: number; // transport bounds (config media.*Bytes)
@@ -12,12 +11,7 @@ export interface AttachmentLimits {
   videoMaxBytes: number;
 }
 
-// Read picked files: images & video → data-URL attachments (multimodal),
-// everything else → text attachments folded into the message. Images over the
-// model's longest-side cap are downscaled in place and reported in `resized`
-// — dimensions are the model check; the byte caps are transport sanity
-// bounds, and media over them is SKIPPED and reported in `skipped` so the
-// composer can say so. Shared by the session composer and the agent runner.
+// Images over the pixel cap are downscaled (reported in `resized`); media over the byte caps is SKIPPED (reported in `skipped`), not resized.
 export function readAttachments(
   list: FileList,
   limits: AttachmentLimits,

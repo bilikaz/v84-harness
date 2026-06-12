@@ -4,10 +4,7 @@ import { ChevronDown, Sparkles } from "lucide-react";
 
 import { cn } from "../../lib/cn.ts";
 
-// Reasoning in a distinct color — muted violet, collapsible. Auto-expands while
-// the model is thinking, then collapses; the user can still toggle it after.
-// The whole block toggles (not just the header line). Memoized — settled
-// messages keep reference identity, so old thinking blocks skip re-rendering.
+// Collapsible reasoning block; auto-expands while streaming, user-toggleable after; memoized.
 export const Thinking = memo(function Thinking({ text, streaming }: { text: string; streaming: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(streaming);

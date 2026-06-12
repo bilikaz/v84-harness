@@ -1,10 +1,4 @@
-// createClient/call — one entry for anything. The contract: a ConfigSource
-// resolves service names to targets, providerFor loads the provider (dialect
-// settled at resolution), and the HANDLER (caller-provided; defaults to the
-// provider's own shape) consumes the interaction — call returns exactly what
-// it returns, no envelope. Failures are exceptions: HealError from inside the
-// handler re-prompts with the correction (carrying the bad answer as a turn)
-// until valid or the heal budget is spent; anything else propagates untouched.
+// createClient/call contract — the handler's return IS the result (no envelope); HealError re-prompts with the bad answer + correction until valid or the budget is spent, anything else propagates untouched.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createClient, HealError, jsonHandler, bufferEvents, type ResponseHandler } from "../src/llm/index.ts";
@@ -13,8 +7,7 @@ import type { CallTarget } from "../src/llm/types.ts";
 const CFG: CallTarget = { provider: { name: "m", type: "openai", baseUrl: "http://llm:8000/v1" }, model: { id: "x" } };
 const BANSAI: CallTarget = { provider: { name: "Bansai", type: "generate", baseUrl: "http://b/" }, model: {} };
 
-// A fixture client: "main" chats, imageGen is the bare generate target, and
-// imageRec is (mis)assigned the same generate target — everything else empty.
+// Fixture: imageRec is deliberately (mis)assigned the same bare generate target as imageGen.
 const client = createClient({
   resolve(service) {
     if (service === "main") return CFG;
@@ -69,7 +62,6 @@ describe("client.call", () => {
     });
     expect(obj).toEqual({ a: 1 });
 
-    // The second request must carry the failed answer and a correction turn.
     const body = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body)) as {
       messages: Array<{ role: string; content: string }>;
     };

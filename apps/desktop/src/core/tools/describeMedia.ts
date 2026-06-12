@@ -8,35 +8,13 @@ import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { CONFIG_DEFAULTS } from "../config/defaults.ts";
 
-// Describe a workspace image/video with the model linked to the matching
-// recognition slot (imageRec / videoRec) — describe it, answer a question
-// about it, or locate things in it. This exists for the SPECIALIST case: the
-// chat model may be blind (no media input) or weaker at grounding than a
-// dedicated recognizer, so the file + instructions go to the slot's model and
-// its TEXT answer becomes the tool output. The file also rides the result —
-// the user sees it in the tool card exactly like LoadImage/LoadVideo, and the
-// driver feeds it to the chat model only under the same input-capability
-// guard as every other tool-produced media.
-//
-// Both tools are one factory: they differ only in slot, extension whitelist,
-// byte caps, which message field carries the file, and which ToolResult field
-// carries the preview. File handling mirrors loadMedia.ts (gated, main
-// process, virtual-root confinement); the HTTP call also runs in main, so
-// there's no CORS.
-//
-// The wire is NOT this tool's business: it names its slot's model and what to
-// ask, and call() (llm/client) identifies the dialect and does the
-// transport — the adapter maps message images/video to image_url/video_url
-// parts and brings retry classification and inline-think demuxing.
+// DescribeImage/DescribeVideo: send a workspace file + instructions to the matching recognition slot's model; its text answer becomes the tool output.
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
 const CAPS = CONFIG_DEFAULTS.media;
 
-// The recognizer's framing — it serves an AGENT that cannot see the file, so
-// the contract is: grounded, complete, no invention, positions in a usable
-// vocabulary. Inline like the Cosmos upsampler prompts (model-facing, not UI
-// text — never i18n).
+// Recognizer system prompts — model-facing text, never i18n.
 const SYSTEM: Record<"image" | "video", string> = {
   image:
     "You are a precise image analysis assistant. You receive ONE image and an instruction from an automated " +
@@ -118,9 +96,7 @@ function makeDescribeTool(opts: {
         const dataUrl = `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`;
 
         const fileRef = { url: dataUrl, mime };
-        // The tool declares the shape it expects: text. (Relying on the
-        // target default would let a misassigned generate endpoint return
-        // an image here.)
+        // Declare text explicitly — relying on the target default would let a misassigned generate endpoint return an image here.
         const answer = await ctx.client.call({
           service: slot,
           handler: textHandler(),
@@ -139,9 +115,7 @@ function makeDescribeTool(opts: {
         return {
           ok: true,
           output: answer || "(the recognition model returned an empty answer)",
-          // The file rides the result for the user's preview — the driver
-          // applies the usual input-capability guard before the chat model
-          // sees it (and downscales images to its pixel cap).
+          // The driver applies the usual input-capability guard before the chat model sees the preview.
           ...(kind === "image" ? { images: [preview] } : { video: [preview] }),
         };
       } catch (e) {

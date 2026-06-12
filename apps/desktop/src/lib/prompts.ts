@@ -1,16 +1,6 @@
 import i18n, { LANGUAGES } from "./i18n.ts";
 
-// Prompt registry — model-facing messages, with i18n.t-style dotted-key lookup
-// and {{var}} interpolation. UNLIKE i18n there's a single (English) catalog:
-// prompts are instructions to the model, not UI, and the model follows English
-// instructions and replies in whatever language we name. So we don't translate
-// the prompt body — we just pass the target language as a variable. `{{language}}`
-// is injected automatically (the active UI language's English name).
-//
-// Structure: <segment>.<role>, where segment is the logical use-case and role is
-// where the message is placed in the request (system / user). e.g.
-// "defaultChat.system" is the system message of a new chat; "chatTitle.user" is
-// the user-turn we send to generate a title.
+// Prompt registry — model-facing messages keyed "<segment>.<role>" with {{var}} interpolation; single English catalog, {{language}} injected automatically.
 type Vars = Record<string, string>;
 type Tree = { [k: string]: string | Tree };
 
@@ -21,8 +11,7 @@ const PROMPTS: Tree = {
       "If the user writes in {{language}}, reply in {{language}}. Otherwise reply in English.",
   },
   workspace: {
-    // Appended to the system message whenever a session has file tools — the
-    // virtual root (ADR-0007) is invisible to the model unless we say so.
+    // Appended to the system message when a session has file tools — the virtual root (ADR-0007) is invisible to the model unless we say so.
     system:
       "You have access to the user's workspace folder through your file tools. " +
       "The workspace root is mounted as `/`: every path is workspace-relative, a leading `/` means the workspace root itself " +
@@ -51,9 +40,7 @@ function languageName(): string {
   return LANGUAGES.find((l) => l.code === i18n.language)?.name ?? "English";
 }
 
-// Look up a prompt by dotted key and interpolate. `{{language}}` is always
-// available; pass any other vars explicitly. Unknown key returns the key.
-// Named `pt` (not `prompt`) to avoid colliding with the global window.prompt.
+// Unknown key returns the key; named `pt` (not `prompt`) to avoid colliding with the global window.prompt.
 export function pt(key: string, vars?: Vars): string {
   const s = resolve(key) ?? key;
   const all: Vars = { language: languageName(), ...vars };

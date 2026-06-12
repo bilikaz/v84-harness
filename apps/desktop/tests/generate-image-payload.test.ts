@@ -1,6 +1,4 @@
-// The bare generate dialect has no spec — extractImagePayload is the tolerant
-// parse that finds the image in whatever JSON wrapper the server uses. These
-// pin the recognized shapes (and that a URL is never misread as base64).
+// extractImagePayload's recognized shapes — the bare generate dialect has no spec, so this tolerant parse is the contract.
 import { describe, expect, it } from "vitest";
 
 import { extractImagePayload } from "../src/llm/providers/image/generate.ts";

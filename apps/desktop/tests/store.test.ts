@@ -1,5 +1,4 @@
-// The store kernel — the persistence + notify contract every store in the app
-// builds on (ADR-0004). Configs come from real defaults per testing.md rule 5.
+// Store kernel — the persistence + notify contract every store in the app builds on (ADR-0004).
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createListeners, createStore } from "../src/lib/store.ts";

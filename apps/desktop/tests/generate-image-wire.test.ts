@@ -1,9 +1,4 @@
-// The bare /generate dialect's wire, pinned against the CONFIRMED Bonsai
-// contract (FastAPI /openapi.json, llm.v84.eu:2096): request carries only
-// prompt/seed/width/height (+ backend from the registry model id) — steps and
-// guidance are deliberately absent (the server's distilled-model defaults are
-// right; Cosmos-grade presets would wreck it) — and the response is raw
-// image/png bytes.
+// /generate wire pinned to the confirmed Bonsai contract — steps/guidance deliberately absent (the server's distilled-model defaults are right; presets would wreck it).
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createClient } from "../src/llm/index.ts";

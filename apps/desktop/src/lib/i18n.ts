@@ -4,12 +4,10 @@ import { initReactI18next } from "react-i18next";
 import en from "../locales/en.json";
 import lt from "../locales/lt.json";
 
-// Real i18n: i18next + react-i18next. Add a language = drop a JSON in locales/
-// and list it here + in LANGUAGES. Choice persists in localStorage.
+// i18next setup — add a language: drop a JSON in locales/ and list it in LANGUAGES; choice persists in localStorage.
 const KEY = "v84-harness:lang";
 
-// `label` is the native name (shown in the picker); `name` is the English name
-// (used by model-facing prompts — see lib/prompts.ts).
+// `label` is the native name (picker); `name` is the English name (model-facing prompts).
 export const LANGUAGES = [
   { code: "en", label: "English", name: "English" },
   { code: "lt", label: "Lietuvių", name: "Lithuanian" },

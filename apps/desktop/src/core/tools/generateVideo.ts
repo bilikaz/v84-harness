@@ -6,15 +6,7 @@ import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsampl
 import { COSMOS_T2V } from "./cosmos.ts";
 import { getAppConfig } from "../config/index.ts";
 
-// Generate a short video from a prompt via the model assigned to the videoGen
-// slot of the media registry. Self-contained renderer tool (like
-// GenerateImage): when the entry says promptStyle "cosmos-json", the prompt is
-// upsampled into Cosmos's text→video JSON schema with our main chat LLM, then
-// handed to the client's videoHandler (llm/responseHandlers — the handler owns the async
-// jobs flow: submit, keep checking, deliver); the resulting clip rides on the
-// message as a data-URL and renders in the tool card. Generation is SLOW
-// (~minutes per second of video). Timings + quality presets live in
-// core/config (videoGen.*) and travel as parameters.
+// GenerateVideo: prompt → videoGen slot model → clip as a data-URL riding the message. Generation is SLOW (~minutes per second of video).
 
 export const generateVideoTool: Tool = {
   schema: {
@@ -58,7 +50,7 @@ export const generateVideoTool: Tool = {
     }
     const cfg = getAppConfig().videoGen;
 
-    // Dimensions: width + aspect → WxH, clamped to max, ×16. We own these.
+    // We own the dimensions — the model never sets height.
     const max = parseDims(media.model.maxVideoSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
@@ -72,9 +64,7 @@ export const generateVideoTool: Tool = {
     const numFrames = Math.max(1, Math.round(duration * cfg.fps));
     const quality = pickQuality(args.quality);
 
-    // Prompt: pass-through unless the entry wants the Cosmos JSON prompt.
-    // Dimensions/timing are injected into the upsampled JSON by us — the
-    // upsampler produces content only.
+    // The upsampler produces content only — dimensions/timing are injected into the JSON by us.
     const finalPrompt =
       media.model.promptStyle === "cosmos-json"
         ? await upsamplePrompt({
@@ -113,8 +103,7 @@ export const generateVideoTool: Tool = {
       const video: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
-        // Whether the model sees the video depends on its input capability (the
-        // driver feeds video back only then) — phrase for both cases.
+        // The model sees the video only if its input capability allows — phrase for both cases.
         output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
         video: [video],
       };

@@ -3,11 +3,7 @@ import type { Quality } from "../config/defaults.ts";
 import { stripFences } from "../../lib/format.ts";
 import { jsonHandler, type Client } from "../../llm/index.ts";
 
-// Shared plumbing for the generation tools (GenerateImage / GenerateVideo):
-// argument coercion, the dimension math, and the prompt-upsampling loop. Each
-// tool keeps only what's genuinely its own — schema and wire call. Quality
-// tiers + presets live in core/config (imageGen/videoGen.quality); the Cosmos
-// prompt templates in ./cosmos.ts.
+// Shared plumbing for the generation tools: argument coercion, dimension math, and the prompt-upsampling loop.
 
 export type { Quality };
 
@@ -15,7 +11,7 @@ export function pickQuality(v: unknown): Quality {
   return v === "low" || v === "super" ? v : "good";
 }
 
-// Legal Cosmos aspect ratios → [w, h]. The model picks one; height is derived.
+// Legal Cosmos aspect ratios → [w, h]; the model picks one, height is derived.
 export const ASPECTS: Record<string, [number, number]> = {
   "1:1": [1, 1],
   "16:9": [16, 9],
@@ -24,22 +20,19 @@ export const ASPECTS: Record<string, [number, number]> = {
   "3:4": [3, 4],
 };
 
-// Coerce a tool arg to a positive integer, or undefined if it isn't one.
 export function toInt(v: unknown): number | undefined {
   const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-// Parse an operator-written "WxH" max into numbers (tolerate x, _, -, * and
-// spaces, since people write it however).
+// Parse an operator-written "WxH" max (tolerate x, _, -, * and spaces — people write it however).
 export function parseDims(s?: string): { w: number; h: number } | null {
   if (!s) return null;
   const m = /^\s*(\d+)\s*[x_*-]\s*(\d+)\s*$/i.exec(s);
   return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
-// width + aspect → final WxH: derive height, clamp both to the configured max,
-// snap to diffusion-friendly multiples of 16.
+// width + aspect → final WxH: derive height, clamp to the configured max, snap to diffusion-friendly multiples of 16.
 export function deriveSize(
   reqW: number | undefined,
   aspect: [number, number],
@@ -58,29 +51,21 @@ export function deriveSize(
   return { w, h };
 }
 
-// Fresh random seed per call — without it the server reuses a fixed seed and
-// consecutive generations come out correlated (artifacts bleed across prompts).
+// Fresh seed per call — without it the server reuses a fixed seed and consecutive generations come out correlated.
 export function randomSeed(): number {
   return Math.floor(Math.random() * 2_147_483_647);
 }
 
-// Upsample a short prompt into a Cosmos structured-JSON prompt with the app's
-// main chat LLM at full strength, heal-validated: the jsonHandler turns a
-// validator throw into a heal, re-prompting up to the configured attempt cap.
-// `requiredKey` is the schema's caption field; `finalize` lets the caller
-// inject computed fields (resolution/duration) before serialization. Falls
-// back to the raw prompt if no chat model is configured or it can't produce
-// valid JSON.
+// Upsample a short prompt into Cosmos structured JSON with the main chat LLM, heal-validated; falls back to the raw prompt on any failure.
 export async function upsamplePrompt(opts: {
-  client: Client; // the calling tool's ctx.client — upsampling asks "main"
+  client: Client;
   prompt: string;
   system: string;
   requiredKey: string;
   finalize?: (obj: Record<string, unknown>) => void;
-  signal?: AbortSignal; // cancels the LLM call when the user stops the turn
+  signal?: AbortSignal;
 }): Promise<string> {
-  // No pre-check: an unconfigured "main" makes call() throw, and ANY failure
-  // here falls back to the raw prompt below.
+  // No pre-check: an unconfigured "main" makes call() throw, and ANY failure falls back to the raw prompt.
   try {
     const obj = await opts.client.call({
       service: "main",
@@ -97,8 +82,7 @@ export async function upsamplePrompt(opts: {
   }
 }
 
-// Validate upsampler output: a single JSON object with a non-empty caption
-// (`requiredKey`) and a `subjects` array. Throws (→ heal) on failure.
+// Throws (→ heal) unless a single JSON object with a non-empty caption (`requiredKey`) and a `subjects` array.
 function upsampleValidator(requiredKey: string): (text: string) => Record<string, unknown> {
   return (text) => {
     const obj = JSON.parse(stripFences(text)) as Record<string, unknown>;

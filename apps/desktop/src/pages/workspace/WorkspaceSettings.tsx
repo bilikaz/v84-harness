@@ -14,10 +14,7 @@ import {
 } from "../../core/workspaces.ts";
 import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/types.ts";
 
-// Add/edit popup for a workspace. Opened from the sidebar after the folder
-// picker (new) or from a workspace row (edit). Self-contained form over a local
-// copy of the draft; Save commits to the store.
-
+// Add/edit workspace modal — edits a local draft copy; Save commits to the store.
 export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean; onClose: () => void }) {
   const { workspace, isNew, onClose } = props;
   const { t } = useTranslation();

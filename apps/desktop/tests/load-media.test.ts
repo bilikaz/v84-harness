@@ -1,9 +1,4 @@
-// LoadImage / LoadVideo — workspace media loaders. They read bytes from the
-// confined workspace root and hand them back as a data URL for the driver's
-// model-feedback turn, so the contract under test is: confinement, the
-// extension whitelist, the byte caps (transport sanity for resizable images,
-// strict for GIF which the renderer can't downscale — ADR-0027), and a
-// faithful bytes→data-URL round trip.
+// LoadImage/LoadVideo loaders — confinement, extension whitelist, and byte caps (transport sanity for resizable images, strict for GIF the renderer can't downscale — ADR-0027).
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

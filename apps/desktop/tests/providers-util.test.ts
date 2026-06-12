@@ -1,6 +1,4 @@
-// Provider plumbing the three adapters must agree on (ADR-0006): base-URL
-// normalization (no double prefixes behind reverse proxies) and error bodies on
-// failed non-streaming responses.
+// Shared provider plumbing (ADR-0006) — base-URL normalization (no double prefixes behind reverse proxies) and error bodies.
 import { describe, expect, it } from "vitest";
 
 import { baseWithPrefix, expectOk, safeJson } from "../src/llm/util.ts";

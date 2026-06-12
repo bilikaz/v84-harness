@@ -6,9 +6,7 @@ import { rootReal, toReal } from "./paths.ts";
 
 const GREP_TIMEOUT_MS = 30_000;
 
-// Search file contents with `grep -rIn`. Read-only and argv-controlled (not a
-// free-form shell), so it stays auto-run rather than going through the Bash
-// gate. Output paths are rewritten to workspace-relative ("/…").
+// Grep — read-only and argv-controlled (not a free-form shell), so it stays auto-run rather than going through the Bash gate.
 export const grepTool: Tool = {
   schema: {
     type: "function",
@@ -33,7 +31,6 @@ export const grepTool: Tool = {
     const pattern = String(args.pattern ?? "");
     if (!pattern) return { ok: false, output: `Grep rejected: missing required "pattern".` };
     const root = rootReal(ctx.cwd);
-    // Confine the search target to the workspace; default to the whole root.
     const target = args.path ? toReal(ctx.cwd, String(args.path)) : root;
     const rel = target === root ? "." : target.slice(root.length + 1);
     const flags = ["-rIn", ...(args.ignore_case ? ["-i"] : [])];

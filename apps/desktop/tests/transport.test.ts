@@ -1,6 +1,4 @@
-// The retry router's classification (ADR-0006): retryable failures emit
-// "retry" and re-run; fatal ones emit "error"; a user abort propagates as a
-// throw. Streams are fed in as plain generators — no network involved.
+// Retry router classification (ADR-0006) — retryable emits "retry" and re-runs, fatal emits "error", user abort throws; streams are plain generators, no network.
 import { describe, expect, it } from "vitest";
 
 import { HttpError, withRetry } from "../src/llm/transport.ts";

@@ -1,8 +1,4 @@
-// Placement vs capability: a session's workspaceId says where it LIVES (the
-// sidebar group), the linked agent says what it MAY TOUCH. A chat-only agent
-// placed in a workspace must get zero gated tools (the mask), a workspace
-// agent gets min(workspace policy, ceiling), and dropping the link — agent
-// deleted or explicitly unlinked — degrades to the plain workspace policy.
+// Placement vs capability — workspaceId says where a session LIVES, the linked agent what it MAY TOUCH; a dropped link degrades to the plain workspace policy.
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAgent, deleteAgent, getAgents, saveAgent } from "../src/core/agents.ts";
