@@ -18,6 +18,13 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   ([ADR-0018](../adr/0018-capability-gated-media-tools.md)).
 - **Permissionless tools** (GenerateImage, GenerateVideo) run in the renderer
   (`tools/renderer.ts`) and work in both web and Electron.
+- **Talking to models**: a tool names a service on the wired client —
+  `ctx.client.call({service: "imageRec", …})` — and never sees connection
+  details ([architecture/llm.md](llm.md)). `ToolCtx` carries the turn's
+  config snapshot (`ctx.config`: `{main, media}`, plain JSON over the bridge —
+  domain params like `promptStyle`/size caps are read from there) and the
+  process-local `client` (renderer passes its singleton; main mints one from
+  the snapshot per call — functions don't cross IPC, same as `signal`).
 - **Driver-level tools** (ListAgents, RunAgent) are NOT in this registry: they
   spawn sessions, so they live in `core/sessions/` (`agentTools.ts` + the
   driver) and are dispatched before the registry paths
@@ -34,6 +41,6 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   [ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
 - LoadImage reads files at **full resolution** — pixel limits are not the
   tool's concern. Images are fitted to the model's longest-side cap
-  (`ModelConfig.imageMaxDim`, default 2048) by `lib/imageResize.ts` on the
+  (`MainSettings.imageMaxDim`, default 2048) by `lib/imageResize.ts` on the
   driver's tool-result hop in the renderer, the same helper the composer runs
   on attachments ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).

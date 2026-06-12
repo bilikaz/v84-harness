@@ -3,7 +3,7 @@
 // failed non-streaming responses.
 import { describe, expect, it } from "vitest";
 
-import { baseWithPrefix, expectOk, safeJson } from "../src/providers/util.ts";
+import { baseWithPrefix, expectOk, safeJson } from "../src/llm/util.ts";
 
 describe("baseWithPrefix", () => {
   it("appends the prefix to a bare host", () => {

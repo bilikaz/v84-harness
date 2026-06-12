@@ -4,9 +4,9 @@
 // `core`. It RE-EXPORTS the domain types it ferries (owned by core/tools) so
 // callers have a single import for everything bridge-related.
 
-import type { ToolSchema, ToolCallRequest, ToolResult, ToolCtx, MediaProviderConfig } from "./core/tools/types.ts";
+import type { ToolSchema, ToolCallRequest, ToolResult, ToolCtx, MediaEndpoint } from "./core/tools/types.ts";
 
-export type { ToolSchema, ToolCallRequest, ToolResult, ToolCtx, MediaProviderConfig };
+export type { ToolSchema, ToolCallRequest, ToolResult, ToolCtx, MediaEndpoint };
 
 // Result of listing a media endpoint's models — doubles as a reachability test.
 export interface MediaModelsResult {
@@ -29,7 +29,7 @@ export interface HarnessApi {
   };
   media: {
     // Runs in main (no CORS) — lists models at the endpoint, used as a connection test.
-    models(cfg: MediaProviderConfig): Promise<MediaModelsResult>;
+    models(cfg: MediaEndpoint): Promise<MediaModelsResult>;
   };
   // Durable kv storage backed by SQLite in main (see lib/storage/ — the
   // renderer's detectStorage picks this tier when available() is true).

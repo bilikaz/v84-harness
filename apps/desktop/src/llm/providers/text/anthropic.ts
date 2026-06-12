@@ -1,19 +1,21 @@
-import type { ChatImage, ChatMessage, ModelConfig, StreamEvent, ToolSpec } from "./types.ts";
-import { parseSSE } from "./sse.ts";
-import { sseRequest } from "./transport.ts";
-import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "./util.ts";
-import { llmLog } from "./debug.ts";
+import type { CallTarget, ModelInfo } from "../../types.ts";
+import { BaseTextProvider } from "./base.ts";
+import type { ChatImage, ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
+import { parseSSE } from "../../sse.ts";
+import { sseRequest } from "../../transport.ts";
+import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "../../util.ts";
+import { llmLog } from "../../debug.ts";
 
 const FALLBACK_BASE = "https://api.anthropic.com";
 
 // Anthropic requires max_tokens; this is the response cap when the user set none.
 const DEFAULT_MAX_TOKENS = 8192;
 
-function v1(cfg: Pick<ModelConfig, "baseUrl">): string {
+function v1(cfg: { baseUrl: string }): string {
   return baseWithPrefix(cfg.baseUrl, FALLBACK_BASE, "/v1");
 }
 
-function authHeaders(cfg: Pick<ModelConfig, "apiKey">): Record<string, string> {
+function authHeaders(cfg: { apiKey?: string }): Record<string, string> {
   return {
     ...(cfg.apiKey ? { "x-api-key": cfg.apiKey } : {}),
     "anthropic-version": "2023-06-01",
@@ -26,9 +28,10 @@ function authHeaders(cfg: Pick<ModelConfig, "apiKey">): Record<string, string> {
 // effort off we omit `thinking` entirely (an explicit "disabled" 400s on some
 // models). `display: "summarized"` opts back into visible thinking text, which
 // Opus 4.7+ omits by default — our UI streams reasoning, so we want it.
-// cfg.thinkingBudget is intentionally ignored here (OpenAI/vLLM + Gemini only).
-function reasoningFields(cfg: ModelConfig): Record<string, unknown> {
-  const effort = cfg.reasoningEffort;
+// The model's thinkingBudget is intentionally ignored here (OpenAI/vLLM +
+// Gemini only).
+function reasoningFields(target: CallTarget): Record<string, unknown> {
+  const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
   return {
     thinking: { type: "adaptive", display: "summarized" },
@@ -80,18 +83,18 @@ function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
 }
 
 export async function* streamAnthropic(
-  cfg: ModelConfig,
+  target: CallTarget,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
   tools?: ToolSpec[],
 ): AsyncGenerator<StreamEvent> {
-  const url = `${v1(cfg)}/messages`;
+  const url = `${v1(target.provider)}/messages`;
   const body = {
-    model: cfg.model,
+    model: target.model.id,
     max_tokens: DEFAULT_MAX_TOKENS,
     stream: true,
-    ...reasoningFields(cfg),
+    ...reasoningFields(target),
     ...(system ? { system } : {}),
     // ToolSpec is the OpenAI function shape — unwrap to Anthropic's.
     ...(tools?.length
@@ -103,7 +106,7 @@ export async function* streamAnthropic(
   const res = await sseRequest("anthropic", url, {
     method: "POST",
     signal,
-    headers: { "Content-Type": "application/json", ...authHeaders(cfg) },
+    headers: { "Content-Type": "application/json", ...authHeaders(target.provider) },
     body: JSON.stringify(body),
   });
 
@@ -168,8 +171,17 @@ export async function* streamAnthropic(
   yield { type: "done" };
 }
 
-export async function listAnthropicModels(cfg: Pick<ModelConfig, "baseUrl" | "apiKey">): Promise<string[]> {
-  const res = await expectOk(await fetch(`${v1(cfg)}/models`, { headers: authHeaders(cfg) }));
-  const data = await res.json();
-  return (data.data ?? []).map((m: any) => m.id).filter(Boolean);
+// This file IS the text:anthropic provider — the factory (llm/client)
+// resolves providers/text/anthropic.ts and constructs this class.
+export class Provider extends BaseTextProvider {
+  // The provider's own /models catalog (ids only — no context window here).
+  static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {
+    const res = await expectOk(await fetch(`${v1(conn)}/models`, { headers: authHeaders(conn) }));
+    const data = await res.json();
+    return (data.data ?? []).map((m: any) => ({ id: m.id })).filter((m: ModelInfo) => m.id);
+  }
+
+  protected stream(): AsyncGenerator<StreamEvent> {
+    return streamAnthropic(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
+  }
 }

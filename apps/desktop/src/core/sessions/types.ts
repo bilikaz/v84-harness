@@ -2,23 +2,20 @@
 // producer (the sessions feature) per conventions/types-placement.md. UI code
 // reaches these via the lib/types.ts shim or the sessions barrel.
 
-import type { ToolCall } from "../../providers/types.ts";
+import type { ToolCall } from "../../llm/types.ts";
 
 export type { ToolCall };
 
 export type Role = "user" | "assistant" | "tool";
 
 // A media attachment, kind-agnostic (image/video today, audio when it arrives —
-// `mime` says what it is). `url` is a `data:` URL (local) or an http(s) URL.
-// `id` is stamped the first time the ref is persisted — it keys the media blob
-// in the durable tier so the bytes are written once, not on every persist (and
+// `mime` says what it is). Owned by core/tools/types.ts (tools produce them,
+// sessions consume them) and re-exported here for the chat vocabulary. `id`
+// is stamped the first time the ref is persisted — it keys the media blob in
+// the durable tier so the bytes are written once, not on every persist (and
 // messages sharing the ref object — e.g. the media-feedback turn — share the blob).
-export interface MediaRef {
-  url: string;
-  mime?: string;
-  name?: string;
-  id?: string;
-}
+export type { MediaRef } from "../tools/types.ts";
+import type { MediaRef } from "../tools/types.ts";
 
 // A non-image file attached to a user message. Its `text` is read at attach
 // time and folded into the content the model sees (see toChatMessages); the

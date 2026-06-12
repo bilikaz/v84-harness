@@ -15,7 +15,7 @@ procedures don't land here. The map of current structure is
 | [0003](0003-host-agnostic-core.md) | Host-agnostic `core/`, migrated from `lib/` feature-by-feature | accepted (migration ongoing) |
 | [0004](0004-store-pattern.md) | `createStore` factory + `useSyncExternalStore` hooks | accepted |
 | [0005](0005-event-bus.md) | Typed, domain-scoped event bus via declaration merging | accepted |
-| [0006](0006-provider-abstraction.md) | Provider adapters behind a unified `StreamEvent` stream | accepted |
+| [0006](0006-provider-abstraction.md) | Provider adapters behind a unified `StreamEvent` stream | accepted (registry clause superseded by 0029) |
 | [0007](0007-tool-system.md) | Tool system: gated vs permissionless, virtual root, never-throw | accepted |
 | [0008](0008-ui-registry-routing.md) | UI contribution registry (Slot regions) + hash router | accepted |
 | [0009](0009-i18n.md) | i18n via i18next, en/lt key parity | accepted |
@@ -37,6 +37,9 @@ procedures don't land here. The map of current structure is
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
 | [0026](0026-agent-session-placement-vs-capability.md) | Agent sessions: placement follows launch context, capability masked separately + unlink | accepted |
 | [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | proposed |
+| [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected ConfigSource; heal cycle; tool calls stay driver-side | accepted |
+| [0029](0029-provider-classes-folder-factory.md) | Provider classes resolved by the folder-layout factory; response handlers are response-side only | accepted |
+| [0030](0030-unified-call-target.md) | One model-data format: `CallTarget {provider, model}` held end to end (stores included, no migrations) | accepted |
 
 ## Needs review / important missing parts
 

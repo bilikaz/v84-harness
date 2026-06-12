@@ -8,7 +8,7 @@ import {
   requestApproval,
   resolveApproval,
 } from "../src/core/approvals.ts";
-import type { ToolCall } from "../src/providers/types.ts";
+import type { ToolCall } from "../src/llm/types.ts";
 
 const call = (name: string): ToolCall => ({ id: crypto.randomUUID(), name, arguments: "{}" });
 

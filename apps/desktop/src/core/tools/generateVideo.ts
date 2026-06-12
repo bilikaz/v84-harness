@@ -1,23 +1,20 @@
-import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedMedia } from "./types.ts";
-import { bytesToB64, mimeToExt } from "../../lib/dataUrl.ts";
-import { trimBase } from "../../lib/format.ts";
-import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt, type Quality } from "./media.ts";
+import { type MediaRef, type Tool, type ToolResult } from "./types.ts";
+import { mimeToExt } from "../../lib/dataUrl.ts";
+import { videoHandler } from "../../llm/index.ts";
 import { errorMessage } from "../../lib/errors.ts";
+import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt } from "./media.ts";
+import { COSMOS_T2V } from "./cosmos.ts";
+import { getAppConfig } from "../config/index.ts";
 
-// Generate a short video from a prompt via the media provider (Cosmos /videos/sync,
-// form-data). Self-contained renderer tool (like GenerateImage): the prompt is
+// Generate a short video from a prompt via the model assigned to the videoGen
+// slot of the media registry. Self-contained renderer tool (like
+// GenerateImage): when the entry says promptStyle "cosmos-json", the prompt is
 // upsampled into Cosmos's text→video JSON schema with our main chat LLM, then
-// POSTed; the resulting clip rides on the message as a data-URL and renders in
-// the tool card. Generation is SLOW (~minutes per second of video).
-const FPS = 24;
-const POLL_INTERVAL_MS = 5_000;
-const GENERATION_TIMEOUT_MS = 30 * 60 * 1000; // generous — minutes per second of video
-
-const QUALITY: Record<Quality, { steps: number; guidance: number }> = {
-  low: { steps: 40, guidance: 6 },
-  good: { steps: 60, guidance: 6 },
-  super: { steps: 80, guidance: 6 },
-};
+// handed to the client's videoHandler (llm/responseHandlers — the handler owns the async
+// jobs flow: submit, keep checking, deliver); the resulting clip rides on the
+// message as a data-URL and renders in the tool card. Generation is SLOW
+// (~minutes per second of video). Timings + quality presets live in
+// core/config (videoGen.*) and travel as parameters.
 
 export const generateVideoTool: Tool = {
   schema: {
@@ -55,42 +52,65 @@ export const generateVideoTool: Tool = {
   async execute(args, ctx): Promise<ToolResult> {
     const prompt = String(args.prompt ?? "").trim();
     if (!prompt) return { ok: false, output: `GenerateVideo rejected: missing required "prompt".` };
-    const media = ctx.media;
-    if (!media?.baseUrl) {
-      return { ok: false, output: "GenerateVideo is not configured. Set the endpoint in Settings → Image generation." };
+    const media = ctx.config.media.videoGen;
+    if (!ctx.client || !media) {
+      return { ok: false, output: "GenerateVideo is not configured. Assign a video generation model in Settings → Models." };
     }
+    const cfg = getAppConfig().videoGen;
 
     // Dimensions: width + aspect → WxH, clamped to max, ×16. We own these.
-    const max = parseDims(media.maxSize);
+    const max = parseDims(media.model.maxVideoSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
       return { ok: false, output: `GenerateVideo rejected: width must be a positive integer.` };
     }
     const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "16:9";
     const [aw, ah] = ASPECTS[aspect];
-    const { w, h } = deriveSize(reqW, [aw, ah], max, 1280);
-    const duration = typeof args.duration === "number" && args.duration > 0 ? Math.min(args.duration, 10) : 2;
-    const numFrames = Math.max(1, Math.round(duration * FPS));
+    const { w, h } = deriveSize(reqW, [aw, ah], max, cfg.fallbackWidth);
+    const duration =
+      typeof args.duration === "number" && args.duration > 0 ? Math.min(args.duration, cfg.maxDurationS) : cfg.defaultDurationS;
+    const numFrames = Math.max(1, Math.round(duration * cfg.fps));
     const quality = pickQuality(args.quality);
 
+    // Prompt: pass-through unless the entry wants the Cosmos JSON prompt.
     // Dimensions/timing are injected into the upsampled JSON by us — the
     // upsampler produces content only.
-    const finalPrompt = await upsamplePrompt({
-      prompt,
-      system: UPSAMPLE_SYSTEM,
-      requiredKey: "temporal_caption",
-      signal: ctx.signal,
-      finalize: (obj) => {
-        obj.resolution = { H: h, W: w };
-        obj.aspect_ratio = `${aw},${ah}`;
-        obj.duration = `${duration}s`;
-        obj.fps = FPS;
-      },
-    });
+    const finalPrompt =
+      media.model.promptStyle === "cosmos-json"
+        ? await upsamplePrompt({
+            client: ctx.client,
+            prompt,
+            system: COSMOS_T2V.system,
+            requiredKey: COSMOS_T2V.requiredKey,
+            signal: ctx.signal,
+            finalize: (obj) => {
+              obj.resolution = { H: h, W: w };
+              obj.aspect_ratio = `${aw},${ah}`;
+              obj.duration = `${duration}s`;
+              obj.fps = cfg.fps;
+            },
+          })
+        : prompt;
 
     try {
-      const { b64, mime } = await generate(media, finalPrompt, { size: `${w}x${h}`, numFrames, q: QUALITY[quality] }, ctx.signal);
-      const video: GeneratedMedia = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      const { b64, mime } = await ctx.client.call({
+        service: "videoGen",
+        messages: [{ role: "user", content: finalPrompt }],
+        signal: ctx.signal,
+        handler: videoHandler(),
+        params: {
+          w,
+          h,
+          numFrames,
+          fps: cfg.fps,
+          seed: randomSeed(),
+          preset: cfg.quality[quality],
+          pollIntervalMs: cfg.pollIntervalMs,
+          timeoutMs: cfg.timeoutMs,
+        },
+      });
+
+      const video: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
         // Whether the model sees the video depends on its input capability (the
@@ -103,84 +123,3 @@ export const generateVideoTool: Tool = {
     }
   },
 };
-
-// The provider call. Video gen takes minutes, so a synchronous request (/sync)
-// holds the connection too long and the fetch dies with a NetworkError even
-// though the server finishes. Use the ASYNC flow instead: submit a job, poll
-// status with short requests, then download the finished content.
-async function generate(
-  media: MediaProviderConfig,
-  prompt: string,
-  opts: { size: string; numFrames: number; q: { steps: number; guidance: number } },
-  signal?: AbortSignal,
-): Promise<{ b64: string; mime: string }> {
-  const base = trimBase(media.baseUrl);
-  const headers: Record<string, string> = media.apiKey ? { authorization: `Bearer ${media.apiKey}` } : {};
-
-  const form = new FormData();
-  form.set("prompt", prompt);
-  if (media.model) form.set("model", media.model);
-  form.set("size", opts.size);
-  form.set("num_frames", String(opts.numFrames));
-  form.set("fps", String(FPS));
-  form.set("num_inference_steps", String(opts.q.steps));
-  form.set("guidance_scale", String(opts.q.guidance));
-  form.set("seed", String(randomSeed()));
-
-  // 1. Submit the job (returns immediately).
-  const res = await fetch(`${base}/videos`, { method: "POST", headers, body: form, signal });
-  if (!res.ok) throw new Error(`video submit ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 300)}`);
-  let job = (await res.json()) as { id?: string; status?: string; error?: unknown };
-  if (!job.id) throw new Error("video submit returned no job id");
-
-  // 2. Poll until completed/failed (short requests — no long-held connection).
-  // Generation can run many minutes, so the cap is generous.
-  const deadline = Date.now() + GENERATION_TIMEOUT_MS;
-  while (job.status !== "completed") {
-    if (job.status === "failed") {
-      throw new Error(`video generation failed: ${typeof job.error === "string" ? job.error : JSON.stringify(job.error)}`);
-    }
-    if (Date.now() > deadline) throw new Error(`video generation timed out after ${GENERATION_TIMEOUT_MS / 60_000} minutes`);
-    // Stop ends the POLLING — the server job keeps running (no cancel API; ADR-0014).
-    if (signal?.aborted) throw new Error("cancelled by the user");
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    if (signal?.aborted) throw new Error("cancelled by the user");
-    const p = await fetch(`${base}/videos/${job.id}`, { headers, signal });
-    if (!p.ok) throw new Error(`video poll ${p.status} ${p.statusText}`);
-    job = (await p.json()) as typeof job;
-  }
-
-  // 3. Download the finished video.
-  const c = await fetch(`${base}/videos/${job.id}/content`, { headers, signal });
-  if (!c.ok) throw new Error(`video content ${c.status} ${c.statusText}`);
-  const ct = c.headers.get("content-type") || "";
-  return { b64: bytesToB64(new Uint8Array(await c.arrayBuffer())), mime: ct.includes("video") ? ct : "video/mp4" };
-}
-
-// The Cosmos text→video structured-prompt schema (external_api/t2v_i2v_video_json_schema.json).
-// The describer fills it; we inject resolution/aspect_ratio/duration/fps.
-const T2V_SCHEMA = `{
-  "subjects": [
-    { "description": "", "appearance_details": "", "location": "", "relative_size": "", "orientation": "", "pose": "", "action": "what the subject DOES over the clip (motion)", "state_changes": "how it changes over time", "clothing": "", "expression": "", "gender": "", "age": "", "facial_features": "", "number_of_subjects": 0 }
-  ],
-  "background_setting": "",
-  "lighting": { "conditions": "", "direction": "", "shadows": "", "illumination_effect": "" },
-  "aesthetics": { "composition": "", "color_scheme": "", "mood_atmosphere": "", "patterns": "" },
-  "cinematography": { "camera_motion": "how the camera moves (pan/tilt/dolly/static)", "framing": "", "camera_angle": "", "depth_of_field": "", "focus": "", "lens_focal_length": "" },
-  "style_medium": "",
-  "artistic_style": "",
-  "context": "",
-  "actions": ["ordered actions/events that happen during the clip"],
-  "transitions": [],
-  "temporal_caption": "a full description of the WHOLE clip, including what happens over time"
-}`;
-
-const UPSAMPLE_SYSTEM =
-  "You are the Cosmos text-to-video prompt upsampler. Turn the user's short request into a SINGLE JSON object " +
-  "filling this schema with rich, concrete detail — especially MOTION: per-subject `action`/`state_changes`, " +
-  "`camera_motion`, ordered `actions`, and a `temporal_caption` describing the whole clip over time. Keep all " +
-  "keys and structure; invent plausible specifics where vague.\n\n" +
-  T2V_SCHEMA +
-  "\n\nRules: Do NOT add resolution, aspect_ratio, duration, or fps — the system sets those. Output ONLY the JSON " +
-  "object: no markdown, no code fences, no commentary.";
-

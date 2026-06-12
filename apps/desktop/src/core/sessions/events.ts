@@ -1,5 +1,5 @@
 import { scope } from "../../lib/bus.ts";
-import type { ModelConfig, StreamUsage, ToolCall } from "../../providers/types.ts";
+import type { StreamUsage, ToolCall } from "../../llm/types.ts";
 import type { FileAttachment, MediaRef } from "./types.ts";
 
 // The session domain's events. Each "session:<sub>" key has a defined payload
@@ -40,7 +40,6 @@ export interface MessageDone {
   errored: boolean;
   firstExchange: boolean;
   autoName: boolean;
-  cfg: ModelConfig;
   userText: string;
 }
 export interface TurnEnd {
@@ -91,7 +90,7 @@ export interface Heal {
   sessionId: string;
   correction: string;
 }
-// Transport retry fired mid-step (providers/transport.ts) → the step is being
+// Transport retry fired mid-step (llm/transport.ts) → the step is being
 // re-sent from scratch, so wipe the partial output off the streaming assistant
 // placeholder.
 export interface StreamRetry {

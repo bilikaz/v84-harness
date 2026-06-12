@@ -18,7 +18,7 @@ export function SettingsModal() {
   const active = items.find((i) => i.id === activeId) ?? items[0];
 
   return (
-    <Modal open={open} onClose={() => navigate("")} className="flex h-[min(760px,88vh)] w-[min(1100px,92vw)] overflow-hidden">
+    <Modal open={open} onClose={() => navigate("")} className="flex h-[min(990px,92vh)] w-[min(1430px,95vw)] overflow-hidden">
       <aside className="flex w-64 shrink-0 flex-col gap-1 border-r border-neutral-200 bg-neutral-50 p-3">
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm text-neutral-400">
           <Search size={15} />

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Row } from "./Field.tsx";
-import { llmDebugEnabled, setLlmDebug } from "../../providers/debug.ts";
+import { llmDebugEnabled, setLlmDebug } from "../../llm/debug.ts";
 import { cn } from "../../lib/cn.ts";
 
 export function DeveloperSection() {

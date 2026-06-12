@@ -1,10 +1,12 @@
-import type { ModelConfig, ToolSpec } from "../../providers/client.ts";
-import type { ToolCall } from "../../providers/types.ts";
-import { MAX_HEAL_ATTEMPTS, healCorrection, streamModel } from "../../providers/client.ts";
-import { llmLog } from "../../providers/debug.ts";
+import type { ToolCall, ToolSpec } from "../../llm/types.ts";
+import type { MainSettings } from "../settings.ts";
+import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
+import { llmLog } from "../../llm/debug.ts";
 import type { FileAttachment, MediaRef, Session } from "./types.ts";
 import { harness } from "../../lib/harness.ts";
-import { resolveMediaProvider } from "../../core/media.ts";
+import { client, resolveMain, toolConfigSnapshot } from "../client.ts";
+import { resolveMediaProvider } from "../media.ts";
+import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";
 import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
@@ -16,7 +18,7 @@ import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgen
 import { sessionBus as bus } from "./events.ts";
 import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import { DEFAULT_IMAGE_MAX_DIM, downscaleImage } from "../../lib/imageResize.ts";
+import { downscaleImage } from "../../lib/imageResize.ts";
 
 // A validator for the model's final (no-tool) turn. Throws to reject — the
 // engine then injects a correction and lets the model retry (see runTurn).
@@ -47,7 +49,7 @@ export interface SendOptions {
 // tools and the turn becomes a multi-step loop: stream → run tool calls → feed
 // results back → stream again, until the model answers without calling a tool.
 
-const MAX_STEPS = 50; // runaway guard for the tool loop
+// Runaway guard for the tool loop — config session.maxSteps (read per turn).
 
 // In-flight turns by session, so the UI can abort a specific chat's run. The
 // AbortController's signal is threaded into streamModel; aborting ends the
@@ -80,18 +82,27 @@ if (import.meta.hot) {
 // a model that can't take that input never sees the tool at all. Same defaults
 // as the rest of the app — image input is assumed unless declared off, video
 // input only when declared on (the composer's attach gate, SessionView).
-function allowedByCapability(name: ToolName, cfg: ModelConfig): boolean {
+function allowedByCapability(name: ToolName, cfg: MainSettings): boolean {
   if (name === "LoadImage") return cfg.input?.image !== false;
   if (name === "LoadVideo") return cfg.input?.video === true;
+  // The media tools are gated on their SERVICE, not the chat model's
+  // inputs — an unassigned service means the tool doesn't exist, instead of
+  // being advertised and failing with "not configured" when called.
+  if (name === "DescribeImage") return resolveMediaProvider("imageRec") !== null;
+  if (name === "DescribeVideo") return resolveMediaProvider("videoRec") !== null;
+  if (name === "GenerateImage") return resolveMediaProvider("imageGen") !== null;
+  if (name === "GenerateVideo") return resolveMediaProvider("videoGen") !== null;
   return true;
 }
 
-async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefined, cfg: ModelConfig, isChild: boolean): Promise<ToolSpec[]> {
+async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefined, cfg: MainSettings, isChild: boolean): Promise<ToolSpec[]> {
   // Permissionless renderer tools (e.g. GenerateImage) are available everywhere —
-  // browser build included. The sub-agent pair (ListAgents/RunAgent) joins for
-  // top-level sessions only (depth 1: children never orchestrate further).
+  // browser build included — but still pass the capability gate: a generation
+  // tool whose use-case slot has no model assigned is withheld, not advertised
+  // inert. The sub-agent pair (ListAgents/RunAgent) joins for top-level
+  // sessions only (depth 1: children never orchestrate further).
   const renderer = [
-    ...(RENDERER_TOOL_SCHEMAS as ToolSpec[]),
+    ...(RENDERER_TOOL_SCHEMAS as ToolSpec[]).filter((s) => allowedByCapability(s.function.name as ToolName, cfg)),
     ...(isChild ? [] : (agentToolSchemas(!!ws) as ToolSpec[])),
   ];
   if (!harness) return renderer; // web: only the renderer-side tools
@@ -104,6 +115,55 @@ async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefin
     return effectiveMode(ws, agent, name) !== 0;
   }) as ToolSpec[];
   return [...renderer, ...gated];
+}
+
+// The chat engine's step as a ResponseHandler — the live-streaming consumer: the
+// chat provider hands it the dialect's event stream and it lands every event
+// where it belongs (session bus: deltas, thinking, usage, transport retries),
+// returning the step's outcome. Tool calls are NOT special to the llm layer —
+// they ride the result and the turn loop below acts on them. `onError` flags
+// a terminal stream error (already emitted to the bus) so the turn loop stops.
+function chatStepHandler(sid: string, onError: () => void): ResponseHandler<{ text: string; thinking: string; calls: ToolCall[] }> {
+  return {
+    async handle(interaction) {
+      if (interaction.kind !== "chat") throw new Error("the chat step expects a chat interaction.");
+      let text = "";
+      let thinking = "";
+      let thinkingDone = false;
+      const calls: ToolCall[] = [];
+      for await (const evt of interaction.events) {
+        if (evt.type === "text") {
+          if (thinking && !thinkingDone) {
+            thinkingDone = true;
+            bus.emit("thinking:done", { sessionId: sid });
+          }
+          text += evt.delta;
+          bus.emit("text", { sessionId: sid, delta: evt.delta });
+        } else if (evt.type === "thinking") {
+          thinking += evt.delta;
+          bus.emit("thinking", { sessionId: sid, delta: evt.delta });
+        } else if (evt.type === "tool_call") {
+          calls.push(evt.call);
+        } else if (evt.type === "retry") {
+          // Transport died mid-step and the router is re-sending — discard the
+          // attempt's partial output here and in the store.
+          text = "";
+          thinking = "";
+          thinkingDone = false;
+          calls.length = 0;
+          bus.emit("stream:retry", { sessionId: sid, message: evt.message });
+        } else if (evt.type === "usage") {
+          bus.emit("usage", { sessionId: sid, usage: evt.usage });
+        } else if (evt.type === "error") {
+          onError();
+          bus.emit("turn:error", { sessionId: sid, message: evt.message });
+          break;
+        }
+      }
+      if (thinking && !thinkingDone) bus.emit("thinking:done", { sessionId: sid });
+      return { text, thinking, calls };
+    },
+  };
 }
 
 // The approval mode for a tool this turn: the STRICTER of the workspace policy
@@ -138,21 +198,35 @@ export function sessionToolModes(session: Session): Record<GatedTool, ToolMode> 
   return Object.fromEntries(ALL_TOOLS.map((t) => [t, effectiveMode(ws, agent, t)])) as Record<GatedTool, ToolMode>;
 }
 
-async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: SendOptions): Promise<TurnResult> {
+async function runTurn(sid: string, userText: string, opts: SendOptions): Promise<TurnResult> {
   const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
   const autoName = opts.autoName !== false;
 
   // turn:start appends the user + assistant placeholder; then we read history.
   bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, video: opts.video, files: opts.files });
 
+  // The chat config, resolved ONCE per turn (capability guards, context math).
+  // Talking to the model still goes through client.call({service: "main"}) —
+  // an unconfigured provider surfaces as a turn error, not a dead request.
+  const cfg = resolveMain();
+  if (!cfg) {
+    bus.emit("turn:error", { sessionId: sid, message: "no chat model is configured — pick a provider and model in Settings." });
+    bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: true, firstExchange, autoName, userText });
+    bus.emit("turn:end", { sessionId: sid, errored: true });
+    return { text: "", errored: true, aborted: false };
+  }
+
   const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
   // The live agent (tool ceiling) + the workspace as a tool grant — masked out
   // for a chat-only agent (see capabilityContext). Applies to every step of the
   // turn, advertising and execution alike.
   const { ws, agent } = capabilityContext(getSession(sid));
-  // ctx for the bridge (main) tool path — present only in Electron. The media
-  // provider is read here and handed in; main never reads the renderer store.
-  const toolCtx = harness ? { cwd: ws?.root ?? "", media: resolveMediaProvider() ?? undefined } : null;
+  // The turn's configuration snapshot for tools — resolved here (only the
+  // renderer reads the stores) and threaded through ToolCtx; main mints its
+  // own client from it behind the bridge.
+  const toolConfig = toolConfigSnapshot();
+  // ctx for the bridge (main) tool path — present only in Electron.
+  const toolCtx = harness ? { cwd: ws?.root ?? "", config: toolConfig } : null;
   // Tools are advertised even without the bridge — the renderer set (e.g.
   // GenerateImage) runs in-renderer, so the browser build has tools too.
   const toolSpecs = await advertisedTools(ws, agent, cfg, isChild);
@@ -170,62 +244,47 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
 
   const controller = new AbortController();
   inflight.set(sid, controller);
+  const maxSteps = getAppConfig().session.maxSteps;
   let step = 0;
   try {
-    for (; step < MAX_STEPS; step++) {
+    for (; step < maxSteps; step++) {
       if (controller.signal.aborted) break;
-      const history = toChatMessages(getSession(sid)?.messages ?? []);
+      // History is re-filtered against the CURRENT model's inputs each step —
+      // the model can change mid-session, and yesterday's images must not 400
+      // today's text-only endpoint.
+      const history = toChatMessages(getSession(sid)?.messages ?? [], cfg.input ?? {});
       const baseSystem = getSession(sid)?.system || ws?.instructions || undefined;
       const system = fsAccess ? [baseSystem, pt("workspace.system")].filter(Boolean).join("\n\n") : baseSystem;
-      let text = "";
-      let thinking = "";
-      let thinkingDone = false;
-      const calls: ToolCall[] = [];
 
-      for await (const evt of streamModel(cfg, history, controller.signal, system, toolSpecs.length ? toolSpecs : undefined)) {
-        if (evt.type === "text") {
-          if (thinking && !thinkingDone) {
-            thinkingDone = true;
-            bus.emit("thinking:done", { sessionId: sid });
-          }
-          text += evt.delta;
-          bus.emit("text", { sessionId: sid, delta: evt.delta });
-        } else if (evt.type === "thinking") {
-          thinking += evt.delta;
-          bus.emit("thinking", { sessionId: sid, delta: evt.delta });
-        } else if (evt.type === "tool_call") {
-          calls.push(evt.call);
-        } else if (evt.type === "retry") {
-          // Transport died mid-step and the router is re-sending — discard the
-          // attempt's partial output here and in the store.
-          text = "";
-          thinking = "";
-          thinkingDone = false;
-          calls.length = 0;
-          bus.emit("stream:retry", { sessionId: sid, message: evt.message });
-        } else if (evt.type === "usage") {
-          bus.emit("usage", { sessionId: sid, usage: evt.usage });
-        } else if (evt.type === "error") {
+      // The chat engine is "just a chatHandler": one ask per step, the handler
+      // streams the dialect's events into the bus and collects the outcome.
+      // Heal stays driver-driven (the correction is a SESSION turn via the
+      // store, not an ask-internal message), so the handler never throws
+      // HealError.
+      const { text, thinking, calls } = await client.call({
+        service: "main",
+        messages: history,
+        system,
+        tools: toolSpecs,
+        signal: controller.signal,
+        handler: chatStepHandler(sid, () => {
           errored = true;
-          bus.emit("turn:error", { sessionId: sid, message: evt.message });
-          break;
-        }
-      }
-      if (thinking && !thinkingDone) bus.emit("thinking:done", { sessionId: sid });
+        }),
+      });
       finalText = text;
       finalThinking = thinking;
       if (errored || controller.signal.aborted) break;
 
       // No tool calls → the model is done. If the caller gave a validator, heal:
       // on a rejected final turn, inject a hidden correction and re-stream, up to
-      // MAX_HEAL_ATTEMPTS. When the budget is spent, surface the error like the
+      // config llm.maxHealAttempts. When the budget is spent, surface the error like the
       // task-builder loop throws — never accept best-effort output.
       if (!calls.length) {
         if (opts.validate) {
           try {
             opts.validate(text);
           } catch (e) {
-            if (healAttempts < MAX_HEAL_ATTEMPTS) {
+            if (healAttempts < getAppConfig().llm.maxHealAttempts) {
               healAttempts += 1;
               bus.emit("heal", { sessionId: sid, correction: healCorrection(e) });
               continue; // re-stream into the fresh assistant message
@@ -252,7 +311,7 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
           // work) — handled before the registry/policy paths. Parallel calls
           // in one step = parallel child runs, via this very Promise.all.
           if (call.name === LIST_AGENTS || call.name === RUN_AGENT) {
-            await execAgentTool(sid, call, ws, cfg, controller.signal, isChild);
+            await execAgentTool(sid, call, ws, controller.signal, isChild);
             return;
           }
           // A model can call a tool it wasn't advertised (hallucinated name from
@@ -285,11 +344,12 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
             const rendererTool = RENDERER_TOOLS[name];
             if (rendererTool) {
               // Renderer tools are self-contained — run them in-process (web +
-              // desktop) and take the turn's signal directly.
+              // desktop) with the renderer's own client and the turn's signal.
               const args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
               result = await rendererTool.execute(args, {
                 cwd: ws?.root ?? "",
-                media: resolveMediaProvider() ?? undefined,
+                config: toolConfig,
+                client,
                 signal: controller.signal,
               });
             } else if (toolCtx) {
@@ -315,11 +375,13 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
           // full resolution in main; this renderer hop is where canvas lives,
           // so everything downstream (UI, persistence, resend window, model)
           // gets the downscaled version.
-          const maxDim = cfg.imageMaxDim ?? DEFAULT_IMAGE_MAX_DIM;
+          const maxDim = effectiveImageMaxDim(cfg.imageMaxDim);
           const images = result.images
             ? await Promise.all(
                 result.images.map(async (g) => {
-                  const d = await downscaleImage(g.url, g.mime, maxDim);
+                  // MediaRef.mime is optional vocabulary-wide; tool media always
+                  // sets it in practice, and the resizer treats unknown as "try".
+                  const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
                   return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
                 }),
               )
@@ -348,11 +410,11 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
     }
     // Fell off the end of the loop: the step budget is spent. Say so — silent
     // truncation reads as a finished answer when the agent never concluded.
-    if (step >= MAX_STEPS && !errored && !controller.signal.aborted) {
+    if (step >= maxSteps && !errored && !controller.signal.aborted) {
       errored = true;
       bus.emit("turn:error", {
         sessionId: sid,
-        message: `tool loop stopped after ${MAX_STEPS} steps without a final answer — the task may be looping or too complex for one turn.`,
+        message: `tool loop stopped after ${maxSteps} steps without a final answer — the task may be looping or too complex for one turn.`,
       });
     }
   } catch (e) {
@@ -364,7 +426,7 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
     }
   } finally {
     inflight.delete(sid);
-    bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, cfg, userText });
+    bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, userText });
     bus.emit("turn:end", { sessionId: sid, errored });
   }
   return { text: finalText, errored, aborted: controller.signal.aborted };
@@ -380,14 +442,7 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
 // (per-item catch, batches never fail wholesale). Stop cascades: aborting the
 // parent stops every child it spawned (and stopTurn denies the children's
 // queued approvals). Mirrors the tool contract — never throws.
-async function execAgentTool(
-  sid: string,
-  call: ToolCall,
-  ws: Workspace | undefined,
-  cfg: ModelConfig,
-  signal: AbortSignal,
-  isChild: boolean,
-): Promise<void> {
+async function execAgentTool(sid: string, call: ToolCall, ws: Workspace | undefined, signal: AbortSignal, isChild: boolean): Promise<void> {
   const respond = (output: string, childSessionIds?: string[]): void =>
     bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, childSessionIds });
   // Children aren't advertised the pair, but a model can still hallucinate it —
@@ -416,7 +471,7 @@ async function execAgentTool(
       const task = String(run.task ?? "").trim();
       if (!task) return `${label}"${resolved.name}": missing task — say what the agent should do, with all the context it needs.`;
 
-      const { sid: childSid, result } = runAgent(resolved, task, cfg, {
+      const { sid: childSid, result } = runAgent(resolved, task, {
         parentId: sid,
         // The PARENT SESSION's workspace, not the capability-masked `ws` — a
         // chat-only orchestrator placed in a workspace spawns its children
@@ -452,22 +507,25 @@ async function execAgentTool(
 // point under every caller: the composer (via send), manual agent runs, and the
 // RunAgent tool awaiting a sub-agent's answer. Returns null when the send is
 // refused (nothing to send / that session already streaming / context full).
-export async function sendTo(sid: string, text: string, cfg: ModelConfig, opts: SendOptions = {}): Promise<TurnResult | null> {
+export async function sendTo(sid: string, text: string, opts: SendOptions = {}): Promise<TurnResult | null> {
   const t = text.trim();
   const session = getSession(sid);
   // Per-session guard: only block if THIS session is already streaming. Allow a
   // message with no text as long as there's at least one attachment.
   if (!session || (!t && !opts.images?.length && !opts.video?.length && !opts.files?.length)) return null;
-  if (getStreamingIds().has(sid) || isFull(cfg, session)) return null;
+  // The context-full check needs the chat config; unconfigured (null) falls
+  // through — runTurn answers that with a proper turn error.
+  const cfg = resolveMain();
+  if (getStreamingIds().has(sid) || (cfg && isFull(cfg, session))) return null;
   // Sessions lazy-load (ADR-0021) — make sure the history is in memory before
   // the turn reads it, or the model would see an empty conversation.
   await ensureLoaded(sid);
-  return runTurn(sid, cfg, t, opts);
+  return runTurn(sid, t, opts);
 }
 
 // Composer-facing send: targets the active session.
-export async function send(text: string, cfg: ModelConfig, opts: SendOptions = {}): Promise<void> {
-  await sendTo(getActiveId(), text, cfg, opts);
+export async function send(text: string, opts: SendOptions = {}): Promise<void> {
+  await sendTo(getActiveId(), text, opts);
 }
 
 // Run a stored agent in a fresh session: the agent's system MD is the system
@@ -482,7 +540,6 @@ export async function send(text: string, cfg: ModelConfig, opts: SendOptions = {
 export function runAgent(
   agent: Agent,
   task: string,
-  cfg: ModelConfig,
   opts: SendOptions & { parentId?: string; workspaceId?: string | null; activate?: boolean } = {},
 ): { sid: string; result: Promise<TurnResult | null> } {
   const { parentId, workspaceId, activate, ...sendOpts } = opts;
@@ -496,5 +553,5 @@ export function runAgent(
     },
     { activate },
   );
-  return { sid, result: sendTo(sid, task, cfg, { ...sendOpts, autoName: false }) };
+  return { sid, result: sendTo(sid, task, { ...sendOpts, autoName: false }) };
 }

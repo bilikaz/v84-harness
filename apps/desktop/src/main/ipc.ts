@@ -3,7 +3,7 @@
 // the renderer/model. The `electron` module is passed in (index.ts already
 // loaded it via createRequire) to avoid a second require.
 
-import { IPC, type ToolCallRequest, type ToolCtx, type MediaProviderConfig, type MediaModelsResult } from "../bridge.ts";
+import { IPC, type ToolCallRequest, type ToolCtx, type MediaEndpoint, type MediaModelsResult } from "../bridge.ts";
 import { cancelTool, execTool, TOOL_SCHEMAS } from "../core/tools/index.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
 import { openStorage } from "./storage.ts";
@@ -46,7 +46,7 @@ export function registerIpc(electron: Electron): void {
 
   // List the media endpoint's models from main (no CORS) — used as a connection
   // test + to populate the model picker. Never throws; returns {ok:false} on error.
-  ipcMain.handle(IPC.mediaModels, async (_e: unknown, cfg: MediaProviderConfig): Promise<MediaModelsResult> => {
+  ipcMain.handle(IPC.mediaModels, async (_e: unknown, cfg: MediaEndpoint): Promise<MediaModelsResult> => {
     try {
       if (!cfg?.baseUrl) return { ok: false, models: [], error: "no base URL set" };
       const res = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/models`, {

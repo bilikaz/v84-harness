@@ -9,6 +9,7 @@
 // CreateFolder, Bash.
 
 import type { Tool, ToolCtx, ToolCallRequest, ToolResult, ToolSchema } from "./types.ts";
+import { clientFromToolConfig } from "./client.ts";
 import { readTool } from "./read.ts";
 import { listTool } from "./list.ts";
 import { grepTool } from "./grep.ts";
@@ -17,12 +18,26 @@ import { editTool } from "./edit.ts";
 import { createFolderTool } from "./createFolder.ts";
 import { bashTool } from "./bash.ts";
 import { loadImageTool, loadVideoTool } from "./loadMedia.ts";
+import { describeImageTool, describeVideoTool } from "./describeMedia.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
-// NOTE: media tools (e.g. GenerateImage) are NOT here — they're self-contained
-// renderer tools (see core/tools/renderer.ts), so they don't go through the
-// main process dispatcher. Only the fs/Bash tools that need Node live here.
-const TOOLS: Tool[] = [readTool, listTool, grepTool, writeTool, editTool, createFolderTool, bashTool, loadImageTool, loadVideoTool];
+// NOTE: the GENERATION tools (GenerateImage/GenerateVideo) are NOT here —
+// they're self-contained renderer tools (see core/tools/renderer.ts), so they
+// don't go through the main process dispatcher. Only tools that need Node
+// (fs/Bash) or main's CORS-free fetch (DescribeImage/DescribeVideo) live here.
+const TOOLS: Tool[] = [
+  readTool,
+  listTool,
+  grepTool,
+  writeTool,
+  editTool,
+  createFolderTool,
+  bashTool,
+  loadImageTool,
+  loadVideoTool,
+  describeImageTool,
+  describeVideoTool,
+];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.schema.function.name, t]));
 const VALID_NAMES = TOOLS.map((t) => t.schema.function.name);
@@ -69,7 +84,10 @@ export async function execTool(call: ToolCallRequest, ctx: ToolCtx): Promise<Too
   const controller = new AbortController();
   if (call.id) running.set(call.id, controller);
   try {
-    return await tool.execute(args, { ...ctx, signal: controller.signal });
+    // Functions don't cross the bridge — when the ctx arrives client-less
+    // (the IPC path), mint one from the config snapshot it carries.
+    const client = ctx.client ?? clientFromToolConfig(ctx.config);
+    return await tool.execute(args, { ...ctx, client, signal: controller.signal });
   } catch (e) {
     return { ok: false, output: `error running ${name}: ${errorMessage(e)}` };
   } finally {

@@ -1,4 +1,4 @@
-import type { ToolCall } from "../providers/types.ts";
+import type { ToolCall } from "../llm/types.ts";
 import { createStore } from "../lib/store.ts";
 
 // Tool-approval bridge between the (React-free) driver and the UI. The driver

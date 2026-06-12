@@ -70,3 +70,36 @@ describe("toChatMessages media window", () => {
     expect(out[1].images?.length).toBe(1);
   });
 });
+
+// Send-time capability recheck — the model can change mid-session, so history
+// media the CURRENT model can't take is withheld (with a note) instead of
+// letting the endpoint 400 the turn.
+describe("toChatMessages input-capability filter", () => {
+  const clip = { url: "data:video/mp4;base64,v", mime: "video/mp4", name: "clip.mp4" };
+
+  it("withholds images from a model with image input declared off, with a note", () => {
+    const out = toChatMessages([msg({ images: [img("a"), img("b")] })], { image: false });
+    expect(out[0].images).toBeUndefined();
+    expect(out[0].content).toContain("does not accept that input type");
+    expect(out[0].content).toContain("a, b");
+  });
+
+  it("applies app defaults when input is an empty object: images on, video off", () => {
+    const out = toChatMessages([msg({ images: [img("a")], video: [clip] })], {});
+    expect(out[0].images?.length).toBe(1);
+    expect(out[0].video).toBeUndefined();
+    expect(out[0].content).toContain("clip.mp4");
+  });
+
+  it("sends video only when declared on", () => {
+    const out = toChatMessages([msg({ video: [clip] })], { video: true });
+    expect(out[0].video?.length).toBe(1);
+    expect(out[0].content ?? "").not.toContain("does not accept");
+  });
+
+  it("omitting input keeps the old send-everything behavior", () => {
+    const out = toChatMessages([msg({ images: [img("a")], video: [clip] })]);
+    expect(out[0].images?.length).toBe(1);
+    expect(out[0].video?.length).toBe(1);
+  });
+});

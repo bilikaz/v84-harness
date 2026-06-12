@@ -68,7 +68,7 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
             onChange={(e) => set("defaultModelId", e.target.value || undefined)}
             className={fieldInputFull}
           >
-            <option value="">{t("workspace.providerDefault", { model: provider.model || t("workspace.unset") })}</option>
+            <option value="">{t("workspace.providerDefault", { model: provider.model.id || t("workspace.unset") })}</option>
             {(provider.models ?? []).map((m) => (
               <option key={m} value={m}>
                 {m}

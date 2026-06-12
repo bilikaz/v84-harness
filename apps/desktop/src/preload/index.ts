@@ -8,7 +8,7 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type HarnessApi, type ToolCallRequest, type ToolCtx, type MediaProviderConfig } from "../bridge.ts";
+import { IPC, type HarnessApi, type ToolCallRequest, type ToolCtx, type MediaEndpoint } from "../bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
@@ -17,12 +17,13 @@ const api: HarnessApi = {
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
     schemas: () => ipcRenderer.invoke(IPC.toolsSchemas),
-    // `signal` is process-local and not cloneable — strip it before the wire.
-    exec: (call: ToolCallRequest, { signal: _local, ...ctx }: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
+    // `signal` and `client` are process-local and not cloneable — strip them
+    // before the wire; main re-mints both (execTool).
+    exec: (call: ToolCallRequest, { signal: _signal, client: _client, ...ctx }: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
     cancel: (callId: string) => ipcRenderer.invoke(IPC.toolsCancel, callId),
   },
   media: {
-    models: (cfg: MediaProviderConfig) => ipcRenderer.invoke(IPC.mediaModels, cfg),
+    models: (cfg: MediaEndpoint) => ipcRenderer.invoke(IPC.mediaModels, cfg),
   },
   storage: {
     available: () => ipcRenderer.invoke(IPC.storageAvailable),

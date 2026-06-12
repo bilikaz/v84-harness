@@ -1,5 +1,7 @@
 // Cross-cutting helpers shared by the tools — mechanics, not contract (the
-// vocabulary lives in types.ts per conventions/types-placement.md).
+// vocabulary lives in types.ts per conventions/types-placement.md). The
+// media-endpoint client (mediaChat/collectImage/collectVideo) is its own
+// module: mediaClient.ts.
 
 // 64 KB per tool result is plenty; truncate beyond so a runaway command can't
 // blow up the model's context.

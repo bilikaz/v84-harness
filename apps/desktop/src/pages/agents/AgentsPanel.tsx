@@ -3,7 +3,6 @@ import { Bot, Pencil, Play, Plus } from "lucide-react";
 
 import { createAgent, useAgents, type Agent } from "../../core/agents.ts";
 import { runAgent } from "../../core/sessions/index.ts";
-import { useProvider } from "../../core/settings.ts";
 import { useActiveWorkspaceId } from "../../core/workspaces.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
@@ -16,7 +15,6 @@ export function AgentsPanel() {
   const { t } = useTranslation();
   const agents = useAgents();
   const workspaceId = useActiveWorkspaceId();
-  const provider = useProvider();
   const route = useRoute();
   const visible = agents.filter((a) => workspaceId !== null || !a.workspace);
 
@@ -32,7 +30,7 @@ export function AgentsPanel() {
       navigate(`agents/${agent.id}`);
       return;
     }
-    runAgent(agent, agent.user, provider);
+    runAgent(agent, agent.user);
     navigate("");
   }
 

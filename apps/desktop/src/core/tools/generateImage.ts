@@ -1,31 +1,23 @@
-import { type Tool, type ToolResult, type MediaProviderConfig, type GeneratedImage } from "./types.ts";
-import { bytesToB64, mimeToExt } from "../../lib/dataUrl.ts";
-import { trimBase } from "../../lib/format.ts";
-import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt, type Quality } from "./media.ts";
+import { type MediaRef, type Tool, type ToolResult } from "./types.ts";
+import { mimeToExt } from "../../lib/dataUrl.ts";
+import { imageHandler } from "../../llm/index.ts";
 import { errorMessage } from "../../lib/errors.ts";
+import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt, upsamplePrompt } from "./media.ts";
+import { COSMOS_T2I } from "./cosmos.ts";
+import { getAppConfig } from "../config/index.ts";
 
-// Generate an image from a prompt via the configured media provider (a local
-// container, e.g. Cosmos). A thin step: POST the prompt → get image bytes →
-// return the image as a data-URL. Like an attached image, it rides on the
-// message and persists to localStorage with the session — no files, no
-// workspace. The model also gets it back (so a vision agent can inspect its
-// own result).
+// Generate an image from a prompt via the model assigned to the imageGen slot
+// of the media registry (core/media.ts). A thin step: derive the request
+// (dimensions, quality, prompt style) → askImage → return the image as a
+// data-URL. Like an attached image, it rides on the message and persists with
+// the session — no files, no workspace. The model also gets it back (so a
+// vision agent can inspect its own result).
 //
-// Prompt UPSAMPLING is NOT done here — that's an agent concern handled by the
-// chat engine's validate/heal path (core/heal.ts). By the time a prompt reaches
-// this tool it's already in whatever shape the provider expects.
-//
-// The request/response wire (generate() below) is the one provider-specific
-// piece — isolated so pointing at the real container is a localized edit.
-
-// Quality presets — the agent picks one; users never see raw steps/guidance.
-// guidance stays ~6 across all (high guidance DEGRADES, it's not a quality
-// slider); quality scales with sampling steps. Starting values — tune as needed.
-const QUALITY: Record<Quality, { steps: number; guidance: number; flowShift: number }> = {
-  low: { steps: 40, guidance: 6, flowShift: 10 }, // fast drafts
-  good: { steps: 60, guidance: 6, flowShift: 10 }, // default
-  super: { steps: 80, guidance: 6, flowShift: 10 }, // final / hero images
-};
+// Model-agnostic by registry config, not by sniffing:
+//   - entry.api picks the WIRE — the client's imageHandler (llm/responseHandlers) owns
+//     the endpoint dialects and response shapes;
+//   - entry.promptStyle picks the PROMPT (plain pass-through, or the Cosmos
+//     structured-JSON upsampler — see ./cosmos.ts).
 
 export const generateImageTool: Tool = {
   schema: {
@@ -73,11 +65,11 @@ export const generateImageTool: Tool = {
     if (!prompt) {
       return { ok: false, output: `GenerateImage rejected: missing required "prompt".` };
     }
-    const media = ctx.media;
-    if (!media?.baseUrl) {
+    const media = ctx.config.media.imageGen;
+    if (!ctx.client || !media) {
       return {
         ok: false,
-        output: "GenerateImage is not configured. Set the image generation endpoint in Settings → Image generation.",
+        output: "GenerateImage is not configured. Assign an image generation model in Settings → Media models.",
       };
     }
 
@@ -85,36 +77,41 @@ export const generateImageTool: Tool = {
     // we derive height and clamp both to the configured max, so the request is
     // always something the model can actually produce. We compute size/ratio —
     // the model never sets height, and the upsampler never sets resolution.
-    const max = parseDims(media.maxSize);
+    const max = parseDims(media.model.maxImageSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
       return { ok: false, output: `GenerateImage rejected: width must be a positive integer.` };
     }
     const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "1:1";
-    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, 1024);
-    const size = `${w}x${h}`; // the ONE source of dimensions — sent as the top-level `size`
+    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, getAppConfig().imageGen.fallbackWidth);
 
-    const quality = pickQuality(args.quality);
-    // Upsample the prompt into Cosmos's structured-JSON prompt with our main chat
-    // LLM (the image endpoint can't — its chat returns images). It produces only
-    // CONTENT — dimensions live solely in `size`. The tool owns this; core doesn't.
-    const finalPrompt = await upsamplePrompt({ prompt, system: UPSAMPLE_SYSTEM, requiredKey: "comprehensive_t2i_caption", signal: ctx.signal });
+    // Prompt: pass-through unless the entry says the model wants the Cosmos
+    // structured-JSON prompt — then upsample with our main chat LLM (the image
+    // endpoint can't; its chat returns images). Upsampling produces only
+    // CONTENT — dimensions live solely in the size we computed.
+    const finalPrompt =
+      media.model.promptStyle === "cosmos-json"
+        ? await upsamplePrompt({ client: ctx.client, prompt, system: COSMOS_T2I.system, requiredKey: COSMOS_T2I.requiredKey, signal: ctx.signal })
+        : prompt;
 
     try {
-      const { b64, mime } = await generate(
-        media,
-        finalPrompt,
-        {
-          size,
-          quality,
+      const { b64, mime } = await ctx.client.call({
+        service: "imageGen",
+        messages: [{ role: "user", content: finalPrompt }],
+        signal: ctx.signal,
+        handler: imageHandler(),
+        params: {
+          w,
+          h,
           negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
+          seed: randomSeed(),
+          preset: getAppConfig().imageGen.quality[pickQuality(args.quality)],
         },
-        ctx.signal,
-      );
+      });
 
-      // Return as a data-URL — it rides on the message and persists to
-      // localStorage like any attached image. No files, no workspace.
-      const image: GeneratedImage = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      // Return as a data-URL — it rides on the message and persists with the
+      // session like any attached image. No files, no workspace.
+      const image: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
         output: `Generated an image (shown to you above). Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
@@ -125,88 +122,3 @@ export const generateImageTool: Tool = {
     }
   },
 };
-
-// The provider call. Defaults to an OpenAI-images-compatible endpoint
-// (POST {baseUrl}/images/generations → { data: [{ b64_json } | { url }] }),
-// which most local servers speak. Swap this body/parse for the container's real
-// contract once it's confirmed — it's the only provider-specific code.
-async function generate(
-  media: MediaProviderConfig,
-  prompt: string,
-  opts: { size?: string; quality: Quality; negativePrompt?: string },
-  signal?: AbortSignal,
-): Promise<{ b64: string; mime: string }> {
-  const q = QUALITY[opts.quality];
-  const res = await fetch(`${trimBase(media.baseUrl)}/images/generations`, {
-    method: "POST",
-    signal,
-    headers: {
-      "content-type": "application/json",
-      ...(media.apiKey ? { authorization: `Bearer ${media.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: media.model || undefined,
-      prompt,
-      negative_prompt: opts.negativePrompt,
-      size: opts.size,
-      // Quality knobs — without these the server uses its (low) defaults, which
-      // is what produced the mushy output. Cosmos sweet spot ≈ 35 steps / cfg 6.
-      // Quality preset (the agent picks low/good/super). Guidance stays ~6 —
-      // high guidance DEGRADES, it's not a quality slider.
-      num_inference_steps: q.steps,
-      guidance_scale: q.guidance,
-      flow_shift: q.flowShift,
-      seed: randomSeed(),
-      n: 1,
-      response_format: "b64_json",
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`generation endpoint returned ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 500)}`);
-  }
-  const data = (await res.json()) as { data?: Array<{ b64_json?: string; url?: string }>; output_format?: string };
-  const first = data.data?.[0];
-  if (first?.b64_json) {
-    // Cosmos returns the encoding in `output_format` (e.g. "png"); honor it.
-    const fmt = (data.output_format || "png").toLowerCase();
-    return { b64: first.b64_json, mime: fmt === "jpg" || fmt === "jpeg" ? "image/jpeg" : `image/${fmt}` };
-  }
-  if (first?.url) {
-    // Some servers return a URL instead of bytes — fetch and inline it.
-    const img = await fetch(first.url, { signal });
-    if (!img.ok) throw new Error(`fetching generated image URL failed: ${img.status}`);
-    return { b64: bytesToB64(new Uint8Array(await img.arrayBuffer())), mime: img.headers.get("content-type") || "image/png" };
-  }
-  throw new Error("generation response had no image (expected data[0].b64_json or data[0].url)");
-}
-
-// The Cosmos text2image structured-prompt schema, verbatim from cosmos-framework
-// (prompting_templates/external_api/t2i_json_schema.json). Each value is the
-// instruction for what to put there — the upsampler fills it in. Sent as a
-// compact JSON string in the `prompt` field.
-const T2I_SCHEMA = `{
-  "subjects": [
-    { "description": "full visual description of the subject", "appearance_details": "accessories, texture, distinguishing features", "relationship": "how this subject relates to others or the scene", "location": "where in frame (e.g. 'Center foreground')", "relative_size": "size within frame", "orientation": "direction subject faces relative to camera", "pose": "body position and posture", "clothing": "clothing/accessories; '' if N/A", "expression": "facial expression; '' if N/A", "gender": "'Male' | 'Female' | 'Unknown' | 'N/A'", "age": "age category", "skin_tone_and_texture": "'' if non-human", "facial_features": "fine-grained facial attributes; '' if N/A", "number_of_subjects": 0, "number_of_arms": 0, "number_of_legs": 0, "number_of_hands": 0, "number_of_fingers": 0 }
-  ],
-  "subject_details": {},
-  "background_setting": "prose description of the environment",
-  "lighting": { "conditions": "", "direction": "'None' for flat images", "shadows": "'None' for flat images", "illumination_effect": "" },
-  "aesthetics": { "composition": "", "color_scheme": "dominant colors/palette", "mood_atmosphere": "short phrases", "patterns": "'None' if none" },
-  "cinematography": { "framing": "shot type", "camera_angle": "e.g. 'Eye-level'", "depth_of_field": "'Shallow' | 'Deep' | 'Uniform focus' | 'N/A'", "focus": "", "lens_focal_length": "" },
-  "style_medium": "e.g. 'Photography'",
-  "artistic_style": "genre or approach",
-  "context": "scene context (brief)",
-  "text_and_signage_elements": [],
-  "quadrant_scan": { "top_left": "", "top_right": "", "bottom_left": "", "bottom_right": "", "absolute_center": "" },
-  "comprehensive_t2i_caption": "a comprehensive, full-scene natural-language description of the image"
-}`;
-
-const UPSAMPLE_SYSTEM =
-  "You are the Cosmos text-to-image prompt upsampler. Given a short image request, output a SINGLE JSON object " +
-  "that fills this exact schema — keep every key and the structure, and replace each value with rich, concrete, " +
-  "coherent detail for the requested image (invent plausible specifics where the request is vague):\n\n" +
-  T2I_SCHEMA +
-  "\n\nRules: 'comprehensive_t2i_caption' is a full, vivid description of the whole scene. Use \"\" or 0 where a " +
-  "field doesn't apply (e.g. non-human subjects). Do NOT add 'resolution' or 'aspect_ratio' — the system sets " +
-  "the image dimensions. Output ONLY the JSON object — no markdown, no code fences, no commentary.";
-

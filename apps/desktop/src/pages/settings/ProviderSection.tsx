@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next";
 
 import { DetectButton, Row, fieldInput, fieldInputBare, fieldInputFlex } from "./Field.tsx";
-import { detectModels, saveProvider, useProvider } from "../../core/settings.ts";
+import { detectModels, saveModelBlock, saveProvider, saveProviderBlock, useProvider } from "../../core/settings.ts";
+import { getAppConfig } from "../../core/config/index.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { useDetection } from "../../lib/hooks.ts";
-import type { ProviderKind, ReasoningEffort } from "../../providers/types.ts";
+import type { ProviderKind, ReasoningEffort } from "../../llm/types.ts";
 
 export function ProviderSection() {
   const { t } = useTranslation();
@@ -14,8 +15,9 @@ export function ProviderSection() {
   );
 
   const hasModels = (cfg.models?.length ?? 0) > 0;
-  // System reserve can't go below 10% of the context window.
-  const minReserve = cfg.contextLength ? Math.floor(cfg.contextLength * 0.1) : 0;
+  const appCfg = getAppConfig();
+  // System reserve can't go below the configured fraction of the context window.
+  const minReserve = cfg.model.contextLength ? Math.floor(cfg.model.contextLength * appCfg.session.reserveMinFraction) : 0;
   const reserveBelowMin = minReserve > 0 && !!cfg.contextReserve && cfg.contextReserve < minReserve;
 
   return (
@@ -25,8 +27,8 @@ export function ProviderSection() {
 
       <Row label={t("provider.provider")}>
         <select
-          value={cfg.provider}
-          onChange={(e) => saveProvider({ provider: e.target.value as ProviderKind })}
+          value={cfg.provider.type}
+          onChange={(e) => saveProviderBlock({ type: e.target.value as ProviderKind })}
           className={fieldInput}
         >
           <option value="openai">OpenAI-compatible</option>
@@ -37,8 +39,8 @@ export function ProviderSection() {
 
       <Row label={t("provider.baseUrl")}>
         <input
-          value={cfg.baseUrl}
-          onChange={(e) => saveProvider({ baseUrl: e.target.value })}
+          value={cfg.provider.baseUrl}
+          onChange={(e) => saveProviderBlock({ baseUrl: e.target.value })}
           placeholder="/llm or https://…"
           className={fieldInput}
         />
@@ -48,13 +50,13 @@ export function ProviderSection() {
         <div className="flex w-80 items-center gap-2">
           {hasModels ? (
             <select
-              value={cfg.model}
+              value={cfg.model.id}
               onChange={(e) =>
-                saveProvider({ model: e.target.value, contextLength: cfg.modelLimits?.[e.target.value] })
+                saveModelBlock({ id: e.target.value, contextLength: cfg.modelLimits?.[e.target.value] })
               }
               className={fieldInputFlex}
             >
-              {cfg.model && !cfg.models!.includes(cfg.model) && <option value={cfg.model}>{cfg.model}</option>}
+              {cfg.model.id && !cfg.models!.includes(cfg.model.id) && <option value={cfg.model.id}>{cfg.model.id}</option>}
               {cfg.models!.map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -62,20 +64,20 @@ export function ProviderSection() {
               ))}
             </select>
           ) : (
-            <input value={cfg.model} onChange={(e) => saveProvider({ model: e.target.value })} className={fieldInputFlex} />
+            <input value={cfg.model.id ?? ""} onChange={(e) => saveModelBlock({ id: e.target.value })} className={fieldInputFlex} />
           )}
           <DetectButton label={t("provider.detect")} busy={detecting} title="Detect available models" onClick={detect} />
         </div>
       </Row>
       {msg && <p className="py-2 text-xs text-neutral-500">{msg}</p>}
-      {cfg.contextLength != null && (
+      {cfg.model.contextLength != null && (
         <p className="pb-2 text-xs text-neutral-500">
-          {t("provider.contextWindow", { tokens: fmtTokens(cfg.contextLength) })}
+          {t("provider.contextWindow", { tokens: fmtTokens(cfg.model.contextLength) })}
         </p>
       )}
 
       <Row label={t("provider.inputModalities")}>
-        <div className="flex w-72 items-center gap-4">
+        <div className="flex w-80 items-center gap-4">
           {(["image", "video", "audio"] as const).map((m) => (
             <label key={m} className="flex items-center gap-1.5 text-sm text-neutral-700">
               <input
@@ -93,9 +95,17 @@ export function ProviderSection() {
         <Row label={t("provider.imageMaxDim")}>
           <input
             type="number"
+            min={1}
             value={cfg.imageMaxDim ?? ""}
             onChange={(e) => saveProvider({ imageMaxDim: e.target.value ? Number(e.target.value) : undefined })}
-            placeholder="2048"
+            onBlur={(e) => {
+              // 0/negative would mean "downscale everything to nothing" — treat
+              // it as unset. The read seam (effectiveImageMaxDim) also guards,
+              // so this is the UI half of the fix, not the only line of defense.
+              const v = e.target.value ? Number(e.target.value) : undefined;
+              if (v !== undefined && v < 1) saveProvider({ imageMaxDim: undefined });
+            }}
+            placeholder={String(appCfg.media.imageMaxDim)}
             className={fieldInput}
           />
         </Row>
@@ -103,8 +113,8 @@ export function ProviderSection() {
 
       <Row label={t("provider.reasoning")}>
         <select
-          value={cfg.reasoningEffort ?? "off"}
-          onChange={(e) => saveProvider({ reasoningEffort: e.target.value as ReasoningEffort })}
+          value={cfg.model.reasoningEffort ?? "off"}
+          onChange={(e) => saveModelBlock({ reasoningEffort: e.target.value as ReasoningEffort })}
           className={fieldInput}
         >
           <option value="off">{t("provider.off")}</option>
@@ -118,12 +128,12 @@ export function ProviderSection() {
 
       {/* Token budget applies to OpenAI-compatible (vLLM) and Gemini; Anthropic
           uses effort + adaptive thinking and ignores it (ADR-0006). */}
-      {cfg.reasoningEffort && cfg.reasoningEffort !== "off" && cfg.provider !== "anthropic" && (
+      {cfg.model.reasoningEffort && cfg.model.reasoningEffort !== "off" && cfg.provider.type !== "anthropic" && (
         <Row label={t("provider.thinkingBudget")}>
           <input
             type="number"
-            value={cfg.thinkingBudget ?? ""}
-            onChange={(e) => saveProvider({ thinkingBudget: e.target.value ? Number(e.target.value) : undefined })}
+            value={cfg.model.thinkingBudget ?? ""}
+            onChange={(e) => saveModelBlock({ thinkingBudget: e.target.value ? Number(e.target.value) : undefined })}
             placeholder={t("provider.noBudget")}
             className={fieldInput}
           />
@@ -133,15 +143,15 @@ export function ProviderSection() {
       <Row label={t("provider.maxOutput")}>
         <input
           type="number"
-          value={cfg.maxTokens ?? ""}
-          onChange={(e) => saveProvider({ maxTokens: e.target.value ? Number(e.target.value) : undefined })}
+          value={cfg.model.maxTokens ?? ""}
+          onChange={(e) => saveModelBlock({ maxTokens: e.target.value ? Number(e.target.value) : undefined })}
           placeholder={t("provider.providerDefault")}
           className={fieldInput}
         />
       </Row>
 
       <Row label={t("provider.contextReserve")}>
-        <div className="flex w-72 flex-col gap-1">
+        <div className="flex w-80 flex-col gap-1">
           <input
             type="number"
             name="system-reserve"
@@ -179,8 +189,8 @@ export function ProviderSection() {
           data-1p-ignore="true"
           data-lpignore="true"
           data-form-type="other"
-          value={cfg.apiKey}
-          onChange={(e) => saveProvider({ apiKey: e.target.value })}
+          value={cfg.provider.apiKey ?? ""}
+          onChange={(e) => saveProviderBlock({ apiKey: e.target.value })}
           placeholder={t("provider.apiKeyPlaceholder")}
           className={fieldInput}
         />

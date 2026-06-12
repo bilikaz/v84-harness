@@ -3,7 +3,6 @@ import { Pencil } from "lucide-react";
 
 import { useAgents } from "../../core/agents.ts";
 import { runAgent } from "../../core/sessions/index.ts";
-import { useProvider } from "../../core/settings.ts";
 import { useActiveWorkspaceId } from "../../core/workspaces.ts";
 import { navigate } from "../../lib/router.ts";
 import { Composer, type ComposerAttachments } from "../workspace/Composer.tsx";
@@ -17,7 +16,6 @@ import { SystemBanner } from "../workspace/SystemBanner.tsx";
 export function AgentRunView({ id }: { id: string }) {
   const { t } = useTranslation();
   const agents = useAgents();
-  const provider = useProvider();
   const workspaceId = useActiveWorkspaceId();
   const agent = agents.find((a) => a.id === id);
 
@@ -32,7 +30,7 @@ export function AgentRunView({ id }: { id: string }) {
 
   function run(text: string, atts: ComposerAttachments) {
     if (!agent) return;
-    runAgent(agent, text, provider, atts);
+    runAgent(agent, text, atts);
     navigate(""); // into the chat to watch it run
   }
 

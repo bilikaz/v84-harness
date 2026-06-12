@@ -27,6 +27,24 @@ written are binding. Don't invent a new pattern where a documented one fits, and
 don't update the docs mid-session — note discoveries and deviations as you go and
 carry them to the end-of-session step.
 
+### Verification cadence
+
+Typecheck and tests are MILESTONE gates, not edit-by-edit reflexes. Run them
+when a settled change-set is complete, or when actively chasing a concrete
+failure — not after every file touched. During a large refactor the tree may
+stay broken for a while by design; verify once when the agreed shape is in
+place, not at every intermediate step. (Typecheck is cheap and may run more
+freely while wiring imports; the full test suite is the milestone gate.)
+
+### Git is read-only mid-session
+
+No commits, no pushes, no staging beyond what file operations themselves
+require (`git mv` / `git rm`). The session's work accumulates uncommitted so
+the whole change is reviewable as one diff — mid-flight commits have
+destroyed that audit trail before. Committing happens only in the
+end-of-session step below, and only on the user's EXPLICIT commit signal:
+"implementation looks good" or "docs confirmed" is not it.
+
 ## Settle, then move
 
 When a question, objection, or correction is raised — about code or docs — the

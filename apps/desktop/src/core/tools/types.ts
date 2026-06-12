@@ -23,37 +23,104 @@ export interface ToolCallRequest {
 export interface ToolResult {
   ok: boolean;
   output: string;
-  images?: GeneratedImage[];
-  video?: GeneratedMedia[]; // tool-produced video — shown in the tool card; fed back when the model accepts video input
+  images?: MediaRef[];
+  video?: MediaRef[]; // tool-produced video — shown in the tool card; fed back when the model accepts video input
 }
 
-// An image a tool generated. `url` is a data: URL — it rides on the message
-// (inline display + model feedback) and persists to localStorage like any
-// attached image. No file is written.
-export interface GeneratedImage {
+// A reference to a media item riding a message — named by ROLE, not origin:
+// generated, loaded, and described files all use it. `url` is a data: URL (or
+// http for attachments) — it rides on the message (inline display + model
+// feedback) and persists with the session; no file is written. Declared here
+// (tools produce them, sessions consume them) and re-exported by
+// core/sessions/types.ts.
+export interface MediaRef {
   url: string;
-  mime: string;
-  name: string;
+  mime?: string;
+  name?: string;
+  id?: string;
 }
 
-// Non-image media a tool produced or loaded (video/audio) — a data: URL that
-// rides on the message; fed back to the model only when it declares video input.
-export interface GeneratedMedia {
-  url: string;
-  mime: string;
-  name: string;
+// What a media model is FOR — the use-case slots of the model registry
+// (core/media.ts). Each slot holds at most one assigned model; the list is the
+// app's "covered / not covered" map and grows as new modality tools land.
+// Slots can exist with no tool consuming them yet (audio today). The union is
+// owned by the provider layer (it's also the call() service vocabulary minus
+// "main") — re-exported here under the registry's historical name.
+export type MediaUseCase = MediaService;
+export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
+
+// The wire family an endpoint speaks — owned by the provider layer
+// (llm/types.ts), re-exported here for the registry's vocabulary. The
+// API type says HOW to talk; the use-case slot an entry is assigned to says
+// WHICH path of that API a tool uses (imageGen → /images/generations,
+// videoGen → the async jobs flow, recognition → /chat/completions).
+export type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
+import type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
+import type { CallTarget } from "../../llm/types.ts";
+import type { Client } from "../../llm/client/types.ts";
+
+// How the model wants its prompt: "plain" passes the agent's prompt through;
+// "cosmos-json" runs the upsampler that fills Cosmos's structured-JSON prompt
+// schema with the app's chat LLM first.
+export type MediaPromptStyle = "plain" | "cosmos-json";
+
+// The registry's stored shapes (core/media.ts): a PROVIDER is an endpoint +
+// auth + API dialect; a MODEL lives under a provider and carries what it can
+// do (capabilities) plus its per-modality settings. A provider can host many
+// models (an OpenRouter-style gateway); a bare /generate provider has exactly
+// one implicit default model (empty modelId).
+export interface MediaModel {
+  id: string; // registry entry id (crypto.randomUUID) — assignment target
+  modelId: string; // the id sent on the wire; "" for a generate provider's default
+  capabilities: MediaUseCase[];
+  promptStyle?: MediaPromptStyle; // undefined → "plain"
+  maxImageSize?: string; // largest WxH for image generation — clamp target + fallback size
+  maxVideoSize?: string; // largest WxH for video generation
 }
 
-// The media-generation provider a workspace points at (Cosmos container, etc).
-// Threaded into the tool via ToolCtx by the renderer — main never reads the
-// renderer's settings store. One provider for now; the access path (a resolver
-// in core/media.ts) leaves room for more later.
-export interface MediaProviderConfig {
-  baseUrl: string; // generation endpoint base, e.g. http://localhost:8000/v1
+export interface MediaProvider {
+  id: string;
+  name: string; // display name; slot options read "name : modelId"
+  baseUrl: string; // endpoint base, e.g. http://localhost:8000/v1
   apiKey?: string;
-  model?: string;
-  maxSize?: string; // largest WxH the model supports — guidance to the model + the fallback size
-  models?: string[]; // detected model ids (picker cache; filled by the Detect button)
+  api: MediaApiFlavor;
+  detected?: string[]; // /models cache (openai flavor; filled by Detect)
+  models: MediaModel[];
+}
+
+// What a slot resolves to — the unified {provider, model} target format
+// (resolveMediaProvider builds it straight from the registry rows), with the
+// model's TOOL-side settings riding on the model half: promptStyle and size
+// caps shape prompts and params, not the wire, so the llm layer ignores
+// them. One format everywhere — the client consumes it as a CallTarget
+// as-is. Threaded into tools via ToolCtx by the renderer (main never reads
+// the renderer's settings store).
+export interface MediaSlotConfig extends CallTarget {
+  model: CallTarget["model"] & {
+    promptStyle?: MediaPromptStyle;
+    maxImageSize?: string;
+    maxVideoSize?: string;
+  };
+}
+
+// The per-use-case media map handed to tools: each generation/recognition tool
+// picks its slot (e.g. media.imageGen). Plain JSON — crosses the IPC bridge.
+export type MediaProviders = Partial<Record<MediaUseCase, MediaSlotConfig>>;
+
+// The configuration snapshot a tool call travels with — resolved by the
+// renderer at turn start (the only process that can read the stores) and the
+// material each process mints its ToolCtx.client from. Plain JSON — crosses
+// the IPC bridge.
+export interface ToolConfig {
+  main: CallTarget | null; // the chat provider; null = unconfigured (no baseUrl/model)
+  media: MediaProviders;
+}
+
+// The connection subset model detection needs — what crosses the bridge for
+// the /models listing (main does the fetch; no CORS).
+export interface MediaEndpoint {
+  baseUrl: string;
+  apiKey?: string;
 }
 
 // Per-call context handed to every tool. `cwd` is the session's workspace root.
@@ -73,7 +140,15 @@ export interface MediaProviderConfig {
 // the gated tool.
 export interface ToolCtx {
   cwd: string;
-  media?: MediaProviderConfig; // generation endpoint for the media tools (GenerateImage)
+  // The turn's configuration snapshot (JSON, crosses the bridge) — model
+  // params a tool's domain logic reads (promptStyle, size caps) live here.
+  config: ToolConfig;
+  // The call() client over `config` — how a tool TALKS to a model: it names a
+  // service (ctx.client.call({service: "imageRec", …})) and never sees
+  // connection details. Process-local like `signal` (functions can't cross
+  // IPC): the renderer passes its client in; the main dispatcher mints one
+  // from `config` per call (see execTool).
+  client?: Client;
   // Cancellation. An AbortSignal cannot cross the IPC bridge (not cloneable), so
   // this field is process-local: the renderer sets it for renderer tools; for
   // gated tools the main dispatcher mints its own per call and aborts it when
@@ -95,13 +170,36 @@ export interface Tool {
 //   1 = enabled   (available, but each call asks for approval)
 //   2 = auto      (available, runs without a prompt)
 // Gated tools: configured per-workspace via the 0/1/2 policy + the workspace UI.
-export type GatedTool = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash" | "LoadImage" | "LoadVideo";
+export type GatedTool =
+  | "Read"
+  | "List"
+  | "Grep"
+  | "Write"
+  | "Edit"
+  | "CreateFolder"
+  | "Bash"
+  | "LoadImage"
+  | "LoadVideo"
+  | "DescribeImage"
+  | "DescribeVideo";
 // The full tool vocabulary. Permissionless tools (below) extend it but aren't
 // part of the per-workspace policy.
 export type ToolName = GatedTool | "GenerateImage" | "GenerateVideo";
 export type ToolMode = 0 | 1 | 2;
 
-export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash", "LoadImage", "LoadVideo"];
+export const ALL_TOOLS: readonly GatedTool[] = [
+  "Read",
+  "List",
+  "Grep",
+  "Write",
+  "Edit",
+  "CreateFolder",
+  "Bash",
+  "LoadImage",
+  "LoadVideo",
+  "DescribeImage",
+  "DescribeVideo",
+];
 
 // Permissionless tools: always advertised, auto-run (no approval prompt), and
 // usable without a bound workspace. They must not REQUIRE ctx.cwd — GenerateImage
@@ -121,4 +219,6 @@ export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
   Bash: 1,
   LoadImage: 2,
   LoadVideo: 2,
+  DescribeImage: 2, // read-only + path-confined like LoadImage — auto-runs
+  DescribeVideo: 2,
 };

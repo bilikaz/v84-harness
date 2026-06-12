@@ -129,7 +129,7 @@ export function SessionView() {
   }
 
   function submit(text: string, atts: ComposerAttachments) {
-    void send(text, provider, atts);
+    void send(text, atts);
   }
 
   return (

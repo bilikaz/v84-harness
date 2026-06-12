@@ -19,4 +19,13 @@ describe("downscaleImage", () => {
     // which exercises the same catch-all as a decode failure.
     expect(await downscaleImage("data:image/png;base64,AAAA", "image/png", 2048)).toBeNull();
   });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "treats a degenerate cap (%s) as a no-op instead of collapsing the image",
+    async (cap) => {
+      // A stored imageMaxDim of 0 once meant scale = 0 → every image became
+      // 1×1. The guard must bail before any canvas work.
+      expect(await downscaleImage("data:image/png;base64,AAAA", "image/png", cap)).toBeNull();
+    },
+  );
 });

@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, Plus, RefreshCw, Square } from "lucide-react";
 
 import { detectModels, useProvider } from "../../core/settings.ts";
+import { effectiveImageMaxDim, getAppConfig } from "../../core/config/index.ts";
 import { readAttachments } from "../../lib/attachments.ts";
-import { DEFAULT_IMAGE_MAX_DIM } from "../../lib/imageResize.ts";
 import { navigate } from "../../lib/router.ts";
 import { AttachmentList } from "../../components/AttachmentList.tsx";
 import type { FileAttachment, MediaRef } from "../../lib/types.ts";
@@ -68,8 +68,14 @@ export function Composer(props: {
   // with a note — what can never be sent shouldn't enter the transcript.
   // Images over the model's pixel cap are downscaled in place, also with a note.
   async function addAttachments(list: FileList) {
-    const maxDim = provider.imageMaxDim ?? DEFAULT_IMAGE_MAX_DIM;
-    const { images: imgs, video: vids, files: fs, skipped, resized } = await readAttachments(list, maxDim);
+    const maxDim = effectiveImageMaxDim(provider.imageMaxDim);
+    const caps = getAppConfig().media;
+    const { images: imgs, video: vids, files: fs, skipped, resized } = await readAttachments(list, {
+      imageMaxDim: maxDim,
+      imageMaxBytes: caps.imageMaxBytes,
+      gifMaxBytes: caps.gifMaxBytes,
+      videoMaxBytes: caps.videoMaxBytes,
+    });
     if (imgs.length) {
       if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
       else {
@@ -183,7 +189,7 @@ export function Composer(props: {
             title={t("session.changeModel")}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100"
           >
-            {provider.model || t("session.selectModel")}
+            {provider.model.id || t("session.selectModel")}
             <ChevronDown size={14} />
           </button>
           <button

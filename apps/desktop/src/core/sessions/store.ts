@@ -1,5 +1,7 @@
-import type { ChatMessage, ModelConfig } from "../../providers/types.ts";
+import type { ChatMessage } from "../../llm/types.ts";
+import type { MainSettings } from "../settings.ts";
 import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
+import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
 import { detectStorage } from "../../lib/storage/index.ts";
@@ -79,8 +81,8 @@ let hydrated = false;
 
 // Reserve kept free below the model's context window: "full" triggers at
 // contextLength − this, leaving headroom for the response (and for the summary
-// the auto-compaction generates).
-export const CONTEXT_RESERVE = 50_000;
+// the auto-compaction generates). Both the default and the minimum fraction
+// live in core/config (session.contextReserve / session.reserveMinFraction).
 
 const reg = createListeners();
 export const notify = reg.notify;
@@ -406,17 +408,19 @@ export function setTitle(id: string, title: string): void {
 // The usable token budget = context window − the reserve (headroom for the
 // response). 0 when the window is unknown. Tiny windows fall back to the full
 // window so they aren't permanently "full".
-export function contextLimit(cfg: ModelConfig): number {
-  if (!cfg.contextLength) return 0;
-  // Reserve at least 10% of the window — never let the user starve the headroom.
-  const min = Math.floor(cfg.contextLength * 0.1);
-  const reserve = Math.max(cfg.contextReserve ?? CONTEXT_RESERVE, min);
-  return cfg.contextLength > reserve ? cfg.contextLength - reserve : cfg.contextLength;
+export function contextLimit(cfg: MainSettings): number {
+  if (!cfg.model.contextLength) return 0;
+  const { contextReserve, reserveMinFraction } = getAppConfig().session;
+  // Reserve at least the configured fraction of the window — never let the
+  // user starve the headroom.
+  const min = Math.floor(cfg.model.contextLength * reserveMinFraction);
+  const reserve = Math.max(cfg.contextReserve ?? contextReserve, min);
+  return cfg.model.contextLength > reserve ? cfg.model.contextLength - reserve : cfg.model.contextLength;
 }
 
 // True once the session has consumed its usable budget — the composer disables
 // and auto-compaction kicks in to summarize + free the context.
-export function isFull(cfg: ModelConfig, session: Session = getActive()): boolean {
+export function isFull(cfg: MainSettings, session: Session = getActive()): boolean {
   const limit = contextLimit(cfg);
   return limit > 0 && (session.usedTokens ?? 0) >= limit;
 }
@@ -499,22 +503,43 @@ function droppedNote(dropped: MediaRef[]): string {
   return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use LoadImage/LoadVideo to view one again if needed.]`;
 }
 
+function hiddenNote(hidden: MediaRef[]): string {
+  const names = hidden.map((d) => d.name || "unnamed").join(", ");
+  return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}.]`;
+}
+
 // Map stored messages to the provider-agnostic conversation we resubmit. Drops
 // empty placeholders (the trailing assistant) and thinking (not resent);
 // media outside the resend window is swapped for a text stub.
-export function toChatMessages(messages: Message[]): ChatMessage[] {
+//
+// `input` is the CURRENT model's declared inputs (MainSettings.input) — checked
+// at send time, every turn, because the model can change mid-session: history
+// media a text-only model can't take is withheld (with a note) instead of
+// letting the endpoint 400 the whole turn. App-wide defaults apply: image
+// assumed on unless declared off, video only when declared on. Callers that
+// omit `input` (tests, non-wire uses) get everything.
+export function toChatMessages(messages: Message[], input?: NonNullable<MainSettings["input"]>): ChatMessage[] {
+  const allowImage = input ? input.image !== false : true;
+  const allowVideo = input ? input.video === true : true;
   const window = mediaWindow(messages);
   return messages
     .filter((m) => m.text || m.images?.length || m.video?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
     .map((m) => {
       const keep = window.get(m.id) ?? { images: 0, video: 0 };
-      const images = m.role === "tool" ? undefined : m.images?.slice(0, keep.images);
-      const video = m.role === "tool" ? undefined : m.video?.slice(0, keep.video);
-      const dropped = m.role === "tool" ? [] : [...(m.images?.slice(keep.images) ?? []), ...(m.video?.slice(keep.video) ?? [])];
+      const imgAll = m.role === "tool" ? [] : (m.images ?? []);
+      const vidAll = m.role === "tool" ? [] : (m.video ?? []);
+      const images = allowImage ? imgAll.slice(0, keep.images) : [];
+      const video = allowVideo ? vidAll.slice(0, keep.video) : [];
+      // Capability-hidden media gets its own note (the whole modality is
+      // invisible to this model); the window note covers only what the model
+      // COULD see but was trimmed for space.
+      const dropped = [...(allowImage ? imgAll.slice(keep.images) : []), ...(allowVideo ? vidAll.slice(keep.video) : [])];
+      const hidden = [...(allowImage ? [] : imgAll), ...(allowVideo ? [] : vidAll)];
       let content = m.summary
         ? `Summary of the earlier conversation (older messages were compacted to save context):\n\n${m.text}`
         : withFiles(m.text, m.files);
       if (dropped.length) content = content ? `${content}\n\n${droppedNote(dropped)}` : droppedNote(dropped);
+      if (hidden.length) content = content ? `${content}\n\n${hiddenNote(hidden)}` : hiddenNote(hidden);
       return {
         role: m.role,
         content,
