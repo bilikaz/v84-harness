@@ -49,7 +49,7 @@ export function ModelsSection() {
   const [tab, setTab] = useState<"useCases" | "providers">("useCases");
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-2xl">
       <h2 className="text-lg font-semibold text-neutral-900">{t("media.title")}</h2>
       <p className="mt-1 text-sm text-neutral-500">{t("media.subtitle")}</p>
 
