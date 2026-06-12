@@ -48,6 +48,11 @@ export interface ModelConfig {
   // — instead of letting the endpoint reject the request. Video/audio are
   // recorded for the generation tools that will feed those back later.
   input?: { image?: boolean; video?: boolean; audio?: boolean };
+  // Longest-side cap (px) for image inputs — the model's own limit, so it
+  // lives on the card. Images from every door (composer attachments,
+  // LoadImage/GenerateImage results) are downscaled in the renderer to fit
+  // before the model sees them. undefined → DEFAULT_IMAGE_MAX_DIM (2048).
+  imageMaxDim?: number;
   // Generation params (optional; sent when set). Surfaced once a model is picked.
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;

@@ -1,7 +1,9 @@
 // LoadImage / LoadVideo — workspace media loaders. They read bytes from the
 // confined workspace root and hand them back as a data URL for the driver's
 // model-feedback turn, so the contract under test is: confinement, the
-// extension whitelist, the size cap, and a faithful bytes→data-URL round trip.
+// extension whitelist, the byte caps (transport sanity for resizable images,
+// strict for GIF which the renderer can't downscale — ADR-0027), and a
+// faithful bytes→data-URL round trip.
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +21,8 @@ beforeAll(async () => {
   await writeFile(path.join(root, "assets", "clip.mp4"), Buffer.from("not-really-a-video"));
   await writeFile(path.join(root, "notes.txt"), "text");
   await writeFile(path.join(root, "big.png"), Buffer.alloc(6 * 1024 * 1024 + 1));
+  await writeFile(path.join(root, "big.gif"), Buffer.alloc(6 * 1024 * 1024 + 1));
+  await writeFile(path.join(root, "huge.png"), Buffer.alloc(50 * 1024 * 1024 + 1));
 });
 afterAll(() => rm(root, { recursive: true, force: true }));
 
@@ -39,8 +43,19 @@ describe("LoadImage", () => {
     expect(res.output).toContain(".png");
   });
 
-  it("rejects files over the size cap and names the size", async () => {
+  it("loads a resizable image over the old 6 MB cap — bytes are transport sanity, not a model limit", async () => {
     const res = await loadImageTool.execute({ path: "/big.png" }, { cwd: root });
+    expect(res.ok).toBe(true);
+  });
+
+  it("rejects a resizable image over the transport bound and names the size", async () => {
+    const res = await loadImageTool.execute({ path: "/huge.png" }, { cwd: root });
+    expect(res.ok).toBe(false);
+    expect(res.output).toContain("50.0 MB limit");
+  });
+
+  it("keeps the strict cap for GIF — the renderer can't downscale it", async () => {
+    const res = await loadImageTool.execute({ path: "/big.gif" }, { cwd: root });
     expect(res.ok).toBe(false);
     expect(res.output).toContain("6.0 MB limit");
   });

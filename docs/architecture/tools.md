@@ -25,7 +25,15 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   never-throw result contract.
 - Tools **never throw**: every path returns `ToolResult { ok, output, … }`.
   The dispatcher catches everything and wraps it.
-- Tool output is capped (line/byte limits) before it reaches the model.
-  LoadImage's per-file cap (6 MB) aligns with the media resend window
-  ([ADR-0025](../adr/0025-media-resend-window.md)); the composer enforces the same
-  caps on attachments.
+- Tool output is capped (line/byte limits) before it reaches the model. Media
+  byte caps are **transport sanity bounds, not model limits**, with one source
+  shared by the tools and composer attachments (`lib/mediaCaps.ts`): resizable
+  images 50 MB, GIF 6 MB (the renderer can't downscale it — aligned with the
+  resend window), video 50 MB
+  ([ADR-0025](../adr/0025-media-resend-window.md),
+  [ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
+- LoadImage reads files at **full resolution** — pixel limits are not the
+  tool's concern. Images are fitted to the model's longest-side cap
+  (`ModelConfig.imageMaxDim`, default 2048) by `lib/imageResize.ts` on the
+  driver's tool-result hop in the renderer, the same helper the composer runs
+  on attachments ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).

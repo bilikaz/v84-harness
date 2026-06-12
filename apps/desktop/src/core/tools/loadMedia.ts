@@ -5,6 +5,7 @@ import { type Tool, type ToolResult, type GeneratedImage, type GeneratedMedia } 
 import { toReal } from "./paths.ts";
 import { bytesToB64, extToMime } from "../../lib/dataUrl.ts";
 import { errorMessage } from "../../lib/errors.ts";
+import { GIF_MAX_BYTES, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES } from "../../lib/mediaCaps.ts";
 
 // Load an image/video file from the workspace so the model can review it.
 // Read-only and path-confined like Read, so it auto-runs. The bytes come back
@@ -18,19 +19,23 @@ import { errorMessage } from "../../lib/errors.ts";
 
 const IMAGE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTS = ["mp4", "webm", "mov"];
-// 6 MB raw ≈ 8 MB as a data URL — one image can never exceed the session's
-// whole media resend budget (MAX_LIVE_MEDIA_BYTES in core/sessions/store.ts).
-// Video stays deliberately larger: a rare, single-item operation that the
-// window's newest-always rule delivers once and then retires.
-const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
-const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 
 function fmtMB(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function makeLoadTool(opts: { name: "LoadImage" | "LoadVideo"; kind: "image" | "video"; exts: string[]; maxBytes: number }): Tool {
-  const { name, kind, exts, maxBytes } = opts;
+function makeLoadTool(opts: {
+  name: "LoadImage" | "LoadVideo";
+  kind: "image" | "video";
+  exts: string[];
+  maxBytes: number;
+  // Per-extension overrides of maxBytes (e.g. GIF can't be downscaled in the
+  // renderer, so it keeps a strict byte cap while other images get the
+  // generous transport bound).
+  extCaps?: Record<string, number>;
+}): Tool {
+  const { name, kind, exts, maxBytes, extCaps } = opts;
+  const capNote = extCaps ? ` (${Object.entries(extCaps).map(([e, b]) => `.${e} max ${fmtMB(b)}`).join(", ")})` : "";
   return {
     schema: {
       type: "function",
@@ -38,7 +43,7 @@ function makeLoadTool(opts: { name: "LoadImage" | "LoadVideo"; kind: "image" | "
         name,
         description:
           `Load a ${kind} file from the workspace so you can view it. The ${kind} is attached for your ` +
-          `review in the next message. Supported: ${exts.map((e) => "." + e).join(", ")}; max ${fmtMB(maxBytes)}.`,
+          `review in the next message. Supported: ${exts.map((e) => "." + e).join(", ")}; max ${fmtMB(maxBytes)}${capNote}.`,
         parameters: {
           type: "object",
           additionalProperties: false,
@@ -61,8 +66,9 @@ function makeLoadTool(opts: { name: "LoadImage" | "LoadVideo"; kind: "image" | "
         }
         const st = await stat(real);
         if (!st.isFile()) return { ok: false, output: `${name} rejected: "${p}" is not a file.` };
-        if (st.size > maxBytes) {
-          return { ok: false, output: `${name} rejected: "${p}" is ${fmtMB(st.size)} — over the ${fmtMB(maxBytes)} limit.` };
+        const capBytes = extCaps?.[ext] ?? maxBytes;
+        if (st.size > capBytes) {
+          return { ok: false, output: `${name} rejected: "${p}" is ${fmtMB(st.size)} — over the ${fmtMB(capBytes)} limit.` };
         }
         const bytes = await readFile(real);
         const media: GeneratedImage | GeneratedMedia = {
@@ -82,5 +88,11 @@ function makeLoadTool(opts: { name: "LoadImage" | "LoadVideo"; kind: "image" | "
   };
 }
 
-export const loadImageTool = makeLoadTool({ name: "LoadImage", kind: "image", exts: IMAGE_EXTS, maxBytes: IMAGE_MAX_BYTES });
+export const loadImageTool = makeLoadTool({
+  name: "LoadImage",
+  kind: "image",
+  exts: IMAGE_EXTS,
+  maxBytes: IMAGE_MAX_BYTES,
+  extCaps: { gif: GIF_MAX_BYTES },
+});
 export const loadVideoTool = makeLoadTool({ name: "LoadVideo", kind: "video", exts: VIDEO_EXTS, maxBytes: VIDEO_MAX_BYTES });

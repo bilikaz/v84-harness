@@ -36,6 +36,7 @@ procedures don't land here. The map of current structure is
 | [0024](0024-agent-runs-through-composer.md) | Agent runs go through the composer (pseudo-session priming) | accepted |
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
 | [0026](0026-agent-session-placement-vs-capability.md) | Agent sessions: placement follows launch context, capability masked separately + unlink | accepted |
+| [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | proposed |
 
 ## Needs review / important missing parts
 
@@ -46,7 +47,6 @@ it from this list.
 | Item | Where recorded | What's missing |
 | --- | --- | --- |
 | Workspace isolation (`worktree`) | [ADR-0016](0016-workspace-isolation-field.md) | The entire concept: worktree lifecycle, merge-back, non-git workspaces. Field is settable but read by nothing. |
-| Client-side media downscaling | [ADR-0025](0025-media-resend-window.md) | Resize photos to ~1 MP at attach/load time — full-res camera photos are pure payload waste (vision endpoints downscale anyway). Decide whether the stored copy stays original. |
 | Storage quota warning | [ADR-0012](0012-sessions-dual-tier-persistence.md) | Manual pruning shipped (Settings → Storage: per-workspace/session usage + delete). Still missing: a user-facing warning when a persist write fails (today it's only a logged `persist_failed`). |
 | Video job orphaning on cancel/quit | [ADR-0014](0014-stop-semantics-and-tool-cancellation.md) | Stop ends polling but the server job keeps running; no job-id persistence for resume or cleanup (endpoint has no cancel API). |
 | Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 15 IPC channels now (was 6 when "revisit if it grows" was written); a missing handler still hangs the invoke silently. A startup ping would catch it. |
@@ -59,4 +59,5 @@ migration tail (settings/media/agents moved to `core/`), conventions upstream
 sync (copied to the reviewer repo), desktop storage quota ceiling (ADR-0017),
 storage growth pruning (manual, Settings → Storage), and the `Session.steps`
 progress DAG (removed — ToolCard links + live child sessions are the progress
-view, ADR-0022).
+view, ADR-0022), and client-side media downscaling (per-model pixel cap,
+stored copy is the downscaled one — ADR-0027).
