@@ -63,10 +63,10 @@ export const analyzeImageTool: Tool = {
     if (!media?.baseUrl) {
       return { ok: false, output: "AnalyzeImage is not configured. Assign an image recognition model in Settings → Models." };
     }
-    if (media.api !== "openai-chat") {
+    if (media.api !== "openai") {
       return {
         ok: false,
-        output: `AnalyzeImage failed: the assigned model "${media.label || media.model}" has API flavor "${media.api}" — recognition needs an "openai-chat" (chat completions with image input) endpoint. Fix the assignment in Settings → Models.`,
+        output: `AnalyzeImage failed: the assigned model "${media.label || media.model}" has API type "${media.api}" — recognition needs an OpenAI-compatible endpoint (chat completions with image input). Fix the assignment in Settings → Models.`,
       };
     }
     const query = typeof args.query === "string" && args.query.trim() ? args.query.trim() : DEFAULT_QUERY;

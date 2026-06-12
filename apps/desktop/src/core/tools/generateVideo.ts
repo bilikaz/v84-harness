@@ -13,8 +13,8 @@ import { errorMessage } from "../../lib/errors.ts";
 // POSTed; the resulting clip rides on the message as a data-URL and renders in
 // the tool card. Generation is SLOW (~minutes per second of video). Timings +
 // quality presets live in core/config (videoGen.*). The async job wire below
-// is the only flavor implemented for video so far ("openai-images" entries —
-// the Cosmos container's /videos flow).
+// is the only video path implemented so far (OpenAI-compatible entries — the
+// Cosmos container's /videos flow).
 
 export const generateVideoTool: Tool = {
   schema: {
@@ -56,16 +56,16 @@ export const generateVideoTool: Tool = {
     if (!media?.baseUrl) {
       return { ok: false, output: "GenerateVideo is not configured. Assign a video generation model in Settings → Models." };
     }
-    if (media.api !== "openai-images") {
+    if (media.api !== "openai") {
       return {
         ok: false,
-        output: `GenerateVideo failed: the assigned model "${media.label || media.model}" has API flavor "${media.api}" — video generation currently supports only the async-jobs flow of "openai-images" endpoints. Fix the assignment in Settings → Models.`,
+        output: `GenerateVideo failed: the assigned model "${media.label || media.model}" has API type "${media.api}" — video generation currently supports only the async-jobs flow of OpenAI-compatible endpoints. Fix the assignment in Settings → Models.`,
       };
     }
     const cfg = getAppConfig().videoGen;
 
     // Dimensions: width + aspect → WxH, clamped to max, ×16. We own these.
-    const max = parseDims(media.maxSize);
+    const max = parseDims(media.maxVideoSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
       return { ok: false, output: `GenerateVideo rejected: width must be a positive integer.` };

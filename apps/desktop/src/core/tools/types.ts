@@ -51,33 +51,35 @@ export interface GeneratedMedia {
 export type MediaUseCase = "imageGen" | "videoGen" | "imageRec" | "videoRec" | "audioGen" | "audioRec";
 export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
 
-// The wire shape an endpoint speaks. Detection can list models where /models
-// exists; the flavor itself is a config choice (with cosmos recognized by
-// model id) — "in between" servers get marked manually, not sniffed by
-// firing generation requests at them.
-//   openai-images  — POST /images/generations (+ Cosmos's /videos job flow)
-//   plain-generate — a bare POST /generate; no /models, no OpenAI envelope
-//   openai-chat    — chat completions with image parts (recognition models)
-export type MediaApiFlavor = "openai-images" | "plain-generate" | "openai-chat";
+// The wire family an endpoint speaks. The API type says HOW to talk; the
+// use-case slot an entry is assigned to says WHICH path of that API a tool
+// uses (imageGen → /images/generations, videoGen → the async jobs flow,
+// recognition → /chat/completions with image parts).
+//   openai   — OpenAI-compatible envelope; has /models, so Detect works
+//   generate — a bare POST /generate; no /models, no model parameter
+export type MediaApiFlavor = "openai" | "generate";
 
 // How the model wants its prompt: "plain" passes the agent's prompt through;
 // "cosmos-json" runs the upsampler that fills Cosmos's structured-JSON prompt
 // schema with the app's chat LLM first.
 export type MediaPromptStyle = "plain" | "cosmos-json";
 
-// One entry in the media model registry — an endpoint + what it can do + how
-// to talk to it. Threaded into tools via ToolCtx by the renderer (main never
-// reads the renderer's settings store), keyed by use case.
+// One entry in the media model registry — an endpoint + how to talk to it.
+// There is NO capability field: what an entry can do is declared by assigning
+// it to use-case slots (the registry's assignment map) — the API type alone
+// already constrains which slots it's offered for. Threaded into tools via
+// ToolCtx by the renderer (main never reads the renderer's settings store),
+// keyed by use case.
 export interface MediaModelConfig {
   id: string; // registry entry id (crypto.randomUUID)
   label: string; // display name in settings + coverage list
   baseUrl: string; // endpoint base, e.g. http://localhost:8000/v1
   apiKey?: string;
   model?: string;
-  capabilities: MediaUseCase[]; // what this endpoint can serve (an entry may cover several)
   api: MediaApiFlavor;
   promptStyle?: MediaPromptStyle; // undefined → "plain"
-  maxSize?: string; // largest WxH the model supports — clamp target + fallback size
+  maxImageSize?: string; // largest WxH for image generation — clamp target + fallback size
+  maxVideoSize?: string; // largest WxH for video generation
   models?: string[]; // detected model ids (picker cache; filled by the Detect button)
 }
 

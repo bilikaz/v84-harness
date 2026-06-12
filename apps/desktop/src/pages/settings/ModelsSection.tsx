@@ -1,12 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
 
-import { DetectButton, Row, fieldInput, fieldInputFlex } from "./Field.tsx";
+import { DetectButton, Row, fieldInputFlex, fieldInputFull } from "./Field.tsx";
 import {
   addMediaModel,
   assignMediaModel,
   detectMediaModels,
   removeMediaModel,
+  slotCandidates,
   updateMediaModel,
   useMediaRegistry,
 } from "../../core/media.ts";
@@ -15,48 +16,31 @@ import { useDetection } from "../../lib/hooks.ts";
 
 // The media model registry UI (Settings → Models): the coverage list (which
 // use-case slots are served by which model — and which aren't covered at all)
-// above the model pool, where endpoints are added and described (URL, wire
-// flavor, capabilities, prompt style). Tools go inert when their slot is
-// unassigned — nothing here is required.
+// above the model pool. An entry has NO capability checkboxes — the API type
+// says how to talk to it, and assigning it to coverage slots IS its
+// classification; the card adapts to those assignments (sizes per generation
+// modality, the Cosmos enhancer only on a cosmos signal). Tools go inert when
+// their slot is unassigned — nothing here is required.
 
-const FLAVORS: readonly MediaApiFlavor[] = ["openai-images", "plain-generate", "openai-chat"];
-const FLAVOR_KEY: Record<MediaApiFlavor, string> = {
-  "openai-images": "apiOpenaiImages",
-  "plain-generate": "apiPlainGenerate",
-  "openai-chat": "apiOpenaiChat",
-};
-
-// Which wire flavors plausibly serve a capability — the API select offers
-// only these for the entry's selected capabilities (a recognition model
-// doesn't speak /images/generations and vice versa). Audio has no tool yet,
-// so it constrains nothing. Empty selection → all flavors.
-const CAP_FLAVORS: Record<MediaUseCase, readonly MediaApiFlavor[]> = {
-  imageGen: ["openai-images", "plain-generate"],
-  videoGen: ["openai-images"],
-  imageRec: ["openai-chat"],
-  videoRec: ["openai-chat"],
-  audioGen: FLAVORS,
-  audioRec: ["openai-chat"],
-};
-
-function flavorsFor(capabilities: MediaUseCase[]): readonly MediaApiFlavor[] {
-  if (!capabilities.length) return FLAVORS;
-  const allowed = new Set(capabilities.flatMap((uc) => [...CAP_FLAVORS[uc]]));
-  return FLAVORS.filter((f) => allowed.has(f));
-}
-
-const GEN_CAPS: readonly MediaUseCase[] = ["imageGen", "videoGen"];
+const FLAVORS: readonly MediaApiFlavor[] = ["openai", "generate"];
+const FLAVOR_KEY: Record<MediaApiFlavor, string> = { openai: "apiOpenai", generate: "apiGenerate" };
 
 function entryName(m: MediaModelConfig): string {
   return m.label || m.model || m.baseUrl || "—";
 }
 
-// A cosmos-named model means the Cosmos structured-JSON prompt — suggest the
-// upsampler when the name says so (detection does the same from the model
-// list). Only meaningful on the wire Cosmos actually speaks.
+// A cosmos-named model means the Cosmos structured-JSON prompt — surface and
+// pre-check the enhancer when the name says so (detection does the same from
+// the model list). Only meaningful on the OpenAI wire.
+function hasCosmosSignal(m: MediaModelConfig): boolean {
+  if (m.api !== "openai") return false;
+  if (m.promptStyle === "cosmos-json") return true;
+  return `${m.label} ${m.model ?? ""}`.toLowerCase().includes("cosmos");
+}
+
 function suggestCosmos(patch: { label?: string; model?: string }, m: MediaModelConfig): typeof patch & { promptStyle?: "cosmos-json" } {
   const name = `${patch.label ?? ""} ${patch.model ?? ""}`.toLowerCase();
-  return name.includes("cosmos") && m.api === "openai-images" ? { ...patch, promptStyle: "cosmos-json" } : patch;
+  return name.includes("cosmos") && m.api === "openai" ? { ...patch, promptStyle: "cosmos-json" } : patch;
 }
 
 export function ModelsSection() {
@@ -85,7 +69,11 @@ export function ModelsSection() {
       </div>
       {reg.entries.length === 0 && <p className="mt-2 text-sm text-neutral-400">{t("media.empty")}</p>}
       {reg.entries.map((m) => (
-        <ModelCard key={m.id} m={m} />
+        <ModelCard
+          key={m.id}
+          m={m}
+          assignedSlots={MEDIA_USE_CASES.filter((uc) => reg.assignments[uc] === m.id)}
+        />
       ))}
     </div>
   );
@@ -93,7 +81,7 @@ export function ModelsSection() {
 
 function CoverageRow(props: { uc: MediaUseCase; entries: MediaModelConfig[]; assigned: string }) {
   const { t } = useTranslation();
-  const candidates = props.entries.filter((e) => e.capabilities.includes(props.uc));
+  const candidates = slotCandidates(props.uc, props.entries);
   const covered = !!props.assigned && candidates.some((c) => c.id === props.assigned);
   return (
     <Row label={t(`media.uc.${props.uc}`)}>
@@ -123,23 +111,20 @@ function CoverageRow(props: { uc: MediaUseCase; entries: MediaModelConfig[]; ass
   );
 }
 
-function ModelCard({ m }: { m: MediaModelConfig }) {
+function ModelCard(props: { m: MediaModelConfig; assignedSlots: MediaUseCase[] }) {
+  const { m, assignedSlots } = props;
   const { t } = useTranslation();
   const hasModels = (m.models?.length ?? 0) > 0;
-  // A bare /generate server has no /models and takes no model parameter —
-  // detection and the model picker would only produce noise, so they vanish.
-  const bare = m.api === "plain-generate";
+  const bare = m.api === "generate";
   const { detecting, msg, detect } = useDetection(
     () => detectMediaModels(m.id),
     (r) => (r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error })),
   );
 
-  const isGen = m.capabilities.some((c) => GEN_CAPS.includes(c));
-  const allowedFlavors = flavorsFor(m.capabilities);
+  // All fields share one width (w-80, via the wrapper) so the card reads as a
+  // single column — rows with a button keep it by flexing inside the wrapper.
+  const field = `w-80`;
 
-  // The form follows the classification flow: connection (URL + name + key)
-  // → capabilities → everything below adapts to them (suggested API types,
-  // detection where the flavor has /models, generation-only settings).
   return (
     <div className="mt-3 rounded-lg border border-neutral-200 p-4">
       <div className="flex items-center justify-between gap-2">
@@ -154,21 +139,22 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
       </div>
 
       <Row label={t("media.baseUrl")}>
-        <input
-          value={m.baseUrl}
-          onChange={(e) => updateMediaModel(m.id, { baseUrl: e.target.value })}
-          placeholder="http://localhost:8000/v1"
-          className={fieldInput}
-        />
+        <div className={field}>
+          <input
+            value={m.baseUrl}
+            onChange={(e) => updateMediaModel(m.id, { baseUrl: e.target.value })}
+            placeholder="http://localhost:8000/v1"
+            className={fieldInputFull}
+          />
+        </div>
       </Row>
 
-      {/* ONE identity field. For detectable flavors the name IS the model id:
-          editable at first, Detect sits beside it, and a successful detect
-          turns it into the model picker (choosing syncs label + model). A
-          bare /generate entry has no model — the field is just its display
-          name. */}
+      {/* ONE identity field. For the OpenAI flavor the name IS the model id:
+          editable at first, Detect beside it, and a successful detect turns it
+          into the model picker (choosing syncs label + model). A bare
+          /generate entry has no model — the field is just its display name. */}
       <Row label={t("media.name")}>
-        <div className="flex w-80 items-center gap-2">
+        <div className={`flex ${field} items-center gap-2`}>
           {!bare && hasModels ? (
             <select
               value={m.model ?? ""}
@@ -204,73 +190,11 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
       {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
       {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
 
-      <Row label={t("media.apiKey")}>
-        <input
-          type="password"
-          name={`media-api-key-${m.id}`}
-          autoComplete="off"
-          data-1p-ignore="true"
-          data-lpignore="true"
-          data-form-type="other"
-          value={m.apiKey ?? ""}
-          onChange={(e) => updateMediaModel(m.id, { apiKey: e.target.value })}
-          placeholder={t("media.apiKeyPlaceholder")}
-          className={fieldInput}
-        />
-      </Row>
-
-      <Row label={t("media.capabilities")}>
-        <div className="grid w-80 grid-cols-2 gap-x-4 gap-y-1">
-          {MEDIA_USE_CASES.map((uc) => (
-            <label key={uc} className="flex items-center gap-1.5 text-sm text-neutral-700">
-              <input
-                type="checkbox"
-                checked={m.capabilities.includes(uc)}
-                onChange={(e) => {
-                  const capabilities = e.target.checked ? [...m.capabilities, uc] : m.capabilities.filter((c) => c !== uc);
-                  // Keep the flavor inside what the new classification allows;
-                  // leaving openai-images also drops the Cosmos prompt style.
-                  const allowed = flavorsFor(capabilities);
-                  const api = allowed.includes(m.api) ? m.api : allowed[0];
-                  updateMediaModel(m.id, { capabilities, api, ...(api !== "openai-images" ? { promptStyle: "plain" as const } : {}) });
-                }}
-              />
-              {t(`media.uc.${uc}`)}
-            </label>
-          ))}
-        </div>
-      </Row>
-
-      <Row label={t("media.api")}>
-        <select
-          value={m.api}
-          onChange={(e) => {
-            const api = e.target.value as MediaApiFlavor;
-            // The Cosmos prompt style belongs to the openai-images wire — a
-            // flavor switch away from it must not leave the flag set invisibly.
-            // A bare /generate takes no model parameter, so a leftover model id
-            // is dropped too (the label keeps the display name).
-            updateMediaModel(m.id, {
-              api,
-              ...(api !== "openai-images" ? { promptStyle: "plain" as const } : {}),
-              ...(api === "plain-generate" ? { model: "" } : {}),
-            });
-          }}
-          className={fieldInput}
-        >
-          {allowedFlavors.map((f) => (
-            <option key={f} value={f}>
-              {t(`media.${FLAVOR_KEY[f]}`)}
-            </option>
-          ))}
-        </select>
-      </Row>
-
-      {/* Cosmos speaks the openai-images wire — a bare /generate server can't
-          be the Cosmos container, so the upsampler toggle would be noise. */}
-      {isGen && m.api === "openai-images" && (
+      {/* The extra line right below the name — only when something signals
+          Cosmos (detected model id or the typed name). */}
+      {hasCosmosSignal(m) && (
         <Row label={t("media.promptStyle")}>
-          <label className="flex w-80 items-center gap-1.5 text-sm text-neutral-700">
+          <label className={`flex ${field} items-center gap-1.5 text-sm text-neutral-700`}>
             <input
               type="checkbox"
               checked={m.promptStyle === "cosmos-json"}
@@ -281,14 +205,73 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
         </Row>
       )}
 
-      {isGen && (
-        <Row label={t("media.maxSize")}>
+      <Row label={t("media.apiKey")}>
+        <div className={field}>
           <input
-            value={m.maxSize ?? ""}
-            onChange={(e) => updateMediaModel(m.id, { maxSize: e.target.value })}
-            placeholder="1280x1280"
-            className={fieldInput}
+            type="password"
+            name={`media-api-key-${m.id}`}
+            autoComplete="off"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-form-type="other"
+            value={m.apiKey ?? ""}
+            onChange={(e) => updateMediaModel(m.id, { apiKey: e.target.value })}
+            placeholder={t("media.apiKeyPlaceholder")}
+            className={fieldInputFull}
           />
+        </div>
+      </Row>
+
+      <Row label={t("media.api")}>
+        <div className={field}>
+          <select
+            value={m.api}
+            onChange={(e) => {
+              const api = e.target.value as MediaApiFlavor;
+              // A bare /generate takes no model parameter and can't be Cosmos —
+              // switching drops the model id and the enhancer flag (the label
+              // keeps the display name). Slots that no longer fit are cleared
+              // by updateMediaModel.
+              updateMediaModel(m.id, {
+                api,
+                ...(api === "generate" ? { model: "", promptStyle: "plain" as const } : {}),
+              });
+            }}
+            className={fieldInputFull}
+          >
+            {FLAVORS.map((f) => (
+              <option key={f} value={f}>
+                {t(`media.${FLAVOR_KEY[f]}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Row>
+
+      {/* Sizes follow the entry's assignments — image cap when it generates
+          images, video cap when it generates video, nothing for recognition. */}
+      {assignedSlots.includes("imageGen") && (
+        <Row label={t("media.maxImageSize")}>
+          <div className={field}>
+            <input
+              value={m.maxImageSize ?? ""}
+              onChange={(e) => updateMediaModel(m.id, { maxImageSize: e.target.value })}
+              placeholder="1280x1280"
+              className={fieldInputFull}
+            />
+          </div>
+        </Row>
+      )}
+      {assignedSlots.includes("videoGen") && (
+        <Row label={t("media.maxVideoSize")}>
+          <div className={field}>
+            <input
+              value={m.maxVideoSize ?? ""}
+              onChange={(e) => updateMediaModel(m.id, { maxVideoSize: e.target.value })}
+              placeholder="1280x720"
+              className={fieldInputFull}
+            />
+          </div>
         </Row>
       )}
     </div>

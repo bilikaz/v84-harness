@@ -1,4 +1,4 @@
-import type { MediaModelConfig, MediaProviders, MediaUseCase } from "./tools/types.ts";
+import type { MediaApiFlavor, MediaModelConfig, MediaProviders, MediaUseCase } from "./tools/types.ts";
 import { MEDIA_USE_CASES } from "./tools/types.ts";
 import { trimBase } from "../lib/format.ts";
 import { harness } from "../lib/harness.ts";
@@ -8,11 +8,13 @@ import { errorMessage } from "../lib/errors.ts";
 // The media model REGISTRY — replaces the single image/video provider config.
 // Endpoints differ per task (a Cosmos container generates, a vision model
 // describes, a bare /generate server only generates), so the registry holds a
-// pool of entries (endpoint + capabilities + wire flavor) and an assignment
-// map from use-case slot → entry. Tools resolve their model by slot
-// (resolveMediaProvider("imageGen")); the slot list (MEDIA_USE_CASES) is the
-// app's coverage map — a slot may be empty (tool inert) or have no tool yet
-// (audio today).
+// pool of entries (endpoint + API type) and an assignment map from use-case
+// slot → entry. ASSIGNMENT IS THE CLASSIFICATION: an entry has no capability
+// list — what it can do is declared by the slots it's assigned to, and the
+// API type alone constrains which slots it's offered for (slotCandidates).
+// Tools resolve their model by slot (resolveMediaProvider("imageGen")); the
+// slot list (MEDIA_USE_CASES) is the app's coverage map — a slot may be
+// empty (tool inert) or have no tool yet (audio today).
 const KEY = "v84-harness:media";
 
 export interface MediaRegistry {
@@ -24,28 +26,63 @@ export interface MediaRegistry {
 
 const DEFAULTS: MediaRegistry = { entries: [], assignments: {} };
 
-// The pre-registry single-config shape (one Cosmos container for image+video).
-interface LegacyMediaConfig {
-  baseUrl?: string;
-  apiKey?: string;
-  model?: string;
-  maxSize?: string;
-  models?: string[];
+// Which slots an API type can plausibly serve — the coverage dropdowns offer
+// only fitting entries. A bare /generate has exactly one implemented wire
+// (image generation); the OpenAI envelope covers every slot (the slot picks
+// the path: /images/generations, the video jobs flow, /chat/completions).
+const SLOT_FLAVORS: Record<MediaUseCase, readonly MediaApiFlavor[]> = {
+  imageGen: ["openai", "generate"],
+  videoGen: ["openai"],
+  imageRec: ["openai"],
+  videoRec: ["openai"],
+  audioGen: ["openai"],
+  audioRec: ["openai"],
+};
+
+export function slotCandidates(useCase: MediaUseCase, entries: MediaModelConfig[]): MediaModelConfig[] {
+  return entries.filter((e) => SLOT_FLAVORS[useCase].includes(e.api));
 }
 
 function newId(): string {
   return crypto.randomUUID();
 }
 
-// Shape migration: a stored v1 single-config becomes one Cosmos-flavored
-// entry assigned to both generation slots — exactly what that config meant.
+// Earlier stored shapes, migrated on load:
+//   v1 — one single config (the Cosmos container for image+video).
+//   v2 — registry entries with a `capabilities` list and three-way api
+//        flavors; capabilities collapsed into assignments, flavors into two.
+interface LegacyV1 {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  maxSize?: string;
+  models?: string[];
+}
+interface LegacyV2Entry extends Omit<MediaModelConfig, "api"> {
+  api: MediaApiFlavor | "openai-images" | "plain-generate" | "openai-chat";
+  capabilities?: MediaUseCase[];
+  maxSize?: string;
+}
+
+function migrateEntry(e: LegacyV2Entry): MediaModelConfig {
+  const api: MediaApiFlavor = e.api === "plain-generate" ? "generate" : e.api === "generate" ? "generate" : "openai";
+  const { capabilities: _caps, maxSize, ...rest } = e;
+  return {
+    ...rest,
+    api,
+    // The old single maxSize served both generation tools — keep it for both.
+    maxImageSize: e.maxImageSize ?? maxSize,
+    maxVideoSize: e.maxVideoSize ?? maxSize,
+  };
+}
+
 function load(): MediaRegistry | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<MediaRegistry> & LegacyMediaConfig;
+    const parsed = JSON.parse(raw) as Partial<MediaRegistry> & LegacyV1 & { entries?: LegacyV2Entry[] };
     if (Array.isArray(parsed.entries)) {
-      return { entries: parsed.entries, assignments: parsed.assignments ?? {} };
+      return { entries: parsed.entries.map(migrateEntry), assignments: parsed.assignments ?? {} };
     }
     if (typeof parsed.baseUrl === "string" && parsed.baseUrl) {
       const entry: MediaModelConfig = {
@@ -54,10 +91,10 @@ function load(): MediaRegistry | null {
         baseUrl: parsed.baseUrl,
         apiKey: parsed.apiKey,
         model: parsed.model,
-        maxSize: parsed.maxSize,
+        maxImageSize: parsed.maxSize,
+        maxVideoSize: parsed.maxSize,
         models: parsed.models,
-        capabilities: ["imageGen", "videoGen"],
-        api: "openai-images",
+        api: "openai",
         promptStyle: "cosmos-json",
       };
       return { entries: [entry], assignments: { imageGen: entry.id, videoGen: entry.id } };
@@ -90,14 +127,14 @@ export function addMediaModel(): string {
   while (taken.has(`Model ${n}`)) n++;
   store.set({
     ...cur,
-    entries: [...cur.entries, { id, label: `Model ${n}`, baseUrl: "", capabilities: [], api: "openai-images" }],
+    entries: [...cur.entries, { id, label: `Model ${n}`, baseUrl: "", api: "openai" }],
   });
   return id;
 }
 
-// Patch an entry. Slots follow the entry's capabilities: an empty slot the
-// entry can now serve is auto-assigned (never overriding an existing pick);
-// a slot assigned to this entry for a capability it lost is cleared.
+// Patch an entry. A slot assigned to an entry whose API type no longer fits
+// it (e.g. switched to bare /generate while assigned to recognition) is
+// cleared — assignment is the classification, and it must stay plausible.
 export function updateMediaModel(id: string, patch: Partial<Omit<MediaModelConfig, "id">>): void {
   const cur = store.get();
   const entries = cur.entries.map((e) => (e.id === id ? { ...e, ...patch, id } : e));
@@ -105,11 +142,7 @@ export function updateMediaModel(id: string, patch: Partial<Omit<MediaModelConfi
   const assignments = { ...cur.assignments };
   if (entry) {
     for (const uc of MEDIA_USE_CASES) {
-      if (entry.capabilities.includes(uc)) {
-        assignments[uc] ??= id;
-      } else if (assignments[uc] === id) {
-        delete assignments[uc];
-      }
+      if (assignments[uc] === id && !SLOT_FLAVORS[uc].includes(entry.api)) delete assignments[uc];
     }
   }
   store.set({ entries, assignments });
@@ -122,8 +155,8 @@ export function removeMediaModel(id: string): void {
   store.set({ entries: cur.entries.filter((e) => e.id !== id), assignments });
 }
 
-// Point a slot at an entry ("" clears it). Only entries that declare the
-// capability are offered by the UI; this doesn't re-validate.
+// Point a slot at an entry ("" clears it). Only fitting entries are offered
+// by the UI (slotCandidates); this doesn't re-validate.
 export function assignMediaModel(useCase: MediaUseCase, id: string): void {
   const cur = store.get();
   const assignments = { ...cur.assignments };
@@ -152,10 +185,9 @@ export function resolveMediaProviders(): MediaProviders {
 }
 
 // Detect an entry's models (also a reachability test) + cache them. In
-// Electron it goes through main (no CORS); in the browser it fetches directly.
-// Auto-selects the first model when none set. Not every flavor HAS /models —
-// a bare plain-generate server will fail here, and that's expected: the entry
-// is still usable, detection just can't help fill it in (the UI says so).
+// Electron it goes through main (no CORS); in the browser it fetches
+// directly. Auto-selects the first model when none set. Only the OpenAI
+// flavor has /models — the UI doesn't offer Detect for bare /generate.
 // Known models are recognized: a cosmos model id marks the entry as needing
 // the structured-JSON prompt upsampler unless the user already chose.
 export async function detectMediaModels(id: string): Promise<{ ok: boolean; count: number; error?: string }> {
@@ -180,6 +212,7 @@ export async function detectMediaModels(id: string): Promise<{ ok: boolean; coun
     updateMediaModel(id, {
       models,
       model,
+      ...(!entry.label && model ? { label: model } : {}),
       ...(cosmos && !entry.promptStyle ? { promptStyle: "cosmos-json" as const } : {}),
     });
     return { ok: true, count: models.length };

@@ -14,7 +14,8 @@ import { errorMessage } from "../../lib/errors.ts";
 // own result).
 //
 // Model-agnostic by registry config, not by sniffing:
-//   - entry.api picks the WIRE (openai-images | plain-generate);
+//   - entry.api picks the WIRE (openai → /images/generations | generate →
+//     a bare POST /generate);
 //   - entry.promptStyle picks the PROMPT (plain pass-through, or the Cosmos
 //     structured-JSON upsampler — see ./cosmos.ts).
 // The wire functions at the bottom are the only endpoint-specific code.
@@ -72,18 +73,11 @@ export const generateImageTool: Tool = {
         output: "GenerateImage is not configured. Assign an image generation model in Settings → Models.",
       };
     }
-    if (media.api === "openai-chat") {
-      return {
-        ok: false,
-        output: `GenerateImage failed: the assigned model "${media.label || media.model}" is a chat/recognition endpoint, not an image generator. Fix the assignment in Settings → Models.`,
-      };
-    }
-
     // Dimensions: the model gives a width + an aspect (one of the legal ratios);
     // we derive height and clamp both to the configured max, so the request is
     // always something the model can actually produce. We compute size/ratio —
     // the model never sets height, and the upsampler never sets resolution.
-    const max = parseDims(media.maxSize);
+    const max = parseDims(media.maxImageSize);
     const reqW = toInt(args.width);
     if (args.width !== undefined && reqW === undefined) {
       return { ok: false, output: `GenerateImage rejected: width must be a positive integer.` };
@@ -109,7 +103,7 @@ export const generateImageTool: Tool = {
         negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
       };
       const { b64, mime } =
-        media.api === "plain-generate"
+        media.api === "generate"
           ? await generatePlain(media, finalPrompt, { w, h, negativePrompt: opts.negativePrompt }, ctx.signal)
           : await generate(media, finalPrompt, opts, ctx.signal);
 
@@ -127,7 +121,7 @@ export const generateImageTool: Tool = {
   },
 };
 
-// ── wire: openai-images ──────────────────────────────────────────────────────
+// ── wire: openai ─────────────────────────────────────────────────────────────
 // OpenAI-images-compatible endpoint (POST {baseUrl}/images/generations →
 // { data: [{ b64_json } | { url }] }), which most local servers (incl. the
 // Cosmos container) speak.
@@ -180,7 +174,7 @@ async function generate(
   throw new Error("generation response had no image (expected data[0].b64_json or data[0].url)");
 }
 
-// ── wire: plain-generate ─────────────────────────────────────────────────────
+// ── wire: generate ───────────────────────────────────────────────────────────
 // A bare POST {baseUrl}/generate server: JSON in, an image out — either raw
 // image/* bytes or a small JSON wrapper. There is no spec to detect, so the
 // parse is tolerant (extractImagePayload) and the request body sticks to the
