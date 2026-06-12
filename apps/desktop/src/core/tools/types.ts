@@ -132,7 +132,7 @@ export interface MediaEndpoint {
 // the gated tool.
 export interface ToolCtx {
   cwd: string;
-  media?: MediaProviders; // per-use-case media models (GenerateImage → media.imageGen, AnalyzeImage → media.imageRec, …)
+  media?: MediaProviders; // per-use-case media models (GenerateImage → media.imageGen, DescribeImage → media.imageRec, …)
   // Cancellation. An AbortSignal cannot cross the IPC bridge (not cloneable), so
   // this field is process-local: the renderer sets it for renderer tools; for
   // gated tools the main dispatcher mints its own per call and aborts it when
@@ -154,13 +154,36 @@ export interface Tool {
 //   1 = enabled   (available, but each call asks for approval)
 //   2 = auto      (available, runs without a prompt)
 // Gated tools: configured per-workspace via the 0/1/2 policy + the workspace UI.
-export type GatedTool = "Read" | "List" | "Grep" | "Write" | "Edit" | "CreateFolder" | "Bash" | "LoadImage" | "LoadVideo" | "AnalyzeImage";
+export type GatedTool =
+  | "Read"
+  | "List"
+  | "Grep"
+  | "Write"
+  | "Edit"
+  | "CreateFolder"
+  | "Bash"
+  | "LoadImage"
+  | "LoadVideo"
+  | "DescribeImage"
+  | "DescribeVideo";
 // The full tool vocabulary. Permissionless tools (below) extend it but aren't
 // part of the per-workspace policy.
 export type ToolName = GatedTool | "GenerateImage" | "GenerateVideo";
 export type ToolMode = 0 | 1 | 2;
 
-export const ALL_TOOLS: readonly GatedTool[] = ["Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash", "LoadImage", "LoadVideo", "AnalyzeImage"];
+export const ALL_TOOLS: readonly GatedTool[] = [
+  "Read",
+  "List",
+  "Grep",
+  "Write",
+  "Edit",
+  "CreateFolder",
+  "Bash",
+  "LoadImage",
+  "LoadVideo",
+  "DescribeImage",
+  "DescribeVideo",
+];
 
 // Permissionless tools: always advertised, auto-run (no approval prompt), and
 // usable without a bound workspace. They must not REQUIRE ctx.cwd — GenerateImage
@@ -180,5 +203,6 @@ export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
   Bash: 1,
   LoadImage: 2,
   LoadVideo: 2,
-  AnalyzeImage: 2, // read-only + path-confined like LoadImage — auto-runs
+  DescribeImage: 2, // read-only + path-confined like LoadImage — auto-runs
+  DescribeVideo: 2,
 };

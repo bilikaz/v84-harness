@@ -84,10 +84,11 @@ if (import.meta.hot) {
 function allowedByCapability(name: ToolName, cfg: ModelConfig): boolean {
   if (name === "LoadImage") return cfg.input?.image !== false;
   if (name === "LoadVideo") return cfg.input?.video === true;
-  // The recognizer tool is gated on its registry SLOT, not the chat model's
-  // inputs — it returns text, so even a blind chat model can use it. No
-  // assigned imageRec model → the tool doesn't exist.
-  if (name === "AnalyzeImage") return resolveMediaProvider("imageRec") !== null;
+  // The recognizer tools are gated on their registry SLOT, not the chat
+  // model's inputs — they return text, so even a blind chat model can use
+  // them. No assigned recognition model → the tool doesn't exist.
+  if (name === "DescribeImage") return resolveMediaProvider("imageRec") !== null;
+  if (name === "DescribeVideo") return resolveMediaProvider("videoRec") !== null;
   return true;
 }
 
