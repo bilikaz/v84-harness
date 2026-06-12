@@ -84,20 +84,24 @@ if (import.meta.hot) {
 function allowedByCapability(name: ToolName, cfg: ModelConfig): boolean {
   if (name === "LoadImage") return cfg.input?.image !== false;
   if (name === "LoadVideo") return cfg.input?.video === true;
-  // The recognizer tools are gated on their registry SLOT, not the chat
-  // model's inputs — they return text, so even a blind chat model can use
-  // them. No assigned recognition model → the tool doesn't exist.
+  // The media tools are gated on their registry SLOT, not the chat model's
+  // inputs — an unassigned slot means the tool doesn't exist, instead of
+  // being advertised and failing with "not configured" when called.
   if (name === "DescribeImage") return resolveMediaProvider("imageRec") !== null;
   if (name === "DescribeVideo") return resolveMediaProvider("videoRec") !== null;
+  if (name === "GenerateImage") return resolveMediaProvider("imageGen") !== null;
+  if (name === "GenerateVideo") return resolveMediaProvider("videoGen") !== null;
   return true;
 }
 
 async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefined, cfg: ModelConfig, isChild: boolean): Promise<ToolSpec[]> {
   // Permissionless renderer tools (e.g. GenerateImage) are available everywhere —
-  // browser build included. The sub-agent pair (ListAgents/RunAgent) joins for
-  // top-level sessions only (depth 1: children never orchestrate further).
+  // browser build included — but still pass the capability gate: a generation
+  // tool whose use-case slot has no model assigned is withheld, not advertised
+  // inert. The sub-agent pair (ListAgents/RunAgent) joins for top-level
+  // sessions only (depth 1: children never orchestrate further).
   const renderer = [
-    ...(RENDERER_TOOL_SCHEMAS as ToolSpec[]),
+    ...(RENDERER_TOOL_SCHEMAS as ToolSpec[]).filter((s) => allowedByCapability(s.function.name as ToolName, cfg)),
     ...(isChild ? [] : (agentToolSchemas(!!ws) as ToolSpec[])),
   ];
   if (!harness) return renderer; // web: only the renderer-side tools
