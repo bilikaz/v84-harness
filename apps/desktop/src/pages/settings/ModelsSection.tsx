@@ -187,9 +187,11 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
                 checked={m.capabilities.includes(uc)}
                 onChange={(e) => {
                   const capabilities = e.target.checked ? [...m.capabilities, uc] : m.capabilities.filter((c) => c !== uc);
-                  // Keep the flavor inside what the new classification allows.
+                  // Keep the flavor inside what the new classification allows;
+                  // leaving openai-images also drops the Cosmos prompt style.
                   const allowed = flavorsFor(capabilities);
-                  updateMediaModel(m.id, { capabilities, ...(allowed.includes(m.api) ? {} : { api: allowed[0] }) });
+                  const api = allowed.includes(m.api) ? m.api : allowed[0];
+                  updateMediaModel(m.id, { capabilities, api, ...(api !== "openai-images" ? { promptStyle: "plain" as const } : {}) });
                 }}
               />
               {t(`media.uc.${uc}`)}
@@ -201,7 +203,12 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
       <Row label={t("media.api")}>
         <select
           value={m.api}
-          onChange={(e) => updateMediaModel(m.id, { api: e.target.value as MediaApiFlavor })}
+          onChange={(e) => {
+            const api = e.target.value as MediaApiFlavor;
+            // The Cosmos prompt style belongs to the openai-images wire — a
+            // flavor switch away from it must not leave the flag set invisibly.
+            updateMediaModel(m.id, { api, ...(api !== "openai-images" ? { promptStyle: "plain" as const } : {}) });
+          }}
           className={fieldInput}
         >
           {allowedFlavors.map((f) => (
@@ -244,7 +251,9 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
       {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
       {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
 
-      {isGen && (
+      {/* Cosmos speaks the openai-images wire — a bare /generate server can't
+          be the Cosmos container, so the upsampler toggle would be noise. */}
+      {isGen && m.api === "openai-images" && (
         <Row label={t("media.promptStyle")}>
           <label className="flex w-80 items-center gap-1.5 text-sm text-neutral-700">
             <input
