@@ -7,7 +7,9 @@ export const fieldInputBare = "rounded-lg border px-3 py-1.5 text-sm outline-non
 
 const base = `${fieldInputBare} border-neutral-200 focus:border-neutral-400`;
 
-export const fieldInput = `w-72 ${base}`;
+// One width for every settings field — rows that pair an input with a button
+// use a w-80 wrapper + the flex variant, so columns line up across sections.
+export const fieldInput = `w-80 ${base}`;
 // The flex-sized variant, for inputs/selects sharing a row with a button.
 export const fieldInputFlex = `min-w-0 flex-1 ${base}`;
 // Full-width variant (workspace settings panel).

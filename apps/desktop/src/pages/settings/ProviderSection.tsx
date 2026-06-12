@@ -77,7 +77,7 @@ export function ProviderSection() {
       )}
 
       <Row label={t("provider.inputModalities")}>
-        <div className="flex w-72 items-center gap-4">
+        <div className="flex w-80 items-center gap-4">
           {(["image", "video", "audio"] as const).map((m) => (
             <label key={m} className="flex items-center gap-1.5 text-sm text-neutral-700">
               <input
@@ -151,7 +151,7 @@ export function ProviderSection() {
       </Row>
 
       <Row label={t("provider.contextReserve")}>
-        <div className="flex w-72 flex-col gap-1">
+        <div className="flex w-80 flex-col gap-1">
           <input
             type="number"
             name="system-reserve"
