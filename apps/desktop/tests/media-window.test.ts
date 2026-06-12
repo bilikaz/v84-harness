@@ -24,13 +24,13 @@ describe("toChatMessages media window", () => {
   });
 
   it("keeps only the most recent items by count and stubs the rest", () => {
-    const old = msg({ images: Array.from({ length: 4 }, (_, i) => img(`old${i}`)) });
-    const mid = msg({ images: Array.from({ length: 4 }, (_, i) => img(`mid${i}`)) });
-    const fresh = msg({ images: Array.from({ length: 4 }, (_, i) => img(`new${i}`)) });
+    const old = msg({ images: Array.from({ length: 8 }, (_, i) => img(`old${i}`)) });
+    const mid = msg({ images: Array.from({ length: 8 }, (_, i) => img(`mid${i}`)) });
+    const fresh = msg({ images: Array.from({ length: 8 }, (_, i) => img(`new${i}`)) });
     const out = toChatMessages([old, mid, fresh]);
-    // budget 5, newest-first: fresh keeps 4, mid keeps 1, old keeps 0
-    expect(out[2].images?.length).toBe(4);
-    expect(out[1].images?.length).toBe(1);
+    // budget 10, newest-first: fresh keeps 8, mid keeps 2, old keeps 0
+    expect(out[2].images?.length).toBe(8);
+    expect(out[1].images?.length).toBe(2);
     expect(out[0].images).toBeUndefined();
     expect(out[1].content).toContain("removed from the context");
     expect(out[0].content).toContain("old0");
@@ -54,7 +54,7 @@ describe("toChatMessages media window", () => {
   });
 
   it("video competes for the same budget and wins as the newer item", () => {
-    const photos = msg({ images: Array.from({ length: 6 }, (_, i) => img(`p${i}`)) });
+    const photos = msg({ images: Array.from({ length: MAX_LIVE_MEDIA + 1 }, (_, i) => img(`p${i}`)) });
     const clip = msg({ video: [{ url: "data:video/mp4;base64,v", mime: "video/mp4", name: "clip" }] });
     const out = toChatMessages([photos, clip]);
     expect(out[1].video?.length).toBe(1);

@@ -68,9 +68,14 @@ into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
   loop (hidden correction turns).
 - Tool-produced media (generated or loaded) is fed back as a hidden user turn
   (`mediaFeedback`), filtered to what the model's declared inputs accept.
-- Resubmitted media rides a **resend window** (5 items / 8 MB, newest always
-  sent): older media is swapped for an in-place stub naming what was there and
-  how to re-load it ([ADR-0025](../adr/0025-media-resend-window.md)).
+  Images are downscaled to the model's pixel cap (`imageMaxDim`, default 2048)
+  as the result crosses the driver — UI, persistence, and model all share the
+  fitted copy ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
+- Resubmitted media rides a **resend window** (10 items / 50 MB, newest always
+  sent — count is the binding budget now that images are pixel-fitted, bytes a
+  loose backstop, ADR-0027): older media is swapped for an in-place stub
+  naming what was there and how to re-load it
+  ([ADR-0025](../adr/0025-media-resend-window.md)).
 - The context meter (`usedTokens`) is a **snapshot** of the latest request's
   input + output — never a sum across requests (each request's input already
   counts the whole transcript). Auto-compaction summarizes the session when that

@@ -89,6 +89,18 @@ export function ProviderSection() {
         </div>
       </Row>
 
+      {cfg.input?.image && (
+        <Row label={t("provider.imageMaxDim")}>
+          <input
+            type="number"
+            value={cfg.imageMaxDim ?? ""}
+            onChange={(e) => saveProvider({ imageMaxDim: e.target.value ? Number(e.target.value) : undefined })}
+            placeholder="2048"
+            className={fieldInput}
+          />
+        </Row>
+      )}
+
       <Row label={t("provider.reasoning")}>
         <select
           value={cfg.reasoningEffort ?? "off"}

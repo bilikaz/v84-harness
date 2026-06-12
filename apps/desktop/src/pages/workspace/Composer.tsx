@@ -4,6 +4,7 @@ import { ArrowUp, ChevronDown, Plus, RefreshCw, Square } from "lucide-react";
 
 import { detectModels, useProvider } from "../../core/settings.ts";
 import { readAttachments } from "../../lib/attachments.ts";
+import { DEFAULT_IMAGE_MAX_DIM } from "../../lib/imageResize.ts";
 import { navigate } from "../../lib/router.ts";
 import { AttachmentList } from "../../components/AttachmentList.tsx";
 import type { FileAttachment, MediaRef } from "../../lib/types.ts";
@@ -65,8 +66,10 @@ export function Composer(props: {
   // dropping media the model can't accept. Images default on; video requires
   // the model to explicitly declare video input. Oversized media is skipped
   // with a note — what can never be sent shouldn't enter the transcript.
+  // Images over the model's pixel cap are downscaled in place, also with a note.
   async function addAttachments(list: FileList) {
-    const { images: imgs, video: vids, files: fs, skipped } = await readAttachments(list);
+    const maxDim = provider.imageMaxDim ?? DEFAULT_IMAGE_MAX_DIM;
+    const { images: imgs, video: vids, files: fs, skipped, resized } = await readAttachments(list, maxDim);
     if (imgs.length) {
       if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
       else {
@@ -82,7 +85,9 @@ export function Composer(props: {
       }
     }
     if (fs.length) setFiles((prev) => [...prev, ...fs]);
-    // Last so it survives the accept paths clearing the note.
+    // Notes last so they survive the accept paths clearing the field; a skip
+    // is the more severe of the two, so it wins when both apply.
+    if (resized.length) setAttachNote(t("session.attachResized", { names: resized.join(", "), max: maxDim }));
     if (skipped.length) setAttachNote(t("session.attachTooBig", { names: skipped.join(", ") }));
   }
 
@@ -116,6 +121,7 @@ export function Composer(props: {
     setImages([]);
     setVideos([]);
     setFiles([]);
+    setAttachNote("");
     props.onSubmit(text, atts);
   }
 
@@ -134,9 +140,20 @@ export function Composer(props: {
           images={images}
           videos={videos}
           files={files}
-          onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
-          onRemoveVideo={(i) => setVideos((prev) => prev.filter((_, j) => j !== i))}
-          onRemoveFile={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
+          // The note describes the last attach action — stale once the user
+          // touches the attachment set, so any removal (or send) clears it.
+          onRemoveImage={(i) => {
+            setImages((prev) => prev.filter((_, j) => j !== i));
+            setAttachNote("");
+          }}
+          onRemoveVideo={(i) => {
+            setVideos((prev) => prev.filter((_, j) => j !== i));
+            setAttachNote("");
+          }}
+          onRemoveFile={(i) => {
+            setFiles((prev) => prev.filter((_, j) => j !== i));
+            setAttachNote("");
+          }}
         />
         {attachNote && <p className="mb-1 px-1 text-xs text-amber-600">{attachNote}</p>}
         <textarea

@@ -16,6 +16,7 @@ import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgen
 import { sessionBus as bus } from "./events.ts";
 import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
+import { DEFAULT_IMAGE_MAX_DIM, downscaleImage } from "../../lib/imageResize.ts";
 
 // A validator for the model's final (no-tool) turn. Throws to reject — the
 // engine then injects a correction and lets the model retry (see runTurn).
@@ -309,8 +310,20 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
             result = { ok: false, output: `tool execution failed: ${errorMessage(e)}` };
           }
           const output = result.output;
-          // Tool media → MediaRef for display + model feedback.
-          const images = result.images?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
+          // Tool media → MediaRef for display + model feedback. Images are
+          // fitted to the model's pixel cap here — LoadImage reads files at
+          // full resolution in main; this renderer hop is where canvas lives,
+          // so everything downstream (UI, persistence, resend window, model)
+          // gets the downscaled version.
+          const maxDim = cfg.imageMaxDim ?? DEFAULT_IMAGE_MAX_DIM;
+          const images = result.images
+            ? await Promise.all(
+                result.images.map(async (g) => {
+                  const d = await downscaleImage(g.url, g.mime, maxDim);
+                  return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
+                }),
+              )
+            : undefined;
           const video = result.video?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
           bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, video });
           if (images?.length) fedImages.push(...images);

@@ -93,6 +93,7 @@
     "image": "Vaizdą",
     "video": "Vaizdo įrašą",
     "audio": "Garsą",
+    "imageMaxDim": "Vaizdo dydžio riba (px)",
     "reasoning": "Mąstymo intensyvumas",
     "off": "Išjungta",
     "low": "Žemas",
@@ -148,7 +149,8 @@
     "thoughts": "Mintys",
     "running": "vykdoma…",
     "loading": "Įkeliamas pokalbis…",
-    "attachTooBig": "Per dideli prisegti (praleisti): {{names}}"
+    "attachTooBig": "Per dideli prisegti (praleisti): {{names}}",
+    "attachResized": "Sumažinta iki {{max}}px: {{names}}"
   },
   "progress": {
     "progress": "Eiga",

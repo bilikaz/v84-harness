@@ -449,8 +449,12 @@ function withFiles(text: string, files?: FileAttachment[]): string {
 // and by payload bytes (request body / proxy limits); older ones are swapped
 // for a text stub the model can act on (re-load on demand). A resend policy
 // only — the transcript and UI keep everything.
-export const MAX_LIVE_MEDIA = 5;
-export const MAX_LIVE_MEDIA_BYTES = 8 * 1024 * 1024; // data-URL length as the measure
+// With images pixel-fitted at the door (ADR-0027), prefill cost is bounded by
+// count × dimensions — so COUNT is the binding budget, and the byte budget is
+// a loose backstop against what the resizer can't shrink (GIFs, video, an
+// image that didn't downscale much).
+export const MAX_LIVE_MEDIA = 10;
+export const MAX_LIVE_MEDIA_BYTES = 50 * 1024 * 1024; // data-URL length as the measure
 
 // Decide, newest-first, how many of each message's media items stay live. An
 // item must fit BOTH remaining budgets — except the very newest item, which is

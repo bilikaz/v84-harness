@@ -93,6 +93,7 @@
     "image": "Image",
     "video": "Video",
     "audio": "Audio",
+    "imageMaxDim": "Image size cap (px)",
     "reasoning": "Reasoning effort",
     "off": "Off",
     "low": "Low",
@@ -148,7 +149,8 @@
     "thoughts": "Thoughts",
     "running": "running…",
     "loading": "Loading conversation…",
-    "attachTooBig": "Too large to attach (skipped): {{names}}"
+    "attachTooBig": "Too large to attach (skipped): {{names}}",
+    "attachResized": "Downscaled to {{max}}px: {{names}}"
   },
   "progress": {
     "progress": "Progress",
