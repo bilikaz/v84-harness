@@ -132,6 +132,7 @@
     "labelPlaceholder": "Modelio pavadinimas",
     "remove": "Pašalinti modelį",
     "baseUrl": "Bazinis URL",
+    "name": "Pavadinimas",
     "detect": "Aptikti",
     "detectHint": "Patikrina, ar endpoint'as pasiekiamas, ir pateikia modelių sąrašą. Ne visi serveriai turi /models — plikas generate endpoint'as čia nepavyks, bet vis tiek naudotinas.",
     "bareHint": "Plikas /generate endpoint'as — nei modelių sąrašo, nei modelio parametro. Tiesiog nurodykite URL (ir raktą, jei yra) ir priskirkite.",

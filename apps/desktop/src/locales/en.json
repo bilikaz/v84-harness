@@ -132,6 +132,7 @@
     "labelPlaceholder": "Model name",
     "remove": "Remove model",
     "baseUrl": "Base URL",
+    "name": "Name",
     "detect": "Detect",
     "detectHint": "Check the endpoint is reachable and list its models. Not every server has /models — a bare generate endpoint fails this and is still usable.",
     "bareHint": "Bare /generate endpoint — no model list, no model parameter. Just set the URL (and key if any) and assign it.",

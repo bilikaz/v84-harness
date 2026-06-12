@@ -26,6 +26,27 @@ const FLAVOR_KEY: Record<MediaApiFlavor, string> = {
   "openai-chat": "apiOpenaiChat",
 };
 
+// Which wire flavors plausibly serve a capability — the API select offers
+// only these for the entry's selected capabilities (a recognition model
+// doesn't speak /images/generations and vice versa). Audio has no tool yet,
+// so it constrains nothing. Empty selection → all flavors.
+const CAP_FLAVORS: Record<MediaUseCase, readonly MediaApiFlavor[]> = {
+  imageGen: ["openai-images", "plain-generate"],
+  videoGen: ["openai-images"],
+  imageRec: ["openai-chat"],
+  videoRec: ["openai-chat"],
+  audioGen: FLAVORS,
+  audioRec: ["openai-chat"],
+};
+
+function flavorsFor(capabilities: MediaUseCase[]): readonly MediaApiFlavor[] {
+  if (!capabilities.length) return FLAVORS;
+  const allowed = new Set(capabilities.flatMap((uc) => [...CAP_FLAVORS[uc]]));
+  return FLAVORS.filter((f) => allowed.has(f));
+}
+
+const GEN_CAPS: readonly MediaUseCase[] = ["imageGen", "videoGen"];
+
 function entryName(m: MediaModelConfig): string {
   return m.label || m.model || m.baseUrl || "—";
 }
@@ -105,15 +126,16 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
     (r) => (r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error })),
   );
 
+  const isGen = m.capabilities.some((c) => GEN_CAPS.includes(c));
+  const allowedFlavors = flavorsFor(m.capabilities);
+
+  // The form follows the classification flow: connection (URL + name + key)
+  // → capabilities → everything below adapts to them (suggested API types,
+  // detection where the flavor has /models, generation-only settings).
   return (
     <div className="mt-3 rounded-lg border border-neutral-200 p-4">
       <div className="flex items-center justify-between gap-2">
-        <input
-          value={m.label}
-          onChange={(e) => updateMediaModel(m.id, { label: e.target.value })}
-          placeholder={t("media.labelPlaceholder")}
-          className="w-full rounded-md border border-neutral-200 px-2 py-1 text-sm font-medium text-neutral-900 focus:border-neutral-400 focus:outline-none"
-        />
+        <span className="truncate text-sm font-semibold text-neutral-900">{entryName(m)}</span>
         <button
           onClick={() => removeMediaModel(m.id)}
           title={t("media.remove")}
@@ -132,87 +154,11 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
         />
       </Row>
 
-      {!bare && (
-      <Row label={t("media.model")}>
-        <div className="flex w-80 items-center gap-2">
-          {hasModels ? (
-            <select
-              value={m.model ?? ""}
-              onChange={(e) => updateMediaModel(m.id, { model: e.target.value })}
-              className={fieldInputFlex}
-            >
-              <option value="">{t("media.modelDefault")}</option>
-              {m.model && !m.models!.includes(m.model) && <option value={m.model}>{m.model}</option>}
-              {m.models!.map((mm) => (
-                <option key={mm} value={mm}>
-                  {mm}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              value={m.model ?? ""}
-              onChange={(e) => updateMediaModel(m.id, { model: e.target.value })}
-              placeholder={t("media.modelPlaceholder")}
-              className={fieldInputFlex}
-            />
-          )}
-          <DetectButton label={t("media.detect")} busy={detecting} disabled={!m.baseUrl} title={t("media.detectHint")} onClick={detect} />
-        </div>
-      </Row>
-      )}
-      {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
-      {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
-
-      <Row label={t("media.api")}>
-        <select
-          value={m.api}
-          onChange={(e) => updateMediaModel(m.id, { api: e.target.value as MediaApiFlavor })}
-          className={fieldInput}
-        >
-          {FLAVORS.map((f) => (
-            <option key={f} value={f}>
-              {t(`media.${FLAVOR_KEY[f]}`)}
-            </option>
-          ))}
-        </select>
-      </Row>
-
-      <Row label={t("media.capabilities")}>
-        <div className="grid w-80 grid-cols-2 gap-x-4 gap-y-1">
-          {MEDIA_USE_CASES.map((uc) => (
-            <label key={uc} className="flex items-center gap-1.5 text-sm text-neutral-700">
-              <input
-                type="checkbox"
-                checked={m.capabilities.includes(uc)}
-                onChange={(e) =>
-                  updateMediaModel(m.id, {
-                    capabilities: e.target.checked ? [...m.capabilities, uc] : m.capabilities.filter((c) => c !== uc),
-                  })
-                }
-              />
-              {t(`media.uc.${uc}`)}
-            </label>
-          ))}
-        </div>
-      </Row>
-
-      <Row label={t("media.promptStyle")}>
-        <label className="flex w-80 items-center gap-1.5 text-sm text-neutral-700">
-          <input
-            type="checkbox"
-            checked={m.promptStyle === "cosmos-json"}
-            onChange={(e) => updateMediaModel(m.id, { promptStyle: e.target.checked ? "cosmos-json" : "plain" })}
-          />
-          {t("media.promptStyleCosmos")}
-        </label>
-      </Row>
-
-      <Row label={t("media.maxSize")}>
+      <Row label={t("media.name")}>
         <input
-          value={m.maxSize ?? ""}
-          onChange={(e) => updateMediaModel(m.id, { maxSize: e.target.value })}
-          placeholder="1280x1280"
+          value={m.label}
+          onChange={(e) => updateMediaModel(m.id, { label: e.target.value })}
+          placeholder={t("media.labelPlaceholder")}
           className={fieldInput}
         />
       </Row>
@@ -231,6 +177,96 @@ function ModelCard({ m }: { m: MediaModelConfig }) {
           className={fieldInput}
         />
       </Row>
+
+      <Row label={t("media.capabilities")}>
+        <div className="grid w-80 grid-cols-2 gap-x-4 gap-y-1">
+          {MEDIA_USE_CASES.map((uc) => (
+            <label key={uc} className="flex items-center gap-1.5 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                checked={m.capabilities.includes(uc)}
+                onChange={(e) => {
+                  const capabilities = e.target.checked ? [...m.capabilities, uc] : m.capabilities.filter((c) => c !== uc);
+                  // Keep the flavor inside what the new classification allows.
+                  const allowed = flavorsFor(capabilities);
+                  updateMediaModel(m.id, { capabilities, ...(allowed.includes(m.api) ? {} : { api: allowed[0] }) });
+                }}
+              />
+              {t(`media.uc.${uc}`)}
+            </label>
+          ))}
+        </div>
+      </Row>
+
+      <Row label={t("media.api")}>
+        <select
+          value={m.api}
+          onChange={(e) => updateMediaModel(m.id, { api: e.target.value as MediaApiFlavor })}
+          className={fieldInput}
+        >
+          {allowedFlavors.map((f) => (
+            <option key={f} value={f}>
+              {t(`media.${FLAVOR_KEY[f]}`)}
+            </option>
+          ))}
+        </select>
+      </Row>
+
+      {!bare && (
+        <Row label={t("media.model")}>
+          <div className="flex w-80 items-center gap-2">
+            {hasModels ? (
+              <select
+                value={m.model ?? ""}
+                onChange={(e) => updateMediaModel(m.id, { model: e.target.value })}
+                className={fieldInputFlex}
+              >
+                <option value="">{t("media.modelDefault")}</option>
+                {m.model && !m.models!.includes(m.model) && <option value={m.model}>{m.model}</option>}
+                {m.models!.map((mm) => (
+                  <option key={mm} value={mm}>
+                    {mm}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={m.model ?? ""}
+                onChange={(e) => updateMediaModel(m.id, { model: e.target.value })}
+                placeholder={t("media.modelPlaceholder")}
+                className={fieldInputFlex}
+              />
+            )}
+            <DetectButton label={t("media.detect")} busy={detecting} disabled={!m.baseUrl} title={t("media.detectHint")} onClick={detect} />
+          </div>
+        </Row>
+      )}
+      {bare && <p className="py-1 text-xs text-neutral-400">{t("media.bareHint")}</p>}
+      {!bare && msg && <p className="py-1 text-xs text-neutral-500">{msg}</p>}
+
+      {isGen && (
+        <Row label={t("media.promptStyle")}>
+          <label className="flex w-80 items-center gap-1.5 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              checked={m.promptStyle === "cosmos-json"}
+              onChange={(e) => updateMediaModel(m.id, { promptStyle: e.target.checked ? "cosmos-json" : "plain" })}
+            />
+            {t("media.promptStyleCosmos")}
+          </label>
+        </Row>
+      )}
+
+      {isGen && (
+        <Row label={t("media.maxSize")}>
+          <input
+            value={m.maxSize ?? ""}
+            onChange={(e) => updateMediaModel(m.id, { maxSize: e.target.value })}
+            placeholder="1280x1280"
+            className={fieldInput}
+          />
+        </Row>
+      )}
     </div>
   );
 }
