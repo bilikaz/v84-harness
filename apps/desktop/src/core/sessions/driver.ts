@@ -186,7 +186,10 @@ async function runTurn(sid: string, cfg: ModelConfig, userText: string, opts: Se
   try {
     for (; step < maxSteps; step++) {
       if (controller.signal.aborted) break;
-      const history = toChatMessages(getSession(sid)?.messages ?? []);
+      // History is re-filtered against the CURRENT model's inputs each step —
+      // the model can change mid-session, and yesterday's images must not 400
+      // today's text-only endpoint.
+      const history = toChatMessages(getSession(sid)?.messages ?? [], cfg.input ?? {});
       const baseSystem = getSession(sid)?.system || ws?.instructions || undefined;
       const system = fsAccess ? [baseSystem, pt("workspace.system")].filter(Boolean).join("\n\n") : baseSystem;
       let text = "";

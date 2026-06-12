@@ -45,7 +45,9 @@ export async function compact(sid: string, cfg: ModelConfig): Promise<void> {
   const controller = new AbortController();
   try {
     const messages: ChatMessage[] = [
-      ...toChatMessages(session.messages),
+      // Same input-capability filter as the turn loop — the summary call goes
+      // to the same endpoint and would 400 on media it can't take.
+      ...toChatMessages(session.messages, cfg.input ?? {}),
       { role: "user", content: COMPACT_INSTRUCTION },
     ];
     // Force thinking on but tightly budgeted — a summary doesn't need deep

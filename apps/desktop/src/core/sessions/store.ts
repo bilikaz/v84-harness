@@ -502,22 +502,43 @@ function droppedNote(dropped: MediaRef[]): string {
   return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use LoadImage/LoadVideo to view one again if needed.]`;
 }
 
+function hiddenNote(hidden: MediaRef[]): string {
+  const names = hidden.map((d) => d.name || "unnamed").join(", ");
+  return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}.]`;
+}
+
 // Map stored messages to the provider-agnostic conversation we resubmit. Drops
 // empty placeholders (the trailing assistant) and thinking (not resent);
 // media outside the resend window is swapped for a text stub.
-export function toChatMessages(messages: Message[]): ChatMessage[] {
+//
+// `input` is the CURRENT model's declared inputs (ModelConfig.input) — checked
+// at send time, every turn, because the model can change mid-session: history
+// media a text-only model can't take is withheld (with a note) instead of
+// letting the endpoint 400 the whole turn. App-wide defaults apply: image
+// assumed on unless declared off, video only when declared on. Callers that
+// omit `input` (tests, non-wire uses) get everything.
+export function toChatMessages(messages: Message[], input?: NonNullable<ModelConfig["input"]>): ChatMessage[] {
+  const allowImage = input ? input.image !== false : true;
+  const allowVideo = input ? input.video === true : true;
   const window = mediaWindow(messages);
   return messages
     .filter((m) => m.text || m.images?.length || m.video?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
     .map((m) => {
       const keep = window.get(m.id) ?? { images: 0, video: 0 };
-      const images = m.role === "tool" ? undefined : m.images?.slice(0, keep.images);
-      const video = m.role === "tool" ? undefined : m.video?.slice(0, keep.video);
-      const dropped = m.role === "tool" ? [] : [...(m.images?.slice(keep.images) ?? []), ...(m.video?.slice(keep.video) ?? [])];
+      const imgAll = m.role === "tool" ? [] : (m.images ?? []);
+      const vidAll = m.role === "tool" ? [] : (m.video ?? []);
+      const images = allowImage ? imgAll.slice(0, keep.images) : [];
+      const video = allowVideo ? vidAll.slice(0, keep.video) : [];
+      // Capability-hidden media gets its own note (the whole modality is
+      // invisible to this model); the window note covers only what the model
+      // COULD see but was trimmed for space.
+      const dropped = [...(allowImage ? imgAll.slice(keep.images) : []), ...(allowVideo ? vidAll.slice(keep.video) : [])];
+      const hidden = [...(allowImage ? [] : imgAll), ...(allowVideo ? [] : vidAll)];
       let content = m.summary
         ? `Summary of the earlier conversation (older messages were compacted to save context):\n\n${m.text}`
         : withFiles(m.text, m.files);
       if (dropped.length) content = content ? `${content}\n\n${droppedNote(dropped)}` : droppedNote(dropped);
+      if (hidden.length) content = content ? `${content}\n\n${hiddenNote(hidden)}` : hiddenNote(hidden);
       return {
         role: m.role,
         content,
