@@ -1,4 +1,4 @@
-import type { CallTarget, ModelInfo } from "../../types.ts";
+import type { ConfigLLM, ModelInfo } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
 import type { ChatImage, ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
 import { parseSSE } from "../../sse.ts";
@@ -21,7 +21,7 @@ function authHeaders(cfg: { apiKey?: string }): Record<string, string> {
   };
 }
 
-function reasoningFields(target: CallTarget): Record<string, unknown> {
+function reasoningFields(target: ConfigLLM): Record<string, unknown> {
   const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
   return {
@@ -67,7 +67,7 @@ function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
 }
 
 export async function* streamAnthropic(
-  target: CallTarget,
+  target: ConfigLLM,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,

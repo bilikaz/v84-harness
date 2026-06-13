@@ -1,8 +1,8 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
-import type { ToolSchema, ToolCallRequest, ToolResult, ToolCtx, MediaEndpoint } from "./core/tools/types.ts";
+import type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, MediaEndpoint } from "./core/tools/types.ts";
 
-export type { ToolSchema, ToolCallRequest, ToolResult, ToolCtx, MediaEndpoint };
+export type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, MediaEndpoint };
 
 export interface MediaModelsResult {
   ok: boolean;
@@ -14,8 +14,8 @@ export interface HarnessApi {
   isElectron: true;
   pickFolder(): Promise<string | null>;
   tools: {
-    schemas(): Promise<ToolSchema[]>;
-    exec(call: ToolCallRequest, ctx: ToolCtx): Promise<ToolResult>;
+    schemas(wire: ToolWire): Promise<ToolSchema[]>;
+    exec(call: ToolCallRequest, wire: ToolWire): Promise<ToolResult>;
     // Resolving says the cancel was DELIVERED, not that the tool has exited.
     cancel(callId: string): Promise<void>;
   };

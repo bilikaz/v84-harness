@@ -1,16 +1,10 @@
-import type {
-  MediaApiFlavor,
-  MediaModel,
-  MediaSlotConfig,
-  MediaProvider,
-  MediaProviders,
-  MediaUseCase,
-} from "./tools/types.ts";
+import type { MediaApiFlavor, MediaModel, MediaProvider, MediaUseCase } from "./tools/types.ts";
 import { MEDIA_USE_CASES } from "./tools/types.ts";
 import { trimBase } from "../lib/format.ts";
 import { harness } from "../lib/harness.ts";
 import { createStore } from "../lib/store.ts";
 import { errorMessage } from "../lib/errors.ts";
+import { writeConfigLLM, type ConfigLLM, type ConfigLLMList } from "./config/llm.ts";
 
 // The media model registry — providers hosting models, plus a use-case → model assignment map.
 const KEY = "v84-harness:media";
@@ -265,7 +259,7 @@ export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ 
 }
 
 // Null when the slot is unassigned or the provider has no endpoint; tools stay inert on null.
-export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | null {
+export function resolveMediaProvider(useCase: MediaUseCase): ConfigLLM | null {
   const reg = store.get();
   const ref = reg.assignments[useCase];
   if (!ref) return null;
@@ -288,13 +282,15 @@ export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | n
   };
 }
 
-export function resolveMediaProviders(): MediaProviders {
-  const out: MediaProviders = {};
-  for (const uc of MEDIA_USE_CASES) {
-    const m = resolveMediaProvider(uc);
-    if (m) out[uc] = m;
-  }
-  return out;
+// Owns config.llm's media slots — write them now and on every change. Called once at app init.
+export function syncMediaToConfigLLM(): void {
+  const write = (): void => {
+    const slice: ConfigLLMList = {};
+    for (const uc of MEDIA_USE_CASES) slice[uc] = resolveMediaProvider(uc) ?? undefined;
+    writeConfigLLM(slice);
+  };
+  store.subscribe(write);
+  write();
 }
 
 // ── detection ────────────────────────────────────────────────────────────────

@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { loadImageTool, loadVideoTool } from "../src/core/tools/loadMedia.ts";
+import { ImageLoad } from "../src/core/tools/workspace/imageLoad.ts";
+import { VideoLoad } from "../src/core/tools/workspace/videoLoad.ts";
+import type { Ctx } from "../src/core/ctx.ts";
+
+// Loaders only touch cwd; the ctx is unused, so a stub suffices.
+const stubCtx = {} as Ctx;
+const loadImageTool = { execute: (args: Record<string, unknown>, { cwd }: { cwd: string }) => new ImageLoad(stubCtx, cwd).run(args) };
+const loadVideoTool = { execute: (args: Record<string, unknown>, { cwd }: { cwd: string }) => new VideoLoad(stubCtx, cwd).run(args) };
 
 let root: string;
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -23,7 +30,7 @@ afterAll(() => rm(root, { recursive: true, force: true }));
 
 describe("LoadImage", () => {
   it("returns the file as a data URL on images, byte-faithful", async () => {
-    const res = await loadImageTool.execute({ path: "/assets/pic.png" }, { cwd: root });
+    const res = await loadImageTool.execute({ path: "/workspace/assets/pic.png" }, { cwd: root });
     expect(res.ok).toBe(true);
     expect(res.images).toHaveLength(1);
     expect(res.images![0].mime).toBe("image/png");
@@ -33,24 +40,24 @@ describe("LoadImage", () => {
   });
 
   it("rejects unsupported extensions with the allowed list", async () => {
-    const res = await loadImageTool.execute({ path: "/notes.txt" }, { cwd: root });
+    const res = await loadImageTool.execute({ path: "/workspace/notes.txt" }, { cwd: root });
     expect(res.ok).toBe(false);
     expect(res.output).toContain(".png");
   });
 
   it("loads a resizable image over the old 6 MB cap — bytes are transport sanity, not a model limit", async () => {
-    const res = await loadImageTool.execute({ path: "/big.png" }, { cwd: root });
+    const res = await loadImageTool.execute({ path: "/workspace/big.png" }, { cwd: root });
     expect(res.ok).toBe(true);
   });
 
   it("rejects a resizable image over the transport bound and names the size", async () => {
-    const res = await loadImageTool.execute({ path: "/huge.png" }, { cwd: root });
+    const res = await loadImageTool.execute({ path: "/workspace/huge.png" }, { cwd: root });
     expect(res.ok).toBe(false);
     expect(res.output).toContain("50.0 MB limit");
   });
 
   it("keeps the strict cap for GIF — the renderer can't downscale it", async () => {
-    const res = await loadImageTool.execute({ path: "/big.gif" }, { cwd: root });
+    const res = await loadImageTool.execute({ path: "/workspace/big.gif" }, { cwd: root });
     expect(res.ok).toBe(false);
     expect(res.output).toContain("6.0 MB limit");
   });
@@ -69,7 +76,7 @@ describe("LoadImage", () => {
 
 describe("LoadVideo", () => {
   it("returns the file as a data URL on video (not images)", async () => {
-    const res = await loadVideoTool.execute({ path: "/assets/clip.mp4" }, { cwd: root });
+    const res = await loadVideoTool.execute({ path: "/workspace/assets/clip.mp4" }, { cwd: root });
     expect(res.ok).toBe(true);
     expect(res.video).toHaveLength(1);
     expect(res.video![0].mime).toBe("video/mp4");
@@ -77,7 +84,7 @@ describe("LoadVideo", () => {
   });
 
   it("won't load an image — the whitelists don't overlap", async () => {
-    const res = await loadVideoTool.execute({ path: "/assets/pic.png" }, { cwd: root });
+    const res = await loadVideoTool.execute({ path: "/workspace/assets/pic.png" }, { cwd: root });
     expect(res.ok).toBe(false);
     expect(res.output).toContain(".mp4");
   });

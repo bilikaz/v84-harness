@@ -1,8 +1,9 @@
-import { listProviderModels, type CallTarget } from "../llm/index.ts";
+import { listProviderModels } from "../llm/index.ts";
 import { createStore } from "../lib/store.ts";
 import { errorMessage } from "../lib/errors.ts";
+import { writeConfigLLM, type ConfigLLM } from "./config/llm.ts";
 
-export interface MainSettings extends CallTarget {
+export interface MainSettings extends ConfigLLM {
   input?: { image?: boolean; video?: boolean; audio?: boolean };
   imageMaxDim?: number;
   contextReserve?: number;
@@ -38,6 +39,12 @@ export function getProvider(): MainSettings {
   return store.get();
 }
 
+// The chat model, or null when no endpoint/model is configured (the no-model guard + cfg.input read this).
+export function resolveMain(): MainSettings | null {
+  const cfg = store.get();
+  return cfg.provider.baseUrl && cfg.model.id ? cfg : null;
+}
+
 export function saveProvider(patch: Partial<MainSettings>): void {
   store.patch(patch);
 }
@@ -67,4 +74,14 @@ export async function detectModels(): Promise<{ ok: boolean; count: number; erro
 
 export function useProvider(): MainSettings {
   return store.use();
+}
+
+// Owns config.llm's `main` slot — write it now and on every change. Called once at app init.
+export function syncMainToConfigLLM(): void {
+  const write = (): void => {
+    const cfg = store.get();
+    writeConfigLLM({ main: cfg.provider.baseUrl && cfg.model.id ? cfg : undefined });
+  };
+  store.subscribe(write);
+  write();
 }

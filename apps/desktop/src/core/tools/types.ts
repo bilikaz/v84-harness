@@ -30,8 +30,8 @@ export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen",
 
 export type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
 import type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
-import type { CallTarget } from "../../llm/types.ts";
-import type { Client } from "../../llm/client/types.ts";
+import type { Config } from "../config/index.ts";
+export type { ConfigLLM } from "../config/index.ts";
 
 export type MediaPromptStyle = "plain" | "cosmos-json";
 
@@ -54,37 +54,16 @@ export interface MediaProvider {
   models: MediaModel[];
 }
 
-export interface MediaSlotConfig extends CallTarget {
-  model: CallTarget["model"] & {
-    promptStyle?: MediaPromptStyle;
-    maxImageSize?: string;
-    maxVideoSize?: string;
-  };
-}
-
-export type MediaProviders = Partial<Record<MediaUseCase, MediaSlotConfig>>;
-
-export interface ToolConfig {
-  main: CallTarget | null;
-  media: MediaProviders;
-}
-
 export interface MediaEndpoint {
   baseUrl: string;
   apiKey?: string;
 }
 
-// Paths are virtual-root ("/" = workspace root); escaping is rejected — Bash cannot be virtualized hence its gate.
-export interface ToolCtx {
+// What crosses the bridge to the main runner: cwd (virtual-root "/workspace" = workspace root; paths outside
+// are refused) + the config snapshot. Main wraps it into a Ctx; in-process tools get (ctx, cwd, signal) directly.
+export interface ToolWire {
   cwd: string;
-  config: ToolConfig;
-  client?: Client;
-  signal?: AbortSignal;
-}
-
-export interface Tool {
-  schema: ToolSchema;
-  execute(args: Record<string, unknown>, ctx: ToolCtx): Promise<ToolResult>;
+  config: Config;
 }
 
 export type GatedTool =
@@ -95,22 +74,20 @@ export type GatedTool =
   | "Edit"
   | "CreateFolder"
   | "Bash"
-  | "LoadImage"
-  | "LoadVideo"
-  | "DescribeImage"
-  | "DescribeVideo";
+  | "ImageLoad"
+  | "VideoLoad"
+  | "ImageDescribe"
+  | "VideoDescribe";
 
-export type ToolName = GatedTool | "GenerateImage" | "GenerateVideo";
+export type ToolName = GatedTool | "ImageGenerate" | "VideoGenerate";
 export type ToolMode = 0 | 1 | 2;
 
 export const ALL_TOOLS: readonly GatedTool[] = [
   "Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash",
-  "LoadImage", "LoadVideo", "DescribeImage", "DescribeVideo",
+  "ImageLoad", "VideoLoad", "ImageDescribe", "VideoDescribe",
 ];
-
-export const PERMISSIONLESS_TOOLS: readonly ToolName[] = ["GenerateImage", "GenerateVideo"];
 
 export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
   Read: 2, List: 2, Grep: 2, Write: 2, Edit: 2, CreateFolder: 2, Bash: 1,
-  LoadImage: 2, LoadVideo: 2, DescribeImage: 2, DescribeVideo: 2,
+  ImageLoad: 2, VideoLoad: 2, ImageDescribe: 2, VideoDescribe: 2,
 };

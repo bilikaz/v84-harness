@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import { bufferedTextHandler } from "../../llm/index.ts";
-import { client, resolveMain } from "../client.ts";
+import { resolveMain } from "../settings.ts";
+import { ctx } from "../init.ts";
 import { sessionBus as bus } from "./events.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
@@ -46,7 +47,7 @@ export async function compact(sid: string): Promise<void> {
     const reserve = cfg.model.contextLength
       ? cfg.model.contextLength - contextLimit(cfg)
       : (cfg.contextReserve ?? getAppConfig().session.contextReserve);
-    const { text, usage } = await client.call({
+    const { text, usage } = await ctx.llm.call({
       service: "main",
       messages,
       system: COMPACT_SYSTEM,

@@ -1,4 +1,4 @@
-import type { CallTarget, ChatMessage, ModelInfo, StreamEvent, ToolSpec } from "../../types.ts";
+import type { ConfigLLM, ChatMessage, ModelInfo, StreamEvent, ToolSpec } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
 import { parseSSE } from "../../sse.ts";
 import { sseRequest } from "../../transport.ts";
@@ -41,7 +41,7 @@ function toOpenAIMessages(messages: ChatMessage[], system?: string): unknown[] {
   return out;
 }
 
-function reasoningFields(target: CallTarget): Record<string, unknown> {
+function reasoningFields(target: ConfigLLM): Record<string, unknown> {
   const m = target.model;
   const on = !!(m.reasoningEffort && m.reasoningEffort !== "off");
   if (/api\.openai\.com/i.test(target.provider.baseUrl)) {
@@ -53,7 +53,7 @@ function reasoningFields(target: CallTarget): Record<string, unknown> {
 }
 
 export async function* streamOpenAI(
-  target: CallTarget,
+  target: ConfigLLM,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,

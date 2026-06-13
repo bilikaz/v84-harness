@@ -10,7 +10,7 @@ export interface QualityPreset {
   flowShift?: number;
 }
 
-export interface AppConfig {
+export interface ConfigApp {
   media: {
     // Default longest-side cap (px) for image inputs when the model card
     // doesn't set its own (ModelConfig.imageMaxDim). Most VLMs are trained
@@ -66,7 +66,7 @@ export interface AppConfig {
   };
 }
 
-export const CONFIG_DEFAULTS: AppConfig = {
+export const CONFIG_DEFAULTS: ConfigApp = {
   media: {
     imageMaxDim: 2048,
     imageMaxBytes: 50 * 1024 * 1024,

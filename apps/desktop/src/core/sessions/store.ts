@@ -450,7 +450,7 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
 // get it back, so it degrades to one extra Load call instead of silent amnesia.
 function droppedNote(dropped: MediaRef[]): string {
   const names = dropped.map((d) => d.name || "unnamed").join(", ");
-  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use LoadImage/LoadVideo to view one again if needed.]`;
+  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use ImageLoad/VideoLoad to view one again if needed.]`;
 }
 
 function hiddenNote(hidden: MediaRef[]): string {

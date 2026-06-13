@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import { bufferedTextHandler } from "../../llm/index.ts";
 import { getAppConfig } from "../config/index.ts";
-import { client } from "../client.ts";
+import { ctx } from "../init.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { pt } from "../../lib/prompts.ts";
@@ -33,7 +33,7 @@ async function nameSession(sid: string): Promise<void> {
     // reasoning_effort "off" doesn't actually stop some models (e.g. Holo) from
     // thinking, so give a real budget — thinking + the short title must both fit,
     // or the title comes back empty.
-    ({ text: title, thinkingChars } = await client.call({
+    ({ text: title, thinkingChars } = await ctx.llm.call({
       service: "main",
       messages,
       system: session.system || undefined,

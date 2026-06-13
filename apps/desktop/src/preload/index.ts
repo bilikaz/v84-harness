@@ -4,7 +4,7 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type HarnessApi, type ToolCallRequest, type ToolCtx, type MediaEndpoint } from "../bridge.ts";
+import { IPC, type HarnessApi, type ToolCallRequest, type ToolWire, type MediaEndpoint } from "../bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
@@ -12,10 +12,9 @@ const api: HarnessApi = {
   isElectron: true,
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
-    schemas: () => ipcRenderer.invoke(IPC.toolsSchemas),
-    // `signal` and `client` are process-local and not cloneable — strip them
-    // before the wire; main re-mints both (execTool).
-    exec: (call: ToolCallRequest, { signal: _signal, client: _client, ...ctx }: ToolCtx) => ipcRenderer.invoke(IPC.toolsExec, call, ctx),
+    schemas: (wire: ToolWire) => ipcRenderer.invoke(IPC.toolsSchemas, wire),
+    // The wire is plain JSON (cwd + config); main wraps it into its own Ctx and mints the signal/client.
+    exec: (call: ToolCallRequest, wire: ToolWire) => ipcRenderer.invoke(IPC.toolsExec, call, wire),
     cancel: (callId: string) => ipcRenderer.invoke(IPC.toolsCancel, callId),
   },
   media: {

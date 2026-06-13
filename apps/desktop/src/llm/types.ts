@@ -1,5 +1,9 @@
 // LLM layer vocabulary: services, call contract, StreamEvent.
 
+// The call target is config's ConfigLLM (config owns it); re-exported here so the llm layer keeps a local name.
+import type { ConfigLLM } from "../core/config/llm.ts";
+export type { ConfigLLM } from "../core/config/llm.ts";
+
 export type ProviderKind = "openai" | "anthropic" | "gemini";
 
 export type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -63,28 +67,12 @@ export type StreamEvent =
 
 export type ProviderType = ProviderKind | "generate";
 
-export interface CallTarget {
-  provider: {
-    name: string;
-    type: ProviderType;
-    baseUrl: string;
-    apiKey?: string;
-  };
-  model: {
-    id?: string;
-    maxTokens?: number;
-    reasoningEffort?: ReasoningEffort;
-    thinkingBudget?: number;
-    contextLength?: number;
-  };
-}
-
 export interface ModelInfo {
   id: string;
   maxModelLen?: number;
 }
 
-export function targetLabel(t: CallTarget): string {
+export function targetLabel(t: ConfigLLM): string {
   return t.model.id ? `${t.provider.name} : ${t.model.id}` : t.provider.name;
 }
 

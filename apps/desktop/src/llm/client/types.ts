@@ -1,8 +1,8 @@
-import type { ResponseHandler, CallTarget, ChatMessage, GenParams, ModelService, ToolSpec } from "../types.ts";
+import type { ResponseHandler, ConfigLLM, ChatMessage, GenParams, ModelService, ToolSpec } from "../types.ts";
 
 // null = the service has no usable model.
 export interface ConfigSource {
-  resolve(service: ModelService): CallTarget | null;
+  resolve(service: ModelService): ConfigLLM | null;
 }
 
 export class HealError extends Error {
@@ -32,6 +32,6 @@ export interface CallOptions<T> {
   maxHeals?: number;
 }
 
-export interface Client {
+export interface LLMClient {
   call<T = string>(opts: CallOptions<T>): Promise<T>;
 }

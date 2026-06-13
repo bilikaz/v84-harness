@@ -1,19 +1,18 @@
 import type { ToolCall, ToolSpec } from "../../llm/types.ts";
-import type { MainSettings } from "../settings.ts";
 import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
 import { llmLog } from "../../llm/debug.ts";
 import type { FileAttachment, MediaRef, Session } from "./types.ts";
 import { harness } from "../../lib/harness.ts";
-import { client, resolveMain, toolConfigSnapshot } from "../client.ts";
-import { resolveMediaProvider } from "../media.ts";
-import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
+import { resolveMain } from "../settings.ts";
+import { ctx } from "../init.ts";
+import { effectiveImageMaxDim, getAppConfig, type Config } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";
 import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
-import { ALL_TOOLS, PERMISSIONLESS_TOOLS, type GatedTool, type ToolName, type ToolMode, type ToolResult } from "../tools/types.ts";
+import { ALL_TOOLS, type GatedTool, type ToolName, type ToolMode, type ToolResult } from "../tools/types.ts";
 import { pt } from "../../lib/prompts.ts";
-import { cap } from "../tools/shared.ts";
-import { RENDERER_TOOLS, RENDERER_TOOL_SCHEMAS } from "../tools/renderer.ts";
+import { cap } from "../tools/base.ts";
+import { generalToolSchemas, runGeneralTool } from "../tools/renderer.ts";
 import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgent } from "./agentTools.ts";
 import { sessionBus as bus } from "./events.ts";
 import { createSession, ensureLoaded, getActiveId, getSession, getStreamingIds, isFull, toChatMessages } from "./store.ts";
@@ -54,33 +53,18 @@ if (import.meta.hot) {
   });
 }
 
-// Capability gate — app-wide input defaults apply: image assumed on unless declared off, video only when declared on.
-function allowedByCapability(name: ToolName, cfg: MainSettings): boolean {
-  if (name === "LoadImage") return cfg.input?.image !== false;
-  if (name === "LoadVideo") return cfg.input?.video === true;
-  // Media tools gate on their SERVICE — an unassigned service means withheld, not advertised-then-failing.
-  if (name === "DescribeImage") return resolveMediaProvider("imageRec") !== null;
-  if (name === "DescribeVideo") return resolveMediaProvider("videoRec") !== null;
-  if (name === "GenerateImage") return resolveMediaProvider("imageGen") !== null;
-  if (name === "GenerateVideo") return resolveMediaProvider("videoGen") !== null;
-  return true;
-}
-
-async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefined, cfg: MainSettings, isChild: boolean): Promise<ToolSpec[]> {
-  // The sub-agent pair joins top-level sessions only — children never orchestrate further (depth 1).
-  const renderer = [
-    ...(RENDERER_TOOL_SCHEMAS as ToolSpec[]).filter((s) => allowedByCapability(s.function.name as ToolName, cfg)),
+async function advertisedTools(ws: Workspace | undefined, agent: Agent | undefined, isChild: boolean, toolConfig: Config): Promise<ToolSpec[]> {
+  const cwd = ws?.root ?? "";
+  // General tools (never gated; capability-filtered by canRun) + the sub-agent pair (top-level sessions only, depth 1).
+  const general = [
+    ...(generalToolSchemas(ctx, cwd) as ToolSpec[]),
     ...(isChild ? [] : (agentToolSchemas(!!ws) as ToolSpec[])),
   ];
-  if (!harness) return renderer; // web: only the renderer-side tools
-  const bridge = await harness.tools.schemas();
-  const gated = bridge.filter((s) => {
-    const name = s.function.name as ToolName;
-    if (PERMISSIONLESS_TOOLS.includes(name)) return false; // handled by the renderer set above
-    if (!allowedByCapability(name, cfg)) return false;
-    return effectiveMode(ws, agent, name) !== 0;
-  }) as ToolSpec[];
-  return [...renderer, ...gated];
+  if (!harness) return general; // web: only the general (renderer-side) tools
+  const gated = (await harness.tools.schemas({ cwd, config: toolConfig })).filter(
+    (s) => effectiveMode(ws, agent, s.function.name as ToolName) !== 0,
+  ) as ToolSpec[];
+  return [...general, ...gated];
 }
 
 // Streams one chat step's events onto the session bus; `onError` flags a terminal stream error (already emitted) so the turn loop stops.
@@ -128,7 +112,7 @@ function chatStepHandler(sid: string, onError: () => void): ResponseHandler<{ te
 
 // The STRICTER of workspace policy and agent ceiling — an agent can restrict what the workspace grants, never extend it.
 function effectiveMode(ws: Workspace | undefined, agent: Agent | undefined, name: ToolName): ToolMode {
-  if (PERMISSIONLESS_TOOLS.includes(name)) return 2;
+  if (!(ALL_TOOLS as readonly string[]).includes(name)) return 2; // general tools are never permission-gated
   if (!ws) return 0;
   const wsMode = ws.tools[name as GatedTool] ?? 0;
   const ceiling = agent?.tools[name as GatedTool] ?? 2;
@@ -165,10 +149,10 @@ async function runTurn(sid: string, userText: string, opts: SendOptions): Promis
 
   const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
   const { ws, agent } = capabilityContext(getSession(sid));
-  // Tool config snapshot resolved here — only the renderer reads the stores; main mints its own client from it.
-  const toolConfig = toolConfigSnapshot();
-  const toolCtx = harness ? { cwd: ws?.root ?? "", config: toolConfig } : null;
-  const toolSpecs = await advertisedTools(ws, agent, cfg, isChild);
+  // Config resolved here off the renderer ctx; for main tools it ships as JSON and main wraps it into its own Ctx.
+  const toolConfig = ctx.config;
+  const wire = harness ? { cwd: ws?.root ?? "", config: toolConfig } : null;
+  const toolSpecs = await advertisedTools(ws, agent, isChild, toolConfig);
   llmLog.debug("turn", { workspace: ws?.name ?? null, electron: !!harness, tools: toolSpecs.map((t) => t.function.name) });
   // The virtual-root convention (ADR-0007) is invisible otherwise — tell the model only when file tools are actually advertised.
   const fsAccess = toolSpecs.some((t) => (ALL_TOOLS as readonly string[]).includes(t.function.name));
@@ -191,7 +175,7 @@ async function runTurn(sid: string, userText: string, opts: SendOptions): Promis
       const system = fsAccess ? [baseSystem, pt("workspace.system")].filter(Boolean).join("\n\n") : baseSystem;
 
       // Heal stays driver-driven (the correction is a SESSION turn via the store), so the handler never throws HealError.
-      const { text, thinking, calls } = await client.call({
+      const { text, thinking, calls } = await ctx.llm.call({
         service: "main",
         messages: history,
         system,
@@ -236,11 +220,6 @@ async function runTurn(sid: string, userText: string, opts: SendOptions): Promis
             await execAgentTool(sid, call, ws, controller.signal, isChild);
             return;
           }
-          // A model can call a tool it wasn't advertised (hallucinated name) — the capability gate must hold at run time too.
-          if (!allowedByCapability(call.name as ToolName, cfg)) {
-            bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: `tool "${call.name}" is not available for this model.` });
-            return;
-          }
           const mode = effectiveMode(ws, agent, call.name as ToolName);
           if (mode === 0) {
             const why = !ws
@@ -260,22 +239,15 @@ async function runTurn(sid: string, userText: string, opts: SendOptions): Promis
           }
           let result: ToolResult;
           try {
-            const name = call.name as ToolName;
-            const rendererTool = RENDERER_TOOLS[name];
-            if (rendererTool) {
-              const args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
-              result = await rendererTool.execute(args, {
-                cwd: ws?.root ?? "",
-                config: toolConfig,
-                client,
-                signal: controller.signal,
-              });
-            } else if (toolCtx) {
+            const general = await runGeneralTool(call, ctx, ws?.root ?? "", controller.signal);
+            if (general) {
+              result = general;
+            } else if (wire) {
               // The signal can't cross IPC — on abort send tools:cancel so main aborts the call's controller (ADR-0014).
               const onAbort = (): void => void harness!.tools.cancel(call.id);
               controller.signal.addEventListener("abort", onAbort, { once: true });
               try {
-                result = await harness!.tools.exec(call, toolCtx);
+                result = await harness!.tools.exec(call, wire);
               } finally {
                 controller.signal.removeEventListener("abort", onAbort);
               }

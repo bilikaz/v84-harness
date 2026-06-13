@@ -1,4 +1,4 @@
-import type { CallTarget, ModelInfo } from "../../types.ts";
+import type { ConfigLLM, ModelInfo } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
 import type { ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
 import { parseSSE } from "../../sse.ts";
@@ -16,7 +16,7 @@ function keyParam(cfg: { apiKey?: string }, sep: "?" | "&"): string {
   return cfg.apiKey ? `${sep}key=${encodeURIComponent(cfg.apiKey)}` : "";
 }
 
-function reasoningFields(target: CallTarget): Record<string, unknown> {
+function reasoningFields(target: ConfigLLM): Record<string, unknown> {
   const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
   const budget = target.model.thinkingBudget && target.model.thinkingBudget > 0 ? target.model.thinkingBudget : -1;
@@ -60,7 +60,7 @@ function toGeminiContents(messages: ChatMessage[]): unknown[] {
 }
 
 export async function* streamGemini(
-  target: CallTarget,
+  target: ConfigLLM,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,

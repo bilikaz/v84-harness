@@ -1,6 +1,6 @@
 // Provider base — every provider IS one of these.
 
-import type { CallContext, ResponseHandler, CallTarget, Provider } from "../types.ts";
+import type { CallContext, ResponseHandler, ConfigLLM, Provider } from "../types.ts";
 import { trimBase } from "../../lib/format.ts";
 
 export interface RequestOpts {
@@ -12,7 +12,7 @@ export interface RequestOpts {
 
 export abstract class BaseProvider implements Provider {
   constructor(
-    protected target: CallTarget,
+    protected target: ConfigLLM,
     protected ctx: CallContext,
   ) {
     this.init();
