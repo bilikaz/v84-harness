@@ -3,7 +3,6 @@ import type { FileAttachment, MediaRef } from "./types.ts";
 
 const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context
 
-// Cap values come from core/config via the caller — lib never imports core.
 export interface AttachmentLimits {
   imageMaxDim: number; // model pixel cap (already resolved via effectiveImageMaxDim)
   imageMaxBytes: number; // transport bounds (config media.*Bytes)
@@ -11,7 +10,6 @@ export interface AttachmentLimits {
   videoMaxBytes: number;
 }
 
-// Images over the pixel cap are downscaled (reported in `resized`); media over the byte caps is SKIPPED (reported in `skipped`), not resized.
 export function readAttachments(
   list: FileList,
   limits: AttachmentLimits,

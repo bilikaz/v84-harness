@@ -33,7 +33,6 @@ async function detect(): Promise<Storage> {
   throw new Error("no storage backend available");
 }
 
-// Detection runs once per session; every consumer awaits the same selection.
 let selected: Promise<Storage> | null = null;
 
 export function detectStorage(): Promise<Storage> {

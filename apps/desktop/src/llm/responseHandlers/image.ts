@@ -1,5 +1,4 @@
-// The image payload, as produced — the image provider already fetched and
-// normalized it (b64 + mime); this handler is the typed door for callers.
+// Typed door returning the image provider's already-normalized payload (b64 + mime).
 
 import type { ResponseHandler, MediaOut } from "../types.ts";
 

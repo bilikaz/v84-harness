@@ -1,12 +1,4 @@
-// The abstract text provider — the shared chat flow every text/<type>.ts
-// Provider extends: transport retry (withRetry re-sends the step on lost
-// connections / 429 / 5xx, emitting "retry" so consumers discard partial
-// output), inline-think demuxing, and handing the handler the LIVE event
-// stream — text deltas, thinking, tool calls, usage, retries — so a streaming
-// handler can land them where they need to go as they arrive. The handler's
-// return value is the call's return value. Validation heal stays one level up
-// (the client's cycle). Subclasses are pure wire-format mappers: same
-// ChatMessage/ToolSpec in, same StreamEvent out (`stream`).
+// Abstract text provider — subclasses implement stream() wire mapping.
 
 import type { ResponseHandler, StreamEvent, ToolSpec } from "../../types.ts";
 import { withRetry } from "../../transport.ts";
@@ -31,13 +23,8 @@ export abstract class BaseTextProvider extends BaseProvider {
     return this.ctx.tools?.length ? this.ctx.tools : undefined;
   }
 
-  // Some models (DeepSeek-R1 distills, Qwen, local llama.cpp builds) emit
-  // reasoning as inline `<think>…</think>` in the text channel rather than via
-  // a reasoning field. These split the text stream into text/thinking events,
-  // holding back any trailing chunk that could be a partial tag until the
-  // next delta.
-  private static readonly OPEN_TAGS = ["<think>", "<thinking>"];
-  private static readonly CLOSE_TAGS = ["</think>", "</thinking>"];
+  private static readonly OPEN_TAGS = [" thinking", "<thinking>"];
+  private static readonly CLOSE_TAGS = [" response", "</thinking>"];
 
   private static couldBePrefix(s: string, tags: readonly string[]): boolean {
     for (const t of tags) if (t.startsWith(s)) return true;
@@ -88,7 +75,6 @@ export abstract class BaseTextProvider extends BaseProvider {
       if (evt.type === "text") {
         yield* processText(evt.delta);
       } else if (evt.type === "retry") {
-        // The attempt's output is being discarded — drop our half-parsed state too.
         inThink = false;
         pending = "";
         yield evt;

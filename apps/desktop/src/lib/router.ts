@@ -1,8 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-// Minimal hash router. The route is everything after "#" (e.g. "settings/provider").
-// Navigating a route is what shows/runs a contribution — registry entries carry
-// their own `route`.
+// Minimal hash router.
 
 function getRoute(): string {
   return window.location.hash.replace(/^#\/?/, "");

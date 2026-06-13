@@ -7,10 +7,6 @@ import { useActiveWorkspaceId } from "../../core/workspaces.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 
-// Right-panel contribution: the agent library, filtered to what the current
-// context can run — with "Chat" selected (no workspace) the workspace agents
-// are hidden, since there is nothing to bind them to. Row click opens the
-// primed run page; play fires the agent immediately with its saved template.
 export function AgentsPanel() {
   const { t } = useTranslation();
   const agents = useAgents();
@@ -20,11 +16,9 @@ export function AgentsPanel() {
 
   function addNew() {
     const id = createAgent(t("agents.untitled"));
-    navigate(`agents/${id}/edit`); // a fresh agent opens straight into edit mode
+    navigate(`agents/${id}/edit`);
   }
 
-  // Immediate run with the saved template; an agent without one opens the run
-  // page instead (there is nothing to send yet).
   function play(agent: Agent) {
     if (!agent.user.trim()) {
       navigate(`agents/${agent.id}`);

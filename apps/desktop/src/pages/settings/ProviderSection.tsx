@@ -16,7 +16,6 @@ export function ProviderSection() {
 
   const hasModels = (cfg.models?.length ?? 0) > 0;
   const appCfg = getAppConfig();
-  // System reserve can't go below the configured fraction of the context window.
   const minReserve = cfg.model.contextLength ? Math.floor(cfg.model.contextLength * appCfg.session.reserveMinFraction) : 0;
   const reserveBelowMin = minReserve > 0 && !!cfg.contextReserve && cfg.contextReserve < minReserve;
 
@@ -124,7 +123,7 @@ export function ProviderSection() {
         </select>
       </Row>
 
-      {/* Anthropic ignores the token budget (effort + adaptive thinking, ADR-0006), so it's hidden there. */}
+      {/* Anthropic ignores the token budget (ADR-0006) — hidden. */}
       {cfg.model.reasoningEffort && cfg.model.reasoningEffort !== "off" && cfg.provider.type !== "anthropic" && (
         <Row label={t("provider.thinkingBudget")}>
           <input

@@ -1,4 +1,4 @@
-// Generic typed event bus for app-domain events — features declare theirs by augmenting BusEvents ("<domain>:<event>" keys).
+// Generic typed event bus for app-domain events — features augment BusEvents.
 
 import { errorMessage } from "./errors.ts";
 import { rootLog } from "./logger/index.ts";

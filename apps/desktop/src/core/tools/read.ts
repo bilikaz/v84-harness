@@ -7,8 +7,6 @@ import { errorMessage } from "../../lib/errors.ts";
 
 const MAX_LINES = 300;
 
-// Read a file. Paths are workspace-relative ("/" = the workspace root). Returns
-// the first 300 numbered lines + a sed footer for the next chunk on long files.
 export const readTool: Tool = {
   schema: {
     type: "function",

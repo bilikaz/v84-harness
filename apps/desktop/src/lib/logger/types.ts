@@ -1,7 +1,4 @@
-// Logger port (conventions/logging.md): structured events with dot-scoped
-// children. Components depend on this interface; sinks are adapters (console
-// for DevTools, memory for tests). Events are dot-scoped snake_case with a flat
-// data object — never values interpolated into the event string.
+// Logger port: events are dot-scoped snake_case with a flat data object — never values interpolated into the event string.
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogEntry {
@@ -19,8 +16,6 @@ export interface Logger {
   child(scope: string): Logger;
 }
 
-// The scope-join format every sink must reproduce identically (the essential-
-// duplication case from conventions/consolidation.md — defined once, here).
 export function joinScope(parent: string, scope: string): string {
   return parent ? `${parent}.${scope}` : scope;
 }

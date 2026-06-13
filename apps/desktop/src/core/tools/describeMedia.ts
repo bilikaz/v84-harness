@@ -115,7 +115,6 @@ function makeDescribeTool(opts: {
         return {
           ok: true,
           output: answer || "(the recognition model returned an empty answer)",
-          // The driver applies the usual input-capability guard before the chat model sees the preview.
           ...(kind === "image" ? { images: [preview] } : { video: [preview] }),
         };
       } catch (e) {

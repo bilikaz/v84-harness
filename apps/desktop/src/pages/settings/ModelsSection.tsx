@@ -26,12 +26,9 @@ import {
 } from "../../core/tools/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
 
-// Settings → Models: use-case slot assignments + the provider/model pool; tools go inert when their slot is unassigned.
-
 const FLAVORS: readonly MediaApiFlavor[] = ["openai", "generate"];
 const FLAVOR_KEY: Record<MediaApiFlavor, string> = { openai: "apiOpenai", generate: "apiGenerate" };
 
-// All card fields share one width so a card reads as a single column.
 const FIELD = "w-80";
 
 export function ModelsSection() {
@@ -239,7 +236,6 @@ function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => 
   );
 }
 
-// A bare provider's implicit default model — created on first interaction.
 function GenerateSeedRow({ p }: { p: MediaProvider }) {
   const { t } = useTranslation();
   return (

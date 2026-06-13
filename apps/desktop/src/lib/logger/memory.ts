@@ -1,5 +1,4 @@
-// Memory sink — records entries for structural test assertions
-// (conventions/logging.md rule 6). Children share the parent's entries array.
+// Memory sink — records entries for structural test assertions; children share the parent's entries array.
 import { joinScope, type LogEntry, type Logger, type LogLevel } from "./types.ts";
 
 export class MemoryLogger implements Logger {

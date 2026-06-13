@@ -7,6 +7,11 @@ procedures don't land here. The map of current structure is
 [../ARCHITECTURE.md](../ARCHITECTURE.md); portable rules are
 [../conventions/](../conventions/).
 
+A fully-superseded ADR that nothing current depends on is moved to [archive/](archive/),
+leaving a same-name stub at its original path that redirects to the archived original and
+the successor (documentation.md rule 2) — inbound links keep resolving, the body stops
+loading. Its index row below stays.
+
 | ADR | Decision | Status |
 | --- | --- | --- |
 | [0000](0000-adr-scope.md) | What lands in this log: architectural decisions only | accepted |
@@ -21,12 +26,12 @@ procedures don't land here. The map of current structure is
 | [0009](0009-i18n.md) | i18n via i18next, en/lt key parity | accepted |
 | [0010](0010-adopt-shared-conventions.md) | Adopt the shared conventions set (with recorded deviations) | accepted |
 | [0011](0011-contribute-ui-conventions.md) | Contribute UI-layer conventions to the shared set | accepted |
-| [0012](0012-sessions-dual-tier-persistence.md) | Sessions dual-tier persistence (localStorage + IDB) | superseded by 0021 |
+| [0012](0012-sessions-dual-tier-persistence.md) | Sessions dual-tier persistence (localStorage + IDB) | superseded by 0021 → archived |
 | [0013](0013-approval-promise-bridge.md) | Approval Promise bridge driver ↔ UI | accepted |
 | [0014](0014-stop-semantics-and-tool-cancellation.md) | Stop semantics + tool cancellation over IPC | accepted |
 | [0015](0015-prompt-assets.md) | Prompt assets: English-only `pt()` catalog, outside i18n | accepted |
 | [0016](0016-workspace-isolation-field.md) | Workspace isolation field (`worktree` \| `direct`) | **debatable — no concept yet** |
-| [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted |
+| [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted (first-paint clause superseded by 0021) |
 | [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted |
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
@@ -36,7 +41,7 @@ procedures don't land here. The map of current structure is
 | [0024](0024-agent-runs-through-composer.md) | Agent runs go through the composer (pseudo-session priming) | accepted |
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
 | [0026](0026-agent-session-placement-vs-capability.md) | Agent sessions: placement follows launch context, capability masked separately + unlink | accepted |
-| [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | proposed |
+| [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | accepted |
 | [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected ConfigSource; heal cycle; tool calls stay driver-side | accepted |
 | [0029](0029-provider-classes-folder-factory.md) | Provider classes resolved by the folder-layout factory; response handlers are response-side only | accepted |
 | [0030](0030-unified-call-target.md) | One model-data format: `CallTarget {provider, model}` held end to end (stores included, no migrations) | accepted |

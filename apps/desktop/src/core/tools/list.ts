@@ -5,8 +5,7 @@ import { cap } from "./shared.ts";
 import { toReal } from "./paths.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
-// List a directory's entries. Directories get a trailing "/". Paths stay
-// workspace-relative; "/" is the workspace root.
+// List a directory's entries; paths are workspace-relative, "/" is the workspace root.
 export const listTool: Tool = {
   schema: {
     type: "function",

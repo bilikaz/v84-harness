@@ -1,36 +1,25 @@
 import { createStore } from "../lib/store.ts";
 import { ALL_TOOLS, type GatedTool, type ToolMode } from "./tools/types.ts";
 
-// Agents store — reusable playbooks. Each is a name + description plus a pair of
-// markdown documents: a `system` (how to behave / standing instructions) and a
-// `user` (the task to run). Executing one spins up a session with system as the
-// system prompt and user as the first message. The description is a short,
-// plain-language summary of what the agent does — surfaced to the ListAgents
-// tool so one agent can pick and orchestrate others.
+// Agents store — reusable playbooks (system + user markdown) executed as sessions.
 const KEY = "v84-harness:agents";
 const LEGACY_KEY = "v84-harness:procedures"; // pre-rename storage; migrated on first load
 
-// An agent's tool CEILING. The effective per-call permission is the STRICTER of
-// this and the workspace policy (min) — an agent can restrict what a workspace
-// grants (a read-only reviewer in a write-enabled workspace) but never extend
-// it. All-auto by default: an unconfigured agent simply inherits the workspace.
+// An agent's tool CEILING — the effective per-call permission is the STRICTER of
+// this and the workspace policy (min); an agent can restrict but never extend it.
 export type AgentTools = Record<GatedTool, ToolMode>;
 export const AGENT_TOOLS_DEFAULT: AgentTools = Object.fromEntries(ALL_TOOLS.map((t) => [t, 2])) as AgentTools;
 
 export interface Agent {
   id: string;
   name: string;
-  description: string; // short summary — what this agent does (used by orchestration)
-  system: string; // markdown
-  user: string; // markdown — the DEFAULT task for manual runs; orchestrators supply their own
-  workspace: boolean; // true = runs bound to a workspace (file tools); false = pure chat, never gets file access
-  tools: AgentTools; // per-tool ceiling within the workspace policy (workspace agents only)
+  description: string;
+  system: string;
+  user: string;
+  workspace: boolean;
+  tools: AgentTools;
 }
 
-// First-run library: one of each kind — a chat agent you can fire anywhere for
-// a quick smile, and a workspace agent that shows off the file tools. The
-// reviewer's tool ceiling makes its read-only promise REAL: writes and shell
-// are off no matter what the workspace grants.
 const SEED: Agent[] = [
   {
     id: "joke-teller",
@@ -62,9 +51,6 @@ const SEED: Agent[] = [
   },
 ];
 
-// Coerce a persisted entry into a complete Agent — guards against partial /
-// older-shape records (missing name/description/system/user) that would
-// otherwise surface as undefined fields after a reload.
 function normalize(p: Partial<Agent>): Agent {
   return {
     id: p.id ?? crypto.randomUUID(),
@@ -90,14 +76,12 @@ function read(key: string): Agent[] | null {
   return null;
 }
 
-// Initial read with one-time migration from the pre-rename "procedures" key.
 const store = createStore<Agent[]>(KEY, SEED, () => read(KEY) ?? read(LEGACY_KEY));
 
 export function getAgents(): Agent[] {
   return store.get();
 }
 
-// Add a blank agent and return its id (for immediate editing).
 export function createAgent(name: string): string {
   const a: Agent = {
     id: crypto.randomUUID(),
@@ -116,10 +100,6 @@ export function getAgent(id: string): Agent | undefined {
   return store.get().find((a) => a.id === id);
 }
 
-// The agents runnable in a given context: a workspace session can run anything;
-// a pure-chat context (no workspace) can only run chat agents — there is
-// nothing to bind a workspace agent to. Used by the right-panel list and the
-// sub-agent catalog alike.
 export function agentsForContext(hasWorkspace: boolean): Agent[] {
   return store.get().filter((a) => hasWorkspace || !a.workspace);
 }

@@ -1,11 +1,7 @@
 import type { ToolCall } from "../llm/types.ts";
 import { createStore } from "../lib/store.ts";
 
-// Tool-approval bridge between the (React-free) driver and the UI. The driver
-// calls `requestApproval` and awaits the promise; the ApprovalModal renders the
-// pending request and resolves it when the user allows/denies. A queue, so
-// concurrent sessions (and parallel calls within a step) can each have a
-// request outstanding.
+// Tool-approval bridge between the (React-free) driver and the UI.
 
 export interface PendingApproval {
   id: string;
@@ -29,8 +25,7 @@ export function resolveApproval(id: string, ok: boolean): void {
   store.set(store.get().filter((p) => p.id !== id));
 }
 
-// Deny everything a session still has queued. Called on stop/delete — a Promise
-// nobody can answer anymore must settle, or the driver's await hangs forever.
+// A queued Promise nobody can answer anymore must settle, or the driver's await hangs forever.
 export function denyApprovalsForSession(sessionId: string): void {
   const pending = store.get();
   const mine = pending.filter((p) => p.sessionId === sessionId);
@@ -47,8 +42,7 @@ export function usePendingApprovals(): PendingApproval[] {
   return store.use();
 }
 
-// HMR: settle (deny) anything pending — the resolvers belong to the old module
-// instance and would otherwise leak as forever-pending Promises.
+// HMR: resolvers belong to the old module instance and would otherwise leak as forever-pending Promises.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     store.get().forEach((p) => p.resolve(false));

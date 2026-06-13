@@ -28,7 +28,19 @@ adopted; conventions state *what the rule is now*; the map shows *where things a
 2. **ADR hygiene:** one decision per ADR; supersede, don't rewrite (exception: a
    never-published doc set may be cleaned wholesale — history that was never shared
    isn't history). Convention adoption is one ADR pointing at `conventions/`, not a
-   restatement.
+   restatement. **Superseded ADRs are archived only once orphaned.** Supersession is
+   rarely total, so a superseded ADR stays in the active log until nothing current
+   leans on it. The gate: it is *fully* superseded, the successor has **carried
+   forward everything still operative**, and no current ADR still depends on a clause
+   of it (a surviving dependency means the supersession is only partial — it stays
+   put). Once orphaned, **relocate the record byte-identically** (move, never
+   rewrite — relocation keeps the dated entry intact) to `adr/archive/`, and **leave
+   a stub at the original path under the same filename**, pointing to the archived
+   original and to the successor. The stub is what lets inbound links keep resolving
+   with **zero relinking** — repointing every citation across the log is the
+   expensive, error-prone path the stub avoids, and it only gets worse as the log
+   grows. The index row stays. Archived ADRs aren't loaded by default; they exist for
+   the rare audit that needs the original why.
 3. **Documentation lives in documentation, not code.** Over-commenting steals
    context: source files are read whole, by people and by models, and every
    comment line spends working memory the task needed. Anything that documents —

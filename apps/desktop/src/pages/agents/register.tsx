@@ -6,13 +6,10 @@ import { SubAgentCleanup } from "./SubAgentCleanup.tsx";
 import { AgentRunView } from "./AgentRunView.tsx";
 import { AgentEditView } from "./AgentEditView.tsx";
 
-// Agents contribute the right-panel library list and the main-region routes:
-//   agents/<id>       — primed run page (a pseudo session; send materializes it)
-//   agents/<id>/edit  — the playbook editor
 function AgentsRoute() {
   const route = useRoute();
   const [, id, mode] = route.split("/");
-  if (!id) return null; // bare "agents" — nothing selected; the panel is the entry point
+  if (!id) return null;
   return mode === "edit" ? <AgentEditView id={id} /> : <AgentRunView id={id} />;
 }
 

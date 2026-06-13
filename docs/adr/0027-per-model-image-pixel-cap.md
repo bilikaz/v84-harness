@@ -1,6 +1,6 @@
 # ADR-0027: Images are model-checked by dimensions; bytes become transport bounds
 
-Status: proposed
+Status: accepted
 Date: 2026-06-11
 
 ## Context

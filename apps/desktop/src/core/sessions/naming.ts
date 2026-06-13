@@ -12,11 +12,8 @@ const log = rootLog.child("session.naming");
 
 const TITLE_MAX_CHARS = 80;
 
-// Auto-naming service — self-contained: owns both the logic and its
-// subscription. When a brand-new session finishes its first exchange, resend the
-// real conversation (system + the actual user/assistant turns) plus a final
-// user message asking for a title, then assign the reply. Reasoning-off with a
-// tiny cap; it does NOT go through the driver / mark the session as streaming.
+// Auto-naming service. Does NOT go through the driver / mark the session as
+// streaming.
 async function nameSession(sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session) {
@@ -35,8 +32,7 @@ async function nameSession(sid: string): Promise<void> {
   try {
     // reasoning_effort "off" doesn't actually stop some models (e.g. Holo) from
     // thinking, so give a real budget — thinking + the short title must both fit,
-    // or the title comes back empty. The demux drops <think>; only the answer text
-    // becomes the title.
+    // or the title comes back empty.
     ({ text: title, thinkingChars } = await client.call({
       service: "main",
       messages,
@@ -64,5 +60,4 @@ const off = bus.on("message:done", (e) => {
   if (e.firstExchange && e.autoName && !e.errored) void nameSession(e.sessionId);
 });
 
-// Tear down on HMR so the subscription isn't duplicated on a hot reload.
 if (import.meta.hot) import.meta.hot.dispose(() => off());

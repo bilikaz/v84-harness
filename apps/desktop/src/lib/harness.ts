@@ -1,4 +1,4 @@
-// Renderer-side accessor for the `window.harness` preload bridge — undefined in the browser-only dev server, so callers gate on isElectron().
+// Renderer accessor for the `window.harness` preload bridge — undefined in the browser-only dev server; gate on isElectron().
 
 import type { HarnessApi } from "../bridge.ts";
 
@@ -15,7 +15,7 @@ export function isElectron(): boolean {
   return harness?.isElectron === true;
 }
 
-// Throws in the browser so the call site fails loudly rather than silently no-op'ing.
+// Throws in the browser rather than silently no-op'ing.
 export function requireHarness(): HarnessApi {
   if (!harness) {
     throw new Error("harness bridge unavailable — this feature requires the Electron app");

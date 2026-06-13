@@ -2,10 +2,7 @@ import { scope } from "../../lib/bus.ts";
 import type { StreamUsage, ToolCall } from "../../llm/types.ts";
 import type { FileAttachment, MediaRef } from "./types.ts";
 
-// The session domain's events. Each "session:<sub>" key has a defined payload
-// type — "what is sent for what event". Registered on the bus via declaration
-// merging, so bus.emit/on are type-checked against these everywhere. When other
-// domains arrive (api, tools, sync) they add their own *:events.ts the same way.
+// The session domain's events, registered on the bus via declaration merging.
 
 export interface TurnStart {
   sessionId: string;
@@ -46,16 +43,11 @@ export interface TurnEnd {
   sessionId: string;
   errored: boolean;
 }
-// The model asked to call tools → attach them to the current assistant message.
 export interface ToolCalls {
   sessionId: string;
   calls: ToolCall[];
 }
-// A tool returned → append a tool-result message answering that call. `images`
-// are media the tool produced (e.g. GenerateImage) — shown in its tool card.
-// `childSessionIds` are a RunAgent result's links to the child sessions it ran
-// (one per run in the call) — display-only (the model gets the answer text,
-// never session ids).
+// `childSessionIds` are display-only — the model gets the answer text, never session ids.
 export interface ToolResultEvt {
   sessionId: string;
   toolCallId: string;
@@ -64,35 +56,25 @@ export interface ToolResultEvt {
   video?: MediaRef[];
   childSessionIds?: string[];
 }
-// A RunAgent call spawned a child session → published immediately (before the
-// run completes) so the tool card can open the live run. One event per child;
-// a multi-run call emits several with the same toolCallId.
+// One event per child; a multi-run call emits several with the same toolCallId.
 export interface ToolChild {
   sessionId: string;
   toolCallId: string;
   childSessionId: string;
 }
-// Tool-produced media (generated or loaded) fed back as a hidden user turn so
-// a vision agent can inspect it. The driver only includes what the model's
-// declared input capabilities accept.
 export interface MediaFeedback {
   sessionId: string;
   images?: MediaRef[];
   video?: MediaRef[];
 }
-// Open a fresh assistant message for the next model turn in the loop.
 export interface AssistantOpen {
   sessionId: string;
 }
-// A validation heal fired → inject a hidden correction turn and let the model
-// retry into a fresh assistant message.
 export interface Heal {
   sessionId: string;
   correction: string;
 }
-// Transport retry fired mid-step (llm/transport.ts) → the step is being
-// re-sent from scratch, so wipe the partial output off the streaming assistant
-// placeholder.
+// The step is being re-sent from scratch — wipe the partial output off the streaming placeholder.
 export interface StreamRetry {
   sessionId: string;
   message: string;
@@ -118,6 +100,5 @@ declare module "../../lib/bus.ts" {
   }
 }
 
-// The session-scoped bus: emit/on with sub-events ("turn:start", "text", …);
-// the "session:" prefix is applied for you. The driver and listeners use this.
+// Emit/on with sub-events ("turn:start", "text", …); the "session:" prefix is applied for you.
 export const sessionBus = scope("session");

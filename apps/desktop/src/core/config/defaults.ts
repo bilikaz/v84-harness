@@ -1,18 +1,5 @@
-// App tunables — ONE place for every "magic number" that used to live as a
-// scattered constant (imageResize's default dim, mediaCaps' byte bounds, the
-// sessions context reserve, the video poll loop, the generation quality
-// presets). Follows conventions/configuration.md: typed config, exported
-// defaults, overrides merged in one loader (core/config/index.ts) where every
-// value is validated.
-//
-// PURE DATA — no imports, no platform APIs — so Electron main (core/tools run
-// there) and the renderer read the same defaults. Main never sees the
-// renderer's override store; values that must follow overrides into a tool are
-// threaded through ToolCtx, the rest are defaults-only by design (transport
-// bounds, not user settings).
+// App tunables — typed config defaults; PURE DATA so main and renderer read the same values.
 
-// Render quality tiers the generation tools expose to the model — users and
-// the model never see raw steps/guidance.
 export type Quality = "low" | "good" | "super";
 
 // guidance stays ~6 across all tiers (high guidance DEGRADES, it's not a

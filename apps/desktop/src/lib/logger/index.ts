@@ -1,6 +1,4 @@
-// Public face of the logger (a barrel) plus the app's root logger instance.
-// Modules derive their scope: `const log = rootLog.child("session.naming")`.
-// The LLM layer keeps its own debug-gated logger in providers/debug.ts.
+// Logger barrel — modules derive their scope via `rootLog.child(...)`.
 import { ConsoleLogger } from "./console.ts";
 
 export type { Logger, LogEntry, LogLevel } from "./types.ts";

@@ -5,7 +5,7 @@ import { type Tool, type ToolResult } from "./types.ts";
 import { cap } from "./shared.ts";
 import { rootReal } from "./paths.ts";
 
-// Bash (gated — a shell can't be path-confined): rewrites workspace-absolute "/" paths to real ones before running, and scrubs the real root back to "/" in output so no host path leaks.
+// Bash (gated — a shell can't be path-confined): rewrites workspace-absolute "/" paths to real ones, scrubs the real root back to "/" in output so no host path leaks.
 export const bashTool: Tool = {
   schema: {
     type: "function",

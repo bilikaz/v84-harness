@@ -33,13 +33,10 @@ export function useCompacting(): boolean {
 export function useStreamingIds(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, getStreamingIds, getStreamingIds);
 }
-// In-flight RunAgent links (toolCallId → child session ids) — the live half of
-// the tool card's "view run" doors; settled links ride the tool-result message.
 export function useChildRuns(): Record<string, string[]> {
   return useSyncExternalStore(subscribe, getChildRuns, getChildRuns);
 }
-// True once IndexedDB hydration finishes — gate UI on this to avoid the brief
-// stale-localStorage flash on first paint if needed.
+// True once IndexedDB hydration finishes — gate UI on this to avoid the stale-localStorage flash on first paint.
 export function useHydrated(): boolean {
   return useSyncExternalStore(subscribe, getHydrated, getHydrated);
 }

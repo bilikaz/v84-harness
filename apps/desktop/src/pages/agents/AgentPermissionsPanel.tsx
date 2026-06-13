@@ -9,21 +9,13 @@ import { ALL_TOOLS, type ToolMode } from "../../core/tools/types.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { cn } from "../../lib/cn.ts";
 
-// Right-panel contribution: rendered ONLY while the active session is
-// agent-based (agentId linked) — a plain session never shows it. One line says
-// the agent's permissions govern this session; the accordion expands to the
-// per-tool effective modes (the same min(workspace grant, agent ceiling) the
-// turn loop uses — sessionToolModes). Unlink converts the session to a plain
-// one (workspace/chat permissions from the next turn) and the card disappears
-// with the link. A stale link (agent deleted) is announced the same way: plain
-// workspace permissions already apply, unlink just clears the leftover.
 const MODE_KEY: Record<ToolMode, string> = { 0: "workspace.modeOff", 1: "workspace.modeAsk", 2: "workspace.modeAuto" };
 
 export function AgentPermissionsPanel() {
   const { t } = useTranslation();
   const session = useActiveSession();
   const agents = useAgents();
-  useWorkspaces(); // a workspace policy edit changes the effective modes below
+  useWorkspaces();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
 
@@ -60,8 +52,6 @@ export function AgentPermissionsPanel() {
               </li>
             ))}
           </ul>
-          {/* No unlink on a sub-agent run: it's read-only — there is no next
-              message for the converted permissions to apply to. */}
           {session.parentId ? null : confirm ? (
             <div className="mt-3 rounded-lg bg-neutral-50 p-3">
               <p className="text-xs text-neutral-700">{t("agents.confirmUnlink")}</p>

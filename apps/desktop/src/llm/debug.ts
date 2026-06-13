@@ -1,7 +1,4 @@
-// LLM debug logging. On by default in dev; toggle at runtime with
-// `setLlmDebug(true/false)` (persists to localStorage) or in the console via
-// `localStorage["v84-harness:llm-debug"] = "1" | "0"`. Gated so production stays
-// quiet unless explicitly turned on.
+// LLM debug logging. On by default in dev.
 import { ConsoleLogger } from "../lib/logger/index.ts";
 
 const KEY = "v84-harness:llm-debug";
@@ -31,6 +28,4 @@ export function llmDebugEnabled(): boolean {
   return enabled;
 }
 
-// The LLM layer's logger — `debug` events are gated by the flag above, so
-// request/response dumps stay quiet unless LLM debug logging is on.
 export const llmLog = new ConsoleLogger("llm", { isDebugEnabled: llmDebugEnabled });

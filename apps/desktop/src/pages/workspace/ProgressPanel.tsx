@@ -63,12 +63,11 @@ function ContextWindow({ used, total, limit, sid }: { used: number; total?: numb
   );
 }
 
-// Summarize = compact the conversation to free context; turns red at 70% usage.
 function SummarizeControl({ sid, ratio }: { sid: string; ratio: number }) {
   const { t } = useTranslation();
   const compacting = useCompacting();
   const [confirm, setConfirm] = useState(false);
-  const hot = ratio >= 0.7;
+  const hot = ratio >= 0.7; // turn the control red once context is 70% full
   return (
     <>
       <button

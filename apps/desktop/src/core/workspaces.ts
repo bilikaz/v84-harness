@@ -1,11 +1,7 @@
 import { createStore } from "../lib/store.ts";
 import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/types.ts";
 
-// Workspace store — a workspace is a first-class record: a folder (the agent's
-// root) + name + per-workspace settings. Sessions LINK to a workspace via
-// `session.workspaceId` (the workspace "owns" its sessions as a derived query).
-// `activeWorkspaceId` scopes the sidebar's session list; null = the "no
-// workspace / chat" group (tool-less sessions).
+// Workspace store — a folder (the agent's root) + name + per-workspace settings.
 const KEY = "v84-harness:workspaces";
 
 export type { GatedTool, ToolMode, ToolName };
@@ -15,11 +11,11 @@ export type Isolation = "worktree" | "direct";
 export interface Workspace {
   id: string;
   name: string;
-  root: string; // absolute host path (from harness.pickFolder)
-  defaultModelId?: string; // which model new sessions here default to
-  isolation: Isolation; // worktree-per-session vs. work directly in the folder
-  instructions?: string; // optional per-project system prompt
-  tools: Record<GatedTool, ToolMode>; // the 0/1/2 permission map (gated tools only)
+  root: string; // absolute host path
+  defaultModelId?: string;
+  isolation: Isolation;
+  instructions?: string;
+  tools: Record<GatedTool, ToolMode>; // gated tools only
 }
 
 interface WsState {
@@ -27,7 +23,6 @@ interface WsState {
   activeId: string | null;
 }
 
-// A new workspace's settings before the user tweaks them.
 export function defaultWorkspace(root: string, name: string): Workspace {
   return {
     id: crypto.randomUUID(),
@@ -82,7 +77,6 @@ export function getActiveWorkspace(): Workspace | undefined {
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────────
-// Add a fully-formed workspace (built + edited in the add popup), make it active.
 export function addWorkspace(ws: Workspace): void {
   store.set({ workspaces: [...store.get().workspaces, ws], activeId: ws.id });
 }

@@ -4,8 +4,7 @@ import { type Tool } from "./types.ts";
 import { toReal } from "./paths.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
-// Exact string-replace in a file. `old_string` must be unique unless
-// `replace_all` is set — mirrors the Claude-Code Edit contract.
+// Exact string-replace in a file. `old_string` must be unique unless `replace_all` is set.
 export const editTool: Tool = {
   schema: {
     type: "function",

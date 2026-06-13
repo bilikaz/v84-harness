@@ -3,9 +3,7 @@ import { ShieldAlert } from "lucide-react";
 import { Modal } from "./Modal.tsx";
 import { resolveApproval, usePendingApprovals } from "../core/approvals.ts";
 
-// Renders the next pending tool approval (e.g. a Bash command the model wants to
-// run). Allow / Deny resolve the driver's awaited promise. Closing (X / Esc /
-// backdrop) counts as Deny.
+// Shows the next pending tool approval (Allow/Deny). Closing (X/Esc/backdrop) counts as Deny.
 export function ApprovalModal() {
   const pending = usePendingApprovals();
   const a = pending[0];

@@ -1,7 +1,6 @@
 import { cn } from "../lib/cn.ts";
 
-// Inline rename input: Enter commits, Escape cancels, blur commits. Shared by
-// the session-title rename (header) and the sidebar's session rename.
+// Inline rename input: Enter/blur commits, Escape cancels.
 export function InlineEdit(props: {
   value: string;
   onChange: (v: string) => void;

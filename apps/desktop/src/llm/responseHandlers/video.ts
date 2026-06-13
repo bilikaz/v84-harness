@@ -1,5 +1,4 @@
-// The clip payload, as produced — the video provider owns the whole jobs flow
-// (submit → poll → download) and hands the finished clip here.
+// Returns the finished clip payload produced by the video provider.
 
 import type { ResponseHandler, MediaOut } from "../types.ts";
 

@@ -19,25 +19,17 @@ import {
   type SessionsIndex,
 } from "./persistence.ts";
 
-// Session store — the single source of truth for multi-session state (sidebar
-// list, chat view, right-panel progress). Plain external store; React binds via
-// ./hooks.ts.
-//
-// Persistence is GRANULAR (see ./persistence.ts): the index (metas + activeId)
-// and each session's messages are separate keys, media blobs separate again —
-// a write costs what changed, never the whole profile. Boot reads the index +
-// the active session; other sessions lazy-load on first open (ensureLoaded).
-//
-// This module owns STATE + the operations that change it. The turn loop lives
-// in ./driver.ts and the bus reactions in ./listeners.ts — they call in here.
+// Session store — the single source of truth for multi-session state. Plain
+// external store; React binds via ./hooks.ts. Owns STATE + the operations that
+// change it.
 const log = rootLog.child("session.store");
 
 // The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017).
 const storageReady = detectStorage();
 
-// What a caller may set on a fresh session. agentId stamps an agent run (the
-// agent's output contract then applies to every turn); parentId marks a
-// sub-agent run spawned by another session's RunAgent call.
+// agentId stamps an agent run (the agent's output contract then applies to
+// every turn); parentId marks a sub-agent run spawned by another session's
+// RunAgent call.
 export interface SessionInit {
   title?: string;
   system?: string;
@@ -46,8 +38,7 @@ export interface SessionInit {
   parentId?: string;
 }
 
-// Build a fresh session. Used for "new session" and the empty-state. `loaded`
-// is true: a session born in memory has nothing to lazy-load.
+// `loaded` is true: a session born in memory has nothing to lazy-load.
 function makeSession(init: SessionInit = {}): Session {
   return {
     id: crypto.randomUUID(),
@@ -62,27 +53,14 @@ function makeSession(init: SessionInit = {}): Session {
   };
 }
 
-// Until hydration completes the store holds one fresh placeholder session —
-// there is no synchronous cache anymore (the old localStorage first-paint
-// cache was permanently stale for big profiles and cost a sync multi-MB write
-// per persist; a one-frame skeleton behind useHydrated() replaces it).
+// Until hydration completes the store holds one fresh placeholder session.
 const placeholder = makeSession();
 let sessions: Session[] = [placeholder];
 let activeId: string = placeholder.id;
-// Sessions currently receiving a stream — multiple at once (per-session, not
-// global). A fresh Set on every change so useSyncExternalStore re-renders.
+// A fresh Set on every change so useSyncExternalStore re-renders.
 let streamingIds: Set<string> = new Set();
-// Sessions currently being summarized/compacted (separate from streaming so the
-// UI can show a distinct "summarizing" state).
 let compactingIds: Set<string> = new Set();
-// False until the async durable-tier hydration below finishes. Consumers gate
-// on useHydrated() to show a skeleton instead of the placeholder session.
 let hydrated = false;
-
-// Reserve kept free below the model's context window: "full" triggers at
-// contextLength − this, leaving headroom for the response (and for the summary
-// the auto-compaction generates). Both the default and the minimum fraction
-// live in core/config (session.contextReserve / session.reserveMinFraction).
 
 const reg = createListeners();
 export const notify = reg.notify;
@@ -93,16 +71,15 @@ function currentIndex(): SessionsIndex {
   return { activeId, sessions: sessions.map(toMeta) };
 }
 
-// Write the small index (metas + activeId). Fire-and-forget: persistence
-// failures are warnings, never UI errors.
+// Fire-and-forget: persistence failures are warnings, never UI errors.
 export function persistIndex(): void {
   void storageReady
     .then((s) => saveIndex(s, currentIndex()))
     .catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
 }
 
-// Write one session's messages (media extracted to blobs) + the index. Cost is
-// proportional to THAT session's text — never the whole profile (ADR-0021).
+// Cost is proportional to THAT session's text — never the whole profile
+// (ADR-0021).
 export function persistSession(sid: string): void {
   void storageReady
     .then(async (storage) => {
@@ -111,13 +88,12 @@ export function persistSession(sid: string): void {
       const bytes = await saveMessages(storage, sid, session.messages);
       sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
       await saveIndex(storage, currentIndex());
-      notify(); // footprint shown in Settings → Storage
+      notify();
     })
     .catch((e) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(e) }));
 }
 
-// Lazy-load a session's messages on first open. In-flight loads are shared so
-// a double-click doesn't read twice.
+// In-flight loads are shared so a double-click doesn't read twice.
 const loading = new Map<string, Promise<void>>();
 export function ensureLoaded(sid: string): Promise<void> {
   const session = getSession(sid);
@@ -142,9 +118,8 @@ export function ensureLoaded(sid: string): Promise<void> {
   return p;
 }
 
-// Hydrate from the durable tier — the authoritative store. Reads the INDEX and
-// the ACTIVE session's messages only; everything else lazy-loads via
-// ensureLoaded.
+// Reads the INDEX and the ACTIVE session's messages only; everything else
+// lazy-loads via ensureLoaded.
 void (async () => {
   try {
     const storage = await storageReady;
@@ -163,7 +138,7 @@ void (async () => {
     });
   } finally {
     hydrated = true;
-    notify(); // re-render with the durable-tier state and flip useHydrated()
+    notify();
   }
 })();
 
@@ -174,7 +149,6 @@ export function getSessions(): Session[] {
 export function getActiveId(): string {
   return activeId;
 }
-// True once IndexedDB hydration has completed (success or fallback).
 export function getHydrated(): boolean {
   return hydrated;
 }
@@ -216,14 +190,12 @@ export function setCompacting(sid: string, on: boolean): void {
 // ── Commands (user-facing state changes) ─────────────────────────────────────
 export function setActive(id: string): void {
   activeId = id;
-  // Opening a session marks it read (dot goes transparent).
   sessions = sessions.map((s) => (s.id === id && s.unread ? { ...s, unread: false } : s));
-  void ensureLoaded(id); // lazy-load its messages on first open
+  void ensureLoaded(id);
   persistIndex();
   notify();
 }
 
-// Create an empty session and return its id. Switches to it by default;
 // `activate: false` keeps the user where they are (sub-agent runs must not
 // steal focus from the parent chat).
 export function createSession(init: SessionInit = {}, opts: { activate?: boolean } = {}): string {
@@ -246,10 +218,8 @@ export function renameSession(id: string, title: string): void {
   notify();
 }
 
-// Detach the agent from a session, converting it to a plain one: the transcript
-// and the stamped system prompt stay, but from the next turn plain workspace /
-// chat permissions apply — no ceiling, no chat-only mask. One-way by design;
-// the right-panel agent-permissions card disappears with the link.
+// Detach the agent from a session, converting it to a plain one. One-way by
+// design.
 export function unlinkAgent(id: string): void {
   sessions = sessions.map((s) => (s.id === id ? { ...s, agentId: undefined } : s));
   persistIndex();
@@ -259,7 +229,6 @@ export function unlinkAgent(id: string): void {
 export function deleteSession(id: string): void {
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";
-  // Drop the session's rows + media blobs from the durable tier.
   void storageReady
     .then((s) => deleteSessionData(s, id))
     .catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
@@ -294,9 +263,8 @@ export function pushTurn(sid: string, userText: string, images?: MediaRef[], fil
   notify();
 }
 
-// Inject a heal correction: a hidden user message (skipped in the UI, sent to
-// the model) carrying the validation error, then a fresh assistant placeholder
-// for the retry. Mirrors a turn without showing the churn in the transcript.
+// A hidden user message (skipped in the UI, sent to the model) carrying the
+// validation error, then a fresh assistant placeholder for the retry.
 export function pushHeal(sid: string, correction: string): void {
   const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: correction, hidden: true };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
@@ -306,7 +274,6 @@ export function pushHeal(sid: string, correction: string): void {
   notify();
 }
 
-// Attach tool calls to the most recent assistant message (the one just streamed).
 export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
   sessions = sessions.map((s) => {
     if (s.id !== sid) return s;
@@ -334,11 +301,10 @@ export function pushToolResult(
   notify();
 }
 
-// In-flight RunAgent calls: toolCallId → the child sessions it spawned (a
-// multi-run call appends one at a time). The LIVE half of the tool-card links
-// (the durable half rides the tool-result message once the call completes).
-// Transient by design — a reload mid-run loses only the links, never the
-// child sessions themselves.
+// In-flight RunAgent calls: toolCallId → the child sessions it spawned. The
+// LIVE half of the tool-card links (the durable half rides the tool-result
+// message). Transient by design — a reload mid-run loses only the links, never
+// the child sessions themselves.
 let childRuns: Record<string, string[]> = {};
 export function addChildRun(toolCallId: string, childSessionId: string): void {
   childRuns = { ...childRuns, [toolCallId]: [...(childRuns[toolCallId] ?? []), childSessionId] };
@@ -348,9 +314,8 @@ export function getChildRuns(): Record<string, string[]> {
   return childRuns;
 }
 
-// Feed tool-produced media (generated or loaded) back to the model as a hidden
-// user turn (skipped in the UI — it already shows in the tool card; this just
-// lets a vision agent see it on its next turn).
+// Feed tool-produced media back to the model as a hidden user turn (skipped in
+// the UI — it already shows in the tool card; this lets a vision agent see it).
 export function pushMediaFeedback(sid: string, images?: MediaRef[], video?: MediaRef[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
@@ -377,7 +342,6 @@ export function resetLast(sid: string): void {
   notify();
 }
 
-// Open a fresh empty assistant message for the next model turn in the loop.
 export function pushAssistant(sid: string): void {
   const msg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
@@ -418,15 +382,11 @@ export function contextLimit(cfg: MainSettings): number {
   return cfg.model.contextLength > reserve ? cfg.model.contextLength - reserve : cfg.model.contextLength;
 }
 
-// True once the session has consumed its usable budget — the composer disables
-// and auto-compaction kicks in to summarize + free the context.
 export function isFull(cfg: MainSettings, session: Session = getActive()): boolean {
   const limit = contextLimit(cfg);
   return limit > 0 && (session.usedTokens ?? 0) >= limit;
 }
 
-// Replace the whole transcript with a single summary message (auto-compaction):
-// the model keeps the summary as context, the rest is dropped, token count reset.
 export function replaceWithSummary(sid: string, summary: string, usedTokens = 0): void {
   sessions = sessions.map((s) =>
     s.id === sid
@@ -445,27 +405,18 @@ function withFiles(text: string, files?: FileAttachment[]): string {
   return text ? `${text}\n\n${blocks}` : blocks;
 }
 
-// Media resend window. The whole transcript is resubmitted every request, so
-// without a bound every loaded/attached image rides EVERY later request —
-// browsing a photo folder balloons the body megabytes per step until the
-// transport (or the proxy in front of the endpoint) gives up. Only the most
-// recent items stay live, bounded BOTH by count (image tokens / prefill time)
-// and by payload bytes (request body / proxy limits); older ones are swapped
-// for a text stub the model can act on (re-load on demand). A resend policy
-// only — the transcript and UI keep everything.
-// With images pixel-fitted at the door (ADR-0027), prefill cost is bounded by
-// count × dimensions — so COUNT is the binding budget, and the byte budget is
-// a loose backstop against what the resizer can't shrink (GIFs, video, an
-// image that didn't downscale much).
+// Media resend window — a resend policy only; the transcript and UI keep
+// everything. Bounded BOTH by count (image tokens / prefill time) and by
+// payload bytes (request body / proxy limits). COUNT is the binding budget
+// (images are pixel-fitted at the door, ADR-0027); the byte budget is a loose
+// backstop against what the resizer can't shrink (GIFs, video).
 export const MAX_LIVE_MEDIA = 10;
 export const MAX_LIVE_MEDIA_BYTES = 50 * 1024 * 1024; // data-URL length as the measure
 
 // Decide, newest-first, how many of each message's media items stay live. An
 // item must fit BOTH remaining budgets — except the very newest item, which is
-// always sent: the model must never be blind to the media it was just given
-// (an oversized one then fails the turn loudly instead of silently vanishing).
-// Returns message id → kept counts; messages absent keep nothing (and carry no
-// media). Tool-role media never counts — it isn't resubmitted at all.
+// always sent: the model must never be blind to the media it was just given.
+// Tool-role media never counts — it isn't resubmitted at all.
 function mediaWindow(messages: Message[]): Map<string, { images: number; video: number }> {
   const keep = new Map<string, { images: number; video: number }>();
   let count = MAX_LIVE_MEDIA;
@@ -495,9 +446,8 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
   return keep;
 }
 
-// The stub that replaces windowed-out media in the resubmitted content — names
-// what was here and how to get it back, so "compare with the earlier photo"
-// degrades to one extra Load call instead of silent amnesia.
+// The stub that replaces windowed-out media — names what was here and how to
+// get it back, so it degrades to one extra Load call instead of silent amnesia.
 function droppedNote(dropped: MediaRef[]): string {
   const names = dropped.map((d) => d.name || "unnamed").join(", ");
   return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use LoadImage/LoadVideo to view one again if needed.]`;
@@ -508,16 +458,14 @@ function hiddenNote(hidden: MediaRef[]): string {
   return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}.]`;
 }
 
-// Map stored messages to the provider-agnostic conversation we resubmit. Drops
-// empty placeholders (the trailing assistant) and thinking (not resent);
+// Drops empty placeholders (the trailing assistant) and thinking (not resent);
 // media outside the resend window is swapped for a text stub.
 //
-// `input` is the CURRENT model's declared inputs (MainSettings.input) — checked
-// at send time, every turn, because the model can change mid-session: history
-// media a text-only model can't take is withheld (with a note) instead of
-// letting the endpoint 400 the whole turn. App-wide defaults apply: image
-// assumed on unless declared off, video only when declared on. Callers that
-// omit `input` (tests, non-wire uses) get everything.
+// `input` is the CURRENT model's declared inputs — checked at send time, every
+// turn, because the model can change mid-session: history media a text-only
+// model can't take is withheld (with a note) instead of letting the endpoint
+// 400 the whole turn. Image assumed on unless declared off, video only when
+// declared on. Callers that omit `input` (tests) get everything.
 export function toChatMessages(messages: Message[], input?: NonNullable<MainSettings["input"]>): ChatMessage[] {
   const allowImage = input ? input.image !== false : true;
   const allowVideo = input ? input.video === true : true;
@@ -543,11 +491,9 @@ export function toChatMessages(messages: Message[], input?: NonNullable<MainSett
       return {
         role: m.role,
         content,
-        // Tool-role images/video are display-only (shown in the tool card) — many
-        // chat APIs reject media on a tool message, so they're never sent. Vision
-        // feedback goes through the hidden user turn (pushMediaFeedback) instead.
-        // User-uploaded images/video ARE sent (within the window) so the model
-        // can review them.
+        // Tool-role images/video are display-only — many chat APIs reject media
+        // on a tool message, so they're never sent. Vision feedback goes through
+        // the hidden user turn (pushMediaFeedback) instead.
         images: images?.length ? images.map((im) => ({ url: im.url, mime: im.mime })) : undefined,
         video: video?.length ? video.map((v) => ({ url: v.url, mime: v.mime })) : undefined,
         toolCalls: m.toolCalls,

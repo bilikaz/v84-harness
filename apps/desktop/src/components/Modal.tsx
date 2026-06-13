@@ -5,10 +5,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn.ts";
 import { useEscapeKey } from "../lib/hooks.ts";
 
-// Reusable centered modal: backdrop (click to close), ESC to close, a panel
-// with a top-right close button. Generic on purpose — Settings is one user;
-// confirmations / pickers / detail dialogs reuse the same shell. Pass panel
-// sizing via `className`.
+// Centered modal: backdrop, ESC, top-right close button. Panel sizing via className.
 export function Modal(props: {
   open: boolean;
   onClose: () => void;

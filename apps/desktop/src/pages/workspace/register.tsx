@@ -2,8 +2,6 @@ import { register } from "../../lib/registry.ts";
 import { ProgressPanel } from "./ProgressPanel.tsx";
 import logoUrl from "../../logo.svg";
 
-// left-top: the brand. The logo mark reads "V84"; the wordmark completes it
-// to "V84 Harness".
 function Brand() {
   return (
     <div className="flex items-center gap-2 px-1 py-0.5">

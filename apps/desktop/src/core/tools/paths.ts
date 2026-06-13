@@ -1,7 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-// Virtual-root path mapping + confinement: the model sees the workspace root as "/"; anything escaping cwd (`..`, symlinks) is REJECTED.
+// Virtual-root path mapping + confinement: the model sees "/" as the workspace root; anything escaping is rejected.
 
 export function rootReal(cwd: string): string {
   return realpathSync(path.resolve(cwd));

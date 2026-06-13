@@ -19,12 +19,6 @@ import {
 
 const log = rootLog.child("session.compaction");
 
-// Auto-compaction — when a session crosses its usable context budget (see
-// contextLimit / config session.contextReserve), summarize the conversation and replace
-// it with a single hidden summary message. Self-contained service like naming.ts
-// (owns its logic + subscription, asks the model directly, never goes through
-// the driver so it doesn't re-trigger turn events).
-
 const COMPACT_SYSTEM = "You compress conversations into faithful, self-contained summaries.";
 const COMPACT_INSTRUCTION =
   "Summarize the entire conversation above into a compact but COMPLETE summary that can replace the full " +
@@ -36,8 +30,6 @@ export async function compact(sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session || session.messages.length === 0) return;
   if (getCompactingIds().has(sid) || getStreamingIds().has(sid)) return;
-  // The chat config is read for the context math (window, reserve, input
-  // filter) — the call itself goes through the client by service name.
   const cfg = resolveMain();
   if (!cfg) return;
 
@@ -46,14 +38,11 @@ export async function compact(sid: string): Promise<void> {
   const controller = new AbortController();
   try {
     const messages: ChatMessage[] = [
-      // Same input-capability filter as the turn loop — the summary call goes
-      // to the same endpoint and would 400 on media it can't take.
+      // Same input-capability filter as the turn loop — the endpoint would 400 on media it can't take.
       ...toChatMessages(session.messages, cfg.input ?? {}),
       { role: "user", content: COMPACT_INSTRUCTION },
     ];
-    // Force thinking on but tightly budgeted — a summary doesn't need deep
-    // reasoning. Give the OUTPUT the full reserved headroom (NOT the user's tiny
-    // maxTokens) — that reserve exists precisely for this summary.
+    // OUTPUT gets the full reserved headroom, NOT the user's tiny maxTokens.
     const reserve = cfg.model.contextLength
       ? cfg.model.contextLength - contextLimit(cfg)
       : (cfg.contextReserve ?? getAppConfig().session.contextReserve);
@@ -65,9 +54,7 @@ export async function compact(sid: string): Promise<void> {
       params: { reasoningEffort: "low", thinkingBudget: getAppConfig().session.compactThinkingBudget, maxTokens: reserve },
       handler: bufferedTextHandler(),
     });
-    // The summary call takes a while — if the user started a new turn meanwhile,
-    // replacing the transcript now would clobber it. Drop this summary; the
-    // turn:end trigger fires again while the session is still over budget.
+    // If the user started a new turn during the call, replacing the transcript now would clobber it.
     if (getStreamingIds().has(sid)) {
       log.warn("skipped", { sid, hint: "session started streaming during compaction — summary discarded" });
       return;
@@ -75,8 +62,6 @@ export async function compact(sid: string): Promise<void> {
     const summary = text;
     const summaryTokens = (usage?.outputTokens ?? 0) - (usage?.thinkingTokens ?? 0);
     if (summary.trim()) {
-      // Seed usedTokens with the summary's real size (from usage), so the context
-      // meter reflects what the retained summary actually occupies — not 0.
       const tokens = summaryTokens > 0 ? summaryTokens : Math.ceil(summary.trim().length / 4);
       replaceWithSummary(sid, summary.trim(), tokens);
     }
@@ -88,7 +73,6 @@ export async function compact(sid: string): Promise<void> {
   }
 }
 
-// Auto-trigger: when a real turn ends over the budget, compact in the background.
 const off = bus.on("turn:end", (e) => {
   if (e.errored) return;
   const cfg = resolveMain();

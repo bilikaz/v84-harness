@@ -1,4 +1,4 @@
-// SQLite adapter (desktop tier) — thin client over the bridge's `harness.storage` IPC; create() throws so detectStorage falls through to IndexedDB.
+// SQLite adapter (desktop tier) — thin client over the bridge's storage IPC; create() throws so detectStorage falls through.
 import { harness } from "../harness.ts";
 import type { Storage } from "./types.ts";
 

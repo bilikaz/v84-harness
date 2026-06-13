@@ -3,9 +3,6 @@ import { useTranslation } from "react-i18next";
 import { cn } from "../lib/cn.ts";
 import type { ToolMode } from "../core/tools/types.ts";
 
-// The Off / Ask / Auto segmented control for a tool's permission mode. Shared
-// by the workspace settings (the grant) and the agent editor (the ceiling) —
-// same vocabulary, same labels, one widget.
 // i18n keys, translated at render (the module-level constant can't call t()).
 const MODES: { value: ToolMode; labelKey: string; hintKey: string }[] = [
   { value: 0, labelKey: "workspace.modeOff", hintKey: "workspace.modeOffHint" },

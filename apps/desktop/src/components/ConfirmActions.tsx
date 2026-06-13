@@ -1,5 +1,4 @@
-// The Cancel / Confirm button pair every confirmation (popover or modal)
-// repeats. The container stays with the caller — only the footer is shared.
+// Cancel/Confirm button pair. Container stays with caller.
 export function ConfirmActions(props: {
   cancelLabel: string;
   confirmLabel: string;

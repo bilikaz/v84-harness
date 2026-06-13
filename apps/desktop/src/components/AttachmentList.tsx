@@ -3,8 +3,7 @@ import { FileText, X } from "lucide-react";
 import { cn } from "../lib/cn.ts";
 import type { FileAttachment, MediaRef } from "../lib/types.ts";
 
-// Composer attachment previews — image/video thumbnails + file chips, each
-// with a remove button. Shared by the chat composer and the agent runner.
+// Image/video/file attachment previews with remove buttons.
 export function AttachmentList(props: {
   images?: MediaRef[];
   videos?: MediaRef[];

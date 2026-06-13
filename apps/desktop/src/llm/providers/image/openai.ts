@@ -1,13 +1,8 @@
-// The OpenAI-images dialect (POST /images/generations), which most local
-// servers (incl. the Cosmos container) speak. ONE module for the dialect —
-// it owns the request form and every response shape the dialect produces
-// (b64_json or url; the url variant is fetched and inlined).
+// OpenAI-images /images/generations dialect — the Cosmos container speaks this.
 
 import type { GenParams, MediaOut } from "../../types.ts";
 import { BaseImageProvider } from "./base.ts";
 
-// This file IS the image:openai provider — the factory (llm/client) resolves
-// providers/image/openai.ts and constructs this class with its model data.
 export class Provider extends BaseImageProvider {
   protected async generate(prompt: string, p: GenParams): Promise<MediaOut> {
     const res = await this.request("/images/generations", {
@@ -17,8 +12,6 @@ export class Provider extends BaseImageProvider {
         prompt,
         negative_prompt: p.negativePrompt,
         ...(p.w && p.h ? { size: `${p.w}x${p.h}` } : {}),
-        // Sampling knobs — without these many servers use (low) defaults; the
-        // Cosmos container wants the preset, so generation tools always pass it.
         ...(p.preset ? { num_inference_steps: p.preset.steps, guidance_scale: p.preset.guidance, flow_shift: p.preset.flowShift } : {}),
         ...(p.seed !== undefined ? { seed: p.seed } : {}),
         n: 1,

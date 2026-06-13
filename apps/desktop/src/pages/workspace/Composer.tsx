@@ -17,9 +17,9 @@ export interface ComposerAttachments {
 
 // Message composer shared by chat and agent runs — owns its input state; the parent owns what submit means.
 export function Composer(props: {
-  seed?: string; // initial text (an agent's saved user template)
+  seed?: string;
   disabled?: boolean; // blocks send (context full, compacting, missing workspace)
-  streaming?: boolean; // swap send → stop
+  streaming?: boolean;
   onStop?: () => void;
   onSubmit: (text: string, atts: ComposerAttachments) => void;
 }) {
@@ -39,7 +39,6 @@ export function Composer(props: {
     !props.streaming &&
     !props.disabled;
 
-  // Auto-grow with content up to the textarea's max-height (then it scrolls).
   useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
@@ -57,7 +56,6 @@ export function Composer(props: {
     }
   }
 
-  // Images default on, video needs explicit model support; oversized media is skipped or downscaled, with a note.
   async function addAttachments(list: FileList) {
     const maxDim = effectiveImageMaxDim(provider.imageMaxDim);
     const caps = getAppConfig().media;
@@ -93,7 +91,6 @@ export function Composer(props: {
     el.value = ""; // allow re-picking the same file
   }
 
-  // Intercept paste only when the clipboard carries media — plain text pastes through normally.
   function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const list = e.clipboardData?.files;
     if (!list?.length) return;

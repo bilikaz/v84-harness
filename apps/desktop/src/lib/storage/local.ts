@@ -15,7 +15,7 @@ export class LocalStorage implements Storage {
     return localStorage.getItem(key);
   }
   async set(key: string, value: string): Promise<void> {
-    localStorage.setItem(key, value); // throws on quota — caller's call
+    localStorage.setItem(key, value);
   }
   async del(key: string): Promise<void> {
     localStorage.removeItem(key);

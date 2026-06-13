@@ -2,7 +2,6 @@
 
 import { bytesToB64, parseDataUrl } from "./dataUrl.ts";
 
-// Null = left untouched (fits, GIF — canvas keeps only the first frame, non-data URL, decode failure): best-effort, must never block a send.
 // A degenerate cap (0/negative/NaN) is also a no-op — a bad config value must never collapse images to 1×1.
 export async function downscaleImage(
   url: string,

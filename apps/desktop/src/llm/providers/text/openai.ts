@@ -5,16 +5,10 @@ import { sseRequest } from "../../transport.ts";
 import { baseWithPrefix, expectOk } from "../../util.ts";
 import { llmLog } from "../../debug.ts";
 
-// No fallback host: an empty base intentionally yields relative "/v1/…" URLs
-// (the web dev proxy case). "/openai/v1" bases also pass the endsWith check.
 function joinUrl(base: string, path: string): string {
   return `${baseWithPrefix(base, "", "/v1")}${path}`;
 }
 
-// Map the conversation to OpenAI chat messages. This IS the normalized shape, so
-// mapping is near-identity: tool results → {role:"tool", tool_call_id}, assistant
-// tool calls → tool_calls[], images → multimodal content parts (image_url accepts
-// a data: URL directly).
 function toOpenAIMessages(messages: ChatMessage[], system?: string): unknown[] {
   const out: unknown[] = [];
   if (system) out.push({ role: "system", content: system });
@@ -47,12 +41,6 @@ function toOpenAIMessages(messages: ChatMessage[], system?: string): unknown[] {
   return out;
 }
 
-// Reasoning/thinking request fields, chosen by endpoint:
-//  • real OpenAI (o-series) uses `reasoning_effort`.
-//  • vLLM / OpenAI-compatible (e.g. Holo, a Qwen3 derivative) gates thinking via
-//    `chat_template_kwargs.enable_thinking` — these models think by DEFAULT, so we
-//    must send `false` to turn it OFF — and caps it with `thinking_token_budget`.
-// We never send the vLLM-only params to api.openai.com (it 400s on unknown fields).
 function reasoningFields(target: CallTarget): Record<string, unknown> {
   const m = target.model;
   const on = !!(m.reasoningEffort && m.reasoningEffort !== "off");
@@ -77,9 +65,6 @@ export async function* streamOpenAI(
     stream: true,
     stream_options: { include_usage: true },
     messages: toOpenAIMessages(messages, system),
-    // Send a cap only when it's a real limit. When it equals the model's
-    // context window (the "filled = max" case), skip it — vLLM errors if
-    // prompt + max_tokens exceeds the window; let the server default instead.
     ...(target.model.maxTokens && target.model.maxTokens !== target.model.contextLength ? { max_tokens: target.model.maxTokens } : {}),
     ...reasoningFields(target),
     ...(tools?.length ? { tools, tool_choice: "auto" } : {}),
@@ -95,9 +80,6 @@ export async function* streamOpenAI(
     body: JSON.stringify(body),
   });
 
-  // Tool calls stream as fragments keyed by index (id + name arrive first, then
-  // the arguments string in pieces). Accumulate per index, emit when the stream
-  // ends so each tool_call carries the full arguments JSON.
   const toolAcc = new Map<number, { id: string; name: string; args: string }>();
 
   for await (const data of parseSSE(res, signal)) {
@@ -148,16 +130,11 @@ export async function* streamOpenAI(
   yield { type: "done" };
 }
 
-// This file IS the text:openai provider — the factory (llm/client) resolves
-// providers/text/openai.ts and constructs this class with its model data.
 export class Provider extends BaseTextProvider {
   protected stream(): AsyncGenerator<StreamEvent> {
     return streamOpenAI(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
   }
 
-  // The provider's own /models catalog: id + context window (vLLM
-  // `max_model_len`, or `context_length` / `context_window` on other
-  // OpenAI-compatible servers).
   static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {
     const url = joinUrl(conn.baseUrl, "/models");
     const res = await expectOk(

@@ -1,18 +1,10 @@
-// The provider base — every provider IS one of these: constructed by the
-// client's factory with its MODEL DATA (the CallTarget) and the call's
-// CONTEXT wired into the instance, one call(handler) that owns the whole
-// wire side (requests, streaming, polling, time) and hands the handler the
-// interaction, and a defaultHandler() naming the shape the provider
-// naturally produces (used when the caller brings none). Subclasses never
-// override the constructor — init() is the hook for the few that need extra
-// setup. The wire plumbing every provider shares lives here too. (The text
-// providers ride transport.ts — sseRequest + retry — instead of request().)
+// Provider base — every provider IS one of these.
 
 import type { CallContext, ResponseHandler, CallTarget, Provider } from "../types.ts";
 import { trimBase } from "../../lib/format.ts";
 
 export interface RequestOpts {
-  what: string; // names the call in the error message
+  what: string;
   method?: "GET" | "POST";
   json?: unknown;
   form?: FormData;
@@ -26,15 +18,11 @@ export abstract class BaseProvider implements Provider {
     this.init();
   }
 
-  // Per-class extra setup — a no-op for most providers.
   protected init(): void {}
 
   abstract call<T>(handler: ResponseHandler<T>): Promise<T>;
   abstract defaultHandler(): ResponseHandler<unknown>;
 
-  // Raw HTTP against the target's provider: base trim + auth + body encoding
-  // + status check with the response body in the error. Cancellation rides
-  // the wired ctx.
   protected async request(path: string, opts: RequestOpts): Promise<Response> {
     const { provider } = this.target;
     const res = await fetch(`${trimBase(provider.baseUrl)}${path}`, {
@@ -52,8 +40,6 @@ export abstract class BaseProvider implements Provider {
     return res;
   }
 
-  // The conversation flattened for single-prompt endpoints — the newest user
-  // message's content (generation servers take one prompt, not a thread).
   protected prompt(): string {
     const { messages } = this.ctx;
     for (let i = messages.length - 1; i >= 0; i--) {

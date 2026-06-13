@@ -5,9 +5,6 @@ import { openLightbox } from "../lib/ui.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
 
 // A media thumbnail/player with a Save button overlaid in the top corner.
-// Clicking an image opens the lightbox; video keeps its native controls (the
-// button stays out of the controls bar along the bottom). Saves via the native
-// dialog in Electron, a browser download on the web.
 export function SavableMedia(props: { kind: "image" | "video"; src: string; name?: string; className?: string }) {
   const { kind, src, name, className } = props;
   const { t } = useTranslation();

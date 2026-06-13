@@ -1,10 +1,6 @@
-// Preload bridge — the ONLY channel between the renderer (untrusted, runs model
-// output) and main (the Node host / trust boundary). Runs with contextIsolation
-// on, so the renderer sees exactly what we expose as `window.harness` and
-// nothing else — no `require`, no `fs`, no raw `ipcRenderer`.
-//
-// Load `electron` (CJS) via createRequire — named/default ESM imports of it are
-// unreliable under an ESM preload (Node's CJS lexer can't see its exports).
+// Preload bridge — the only channel between renderer (untrusted) and main (trust boundary); contextIsolation exposes exactly `window.harness`, nothing else.
+
+// Load `electron` (CJS) via createRequire — named/default ESM imports of it are unreliable under an ESM preload.
 
 import { createRequire } from "node:module";
 

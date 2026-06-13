@@ -1,4 +1,3 @@
-// Settings feature registration; nav labels translate via `<id>.title` — `title` here is only the untranslated fallback.
 import { UserCircle, Plug, Image, Database, Wrench } from "lucide-react";
 
 import { register } from "../../lib/registry.ts";

@@ -12,18 +12,9 @@ import { harness } from "../lib/harness.ts";
 import { createStore } from "../lib/store.ts";
 import { errorMessage } from "../lib/errors.ts";
 
-// The media model registry — PROVIDERS (endpoint + auth + API dialect) each
-// hosting MODELS (capabilities + per-modality settings), and an assignment
-// map from use-case slot → one model. The separation exists because one
-// gateway can serve many models (OpenRouter-style): connection details live
-// once on the provider, what-each-model-can-do lives per model. Tools never
-// see the split — resolveMediaProvider(useCase) flattens the assigned
-// provider+model into the MediaSlotConfig threaded through ToolCtx. The slot
-// list (MEDIA_USE_CASES) is the app's coverage map — a slot may be empty
-// (tool inert) or have no tool yet (audio today).
+// The media model registry — providers hosting models, plus a use-case → model assignment map.
 const KEY = "v84-harness:media";
 
-// Assignment target: a model under a provider (ids, not array positions).
 export interface ModelRef {
   providerId: string;
   modelId: string; // MediaModel.id (the registry id, not the wire id)
@@ -36,9 +27,6 @@ export interface MediaRegistry {
 
 const DEFAULTS: MediaRegistry = { providers: [], assignments: {} };
 
-// What a model under each API dialect can plausibly do — the capability
-// checkboxes offer only these. A bare /generate has exactly one implemented
-// wire (image generation); the OpenAI envelope covers every slot.
 export function providerCaps(api: MediaApiFlavor): readonly MediaUseCase[] {
   return api === "generate" ? ["imageGen"] : MEDIA_USE_CASES;
 }
@@ -48,12 +36,6 @@ function newId(): string {
 }
 
 // ── migrations ───────────────────────────────────────────────────────────────
-// Earlier stored shapes, migrated on load:
-//   v1 — one single config (the Cosmos container for image+video).
-//   v2/v3 — flat `entries` (with or without a capabilities list, three- or
-//   two-way api flavors, shared or split maxSize). Each entry becomes a
-//   provider with one model; capabilities come from the entry's list when
-//   present, else from the slots it was assigned to.
 
 interface LegacyV1 {
   baseUrl?: string;
@@ -158,7 +140,6 @@ export function useMediaRegistry(): MediaRegistry {
 
 // ── provider CRUD ────────────────────────────────────────────────────────────
 
-// New providers are born named so they're recognizable everywhere immediately.
 export function addProvider(): string {
   const id = newId();
   const cur = store.get();
@@ -172,11 +153,6 @@ export function addProvider(): string {
   return id;
 }
 
-// Patch a provider. Switching the API dialect re-fits its models: a generate
-// provider has exactly ONE implicit default model (empty wire id, image
-// generation at most), so extra models are dropped and capabilities the new
-// dialect can't serve are stripped — with the assignments that pointed at
-// anything removed cleared too.
 export function updateProvider(id: string, patch: Partial<Omit<MediaProvider, "id" | "models">>): void {
   const cur = store.get();
   const providers = cur.providers.map((p) => {
@@ -209,8 +185,6 @@ export function removeProvider(id: string): void {
 
 // ── model CRUD ───────────────────────────────────────────────────────────────
 
-// Add a model under a provider (from the detected list or a typed id). A
-// cosmos wire id arrives pre-marked for the JSON prompt enhancer.
 export function addModel(providerId: string, wireId: string): string {
   const id = newId();
   const cur = store.get();
@@ -234,9 +208,6 @@ export function addModel(providerId: string, wireId: string): string {
   return id;
 }
 
-// Patch a model. Capability changes keep assignments honest: an empty slot
-// the model now serves is auto-assigned (never overriding an existing pick);
-// a slot assigned to this model for a capability it lost is cleared.
 export function updateModel(providerId: string, modelId: string, patch: Partial<Omit<MediaModel, "id">>): void {
   const cur = store.get();
   const providers = cur.providers.map((p) =>
@@ -258,8 +229,6 @@ export function removeModel(providerId: string, modelId: string): void {
   store.set({ providers, assignments: pruneAssignments(cur.assignments, providers) });
 }
 
-// Drop assignments whose target no longer exists or no longer declares the
-// slot's capability — assignment is the user's pick, but it must stay honest.
 function pruneAssignments(
   assignments: MediaRegistry["assignments"],
   providers: MediaProvider[],
@@ -284,7 +253,6 @@ export function assignModel(useCase: MediaUseCase, ref: ModelRef | null): void {
   store.set({ ...cur, assignments });
 }
 
-// Every model that can serve a slot, as UI options — "provider : model".
 export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ ref: ModelRef; label: string }> {
   const out: Array<{ ref: ModelRef; label: string }> = [];
   for (const p of reg.providers) {
@@ -296,10 +264,7 @@ export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ 
   return out;
 }
 
-// A use-case slot's assignment in the unified {provider, model} target
-// format — built straight from the registry rows, the same split the data is
-// stored in. Null when the slot is unassigned or the provider isn't usable
-// yet (no endpoint); tools stay inert on null.
+// Null when the slot is unassigned or the provider has no endpoint; tools stay inert on null.
 export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | null {
   const reg = store.get();
   const ref = reg.assignments[useCase];
@@ -323,7 +288,6 @@ export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | n
   };
 }
 
-// The full per-slot map threaded into ToolCtx each turn.
 export function resolveMediaProviders(): MediaProviders {
   const out: MediaProviders = {};
   for (const uc of MEDIA_USE_CASES) {
@@ -335,10 +299,7 @@ export function resolveMediaProviders(): MediaProviders {
 
 // ── detection ────────────────────────────────────────────────────────────────
 
-// List a provider's models (also a reachability test) into provider.detected
-// — the add-row picks from this cache. In Electron it goes through main (no
-// CORS); in the browser it fetches directly. Only the OpenAI dialect has
-// /models — the UI doesn't offer Detect for bare /generate.
+// In Electron this goes through main (no CORS); in the browser it fetches directly.
 export async function detectProviderModels(id: string): Promise<{ ok: boolean; count: number; error?: string }> {
   const provider = store.get().providers.find((p) => p.id === id);
   if (!provider) return { ok: false, count: 0, error: "provider not found" };

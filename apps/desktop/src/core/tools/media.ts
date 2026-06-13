@@ -11,7 +11,7 @@ export function pickQuality(v: unknown): Quality {
   return v === "low" || v === "super" ? v : "good";
 }
 
-// Legal Cosmos aspect ratios → [w, h]; the model picks one, height is derived.
+// Legal Cosmos aspect ratios → [w, h].
 export const ASPECTS: Record<string, [number, number]> = {
   "1:1": [1, 1],
   "16:9": [16, 9],
@@ -25,14 +25,13 @@ export function toInt(v: unknown): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-// Parse an operator-written "WxH" max (tolerate x, _, -, * and spaces — people write it however).
+// Parse a "WxH" max, tolerating x, _, -, * and spaces as separators.
 export function parseDims(s?: string): { w: number; h: number } | null {
   if (!s) return null;
   const m = /^\s*(\d+)\s*[x_*-]\s*(\d+)\s*$/i.exec(s);
   return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
-// width + aspect → final WxH: derive height, clamp to the configured max, snap to diffusion-friendly multiples of 16.
 export function deriveSize(
   reqW: number | undefined,
   aspect: [number, number],
@@ -56,7 +55,6 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 2_147_483_647);
 }
 
-// Upsample a short prompt into Cosmos structured JSON with the main chat LLM, heal-validated; falls back to the raw prompt on any failure.
 export async function upsamplePrompt(opts: {
   client: Client;
   prompt: string;
@@ -82,7 +80,6 @@ export async function upsamplePrompt(opts: {
   }
 }
 
-// Throws (→ heal) unless a single JSON object with a non-empty caption (`requiredKey`) and a `subjects` array.
 function upsampleValidator(requiredKey: string): (text: string) => Record<string, unknown> {
   return (text) => {
     const obj = JSON.parse(stripFences(text)) as Record<string, unknown>;

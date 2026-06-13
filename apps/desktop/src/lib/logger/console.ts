@@ -1,6 +1,4 @@
-// Console sink — pretty output for the DevTools console. `debug` events are
-// gated by a predicate (default: dev builds) and use console.log, not
-// console.debug, so they show at the DevTools default level ("Verbose" off).
+// Console sink — debug gated by predicate; uses console.log so events show at DevTools default level.
 import { joinScope, type Logger } from "./types.ts";
 
 export class ConsoleLogger implements Logger {

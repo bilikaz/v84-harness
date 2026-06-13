@@ -1,19 +1,16 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
-// UI contribution registry — the frontend mirror of the backend's register.ts
-// pattern. Each pages/<feature>/register.ts calls `register(...)` to contribute
-// to one or more REGIONS the shell exposes. main.tsx runs an import.meta.glob
-// over those files at boot, so the filesystem IS the registry.
+// UI contribution registry.
 
 export type Region = "left-top" | "right-panel" | "settings" | "main";
 
 export interface Contribution {
   region: Region;
   id: string;
-  title?: string; // shown for nav-style regions (menu, settings)
+  title?: string;
   icon?: LucideIcon;
-  route?: string; // hash route that activates this (e.g. "settings/provider")
+  route?: string;
   order?: number;
   render: () => ReactNode;
 }

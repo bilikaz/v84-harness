@@ -14,9 +14,6 @@ const inputCls =
 const monoCls =
   "resize-y rounded-lg border border-neutral-200 px-3 py-2 font-mono text-xs leading-relaxed outline-none focus:border-neutral-400";
 
-// The agent editor (route agents/<id>/edit): the saved playbook — name,
-// description (the orchestrator-facing contract), workspace toggle, system MD,
-// default user template, and the optional output contract. Edits save live.
 export function AgentEditView({ id }: { id: string }) {
   const { t } = useTranslation();
   const agents = useAgents();
@@ -122,10 +119,6 @@ export function AgentEditView({ id }: { id: string }) {
             />
           </Field>
 
-          {/* Workspace & permissions — whether this agent binds to a workspace
-              at all, and (when it does) its tool CEILING: the effective
-              per-call mode is the stricter of this and the workspace policy;
-              an agent can restrict what the workspace grants, never extend it. */}
           <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
             <span className="text-sm font-medium text-neutral-800">{t("agents.workspaceSection")}</span>
             <label className="flex items-center gap-2 text-sm text-neutral-800">

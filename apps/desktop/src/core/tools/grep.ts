@@ -53,7 +53,6 @@ function run(argv: string[], cwd: string, signal?: AbortSignal): Promise<ToolRes
       // grep exits 1 for "no matches" — that's a successful empty result.
       if (code === 1 && !out) return resolve({ ok: true, output: "(no matches)" });
       if (code !== 0 && code !== 1) return resolve({ ok: false, output: err.trim() || `grep exited ${code}` });
-      // Rewrite "./path" / "path" → workspace-relative "/path".
       const rewritten = out.replace(/^\.?\/?/gm, (m, off) => (off === 0 || out[off - 1] === "\n" ? "/" : m));
       resolve({ ok: true, output: cap(rewritten) });
     });

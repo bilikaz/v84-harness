@@ -8,10 +8,6 @@ import { contributionsFor } from "./lib/registry.ts";
 import { useRoute } from "./lib/router.ts";
 import { useRightPanel } from "./lib/ui.ts";
 
-// The shell is dumb: a sidebar, the main view, and a right panel that's just
-// region slots. Everything else is contributed by pages/<feature>/register.
-// The main view is route-driven — a registered "main" contribution whose route
-// matches takes over; otherwise the session/chat view is the default.
 function MainView() {
   const route = useRoute();
   const match = contributionsFor("main").find(

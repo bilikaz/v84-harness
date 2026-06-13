@@ -1,14 +1,11 @@
 import type { ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 
-// Width- and border-color-free core, for callers that override either (e.g. a validation-error red border).
 export const fieldInputBare = "rounded-lg border px-3 py-1.5 text-sm outline-none";
 
 const base = `${fieldInputBare} border-neutral-200 focus:border-neutral-400`;
 
-// One width (w-80) for every settings field so columns line up across sections.
 export const fieldInput = `w-80 ${base}`;
-// Flex-sized variant, for inputs/selects sharing a w-80 row with a button.
 export const fieldInputFlex = `min-w-0 flex-1 ${base}`;
 export const fieldInputFull = `w-full ${base}`;
 

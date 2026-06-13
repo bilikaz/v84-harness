@@ -35,7 +35,6 @@ export const COSMOS_T2I: CosmosPreset = {
     "the image dimensions. Output ONLY the JSON object — no markdown, no code fences, no commentary.",
 };
 
-// The describer fills it; the tool injects resolution/aspect_ratio/duration/fps.
 const T2V_SCHEMA = `{
   "subjects": [
     { "description": "", "appearance_details": "", "location": "", "relative_size": "", "orientation": "", "pose": "", "action": "what the subject DOES over the clip (motion)", "state_changes": "how it changes over time", "clothing": "", "expression": "", "gender": "", "age": "", "facial_features": "", "number_of_subjects": 0 }

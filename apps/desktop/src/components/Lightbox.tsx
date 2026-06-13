@@ -5,8 +5,7 @@ import { closeLightbox, useLightbox } from "../lib/ui.ts";
 import { useEscapeKey } from "../lib/hooks.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
 
-// Full-screen image viewer. Opened via openLightbox(url) from any thumbnail;
-// dismissed by clicking the backdrop, the image, the close button, or Escape.
+// Full-screen image viewer. Dismiss via backdrop, image, close button, or Escape.
 export function Lightbox() {
   const { t } = useTranslation();
   const url = useLightbox();
@@ -42,8 +41,6 @@ export function Lightbox() {
           <X size={20} />
         </button>
       </div>
-      {/* Clicking the image dismisses too (back to its original size on the
-          page) — same as the backdrop. */}
       <img
         src={url}
         alt=""

@@ -7,8 +7,6 @@ import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "../../util.ts"
 import { llmLog } from "../../debug.ts";
 
 const FALLBACK_BASE = "https://api.anthropic.com";
-
-// Anthropic requires max_tokens; this is the response cap when the user set none.
 const DEFAULT_MAX_TOKENS = 8192;
 
 function v1(cfg: { baseUrl: string }): string {
@@ -23,13 +21,6 @@ function authHeaders(cfg: { apiKey?: string }): Record<string, string> {
   };
 }
 
-// Thinking/effort request fields. Anthropic deprecated token budgets — current
-// models take adaptive thinking plus `output_config.effort` (low…max). With
-// effort off we omit `thinking` entirely (an explicit "disabled" 400s on some
-// models). `display: "summarized"` opts back into visible thinking text, which
-// Opus 4.7+ omits by default — our UI streams reasoning, so we want it.
-// The model's thinkingBudget is intentionally ignored here (OpenAI/vLLM +
-// Gemini only).
 function reasoningFields(target: CallTarget): Record<string, unknown> {
   const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
@@ -46,17 +37,10 @@ function imageBlock(im: ChatImage): unknown {
     : { type: "image", source: { type: "url", url: im.url } };
 }
 
-// Map to Anthropic messages, wrapping the OpenAI-standard tool shape:
-//  • tool result → a user message with a tool_result block (tool_use_id = call id)
-//  • assistant tool calls → tool_use content blocks (input = parsed arguments)
-//  • images → image content blocks
-// System is a top-level field (handled by the caller), not a message.
 function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
   const out: { role: string; content: unknown }[] = [];
   for (const m of messages) {
     if (m.role === "tool") {
-      // Anthropic wants ALL tool_results for one assistant turn in the single
-      // next user message — fold consecutive results into one.
       const block = { type: "tool_result", tool_use_id: m.toolCallId, content: m.content };
       const prev = out[out.length - 1];
       const prevBlocks = prev?.role === "user" && Array.isArray(prev.content) ? (prev.content as { type: string }[]) : null;
@@ -96,7 +80,6 @@ export async function* streamAnthropic(
     stream: true,
     ...reasoningFields(target),
     ...(system ? { system } : {}),
-    // ToolSpec is the OpenAI function shape — unwrap to Anthropic's.
     ...(tools?.length
       ? { tools: tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters })) }
       : {}),
@@ -112,9 +95,6 @@ export async function* streamAnthropic(
 
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
-  // tool_use blocks stream as: content_block_start (id + name) → input_json_delta
-  // fragments → content_block_stop. Accumulate per block index, emit on stop so
-  // each tool_call carries the full arguments JSON.
   const toolAcc = new Map<number, { id: string; name: string; args: string }>();
 
   for await (const data of parseSSE(res, signal)) {
@@ -171,10 +151,7 @@ export async function* streamAnthropic(
   yield { type: "done" };
 }
 
-// This file IS the text:anthropic provider — the factory (llm/client)
-// resolves providers/text/anthropic.ts and constructs this class.
 export class Provider extends BaseTextProvider {
-  // The provider's own /models catalog (ids only — no context window here).
   static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {
     const res = await expectOk(await fetch(`${v1(conn)}/models`, { headers: authHeaders(conn) }));
     const data = await res.json();

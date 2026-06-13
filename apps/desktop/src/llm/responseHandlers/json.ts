@@ -1,6 +1,4 @@
-// Validated text → T. A validator throw is HEALABLE by definition here (a
-// parse/shape mismatch is exactly what a re-prompt can fix) — write a custom
-// handler for validation that must not heal.
+// Validated text → T. A validator throw is HEALABLE here — a parse/shape mismatch is what a re-prompt fixes.
 
 import type { ResponseHandler } from "../types.ts";
 import { HealError } from "../client/types.ts";

@@ -5,8 +5,7 @@ import { type Tool } from "./types.ts";
 import { toReal } from "./paths.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
-// Create or overwrite a file. Confined to the workspace (path can't escape), so
-// it auto-runs by default. Creates parent directories as needed.
+// Create or overwrite a file. Confined to the workspace (path can't escape).
 export const writeTool: Tool = {
   schema: {
     type: "function",

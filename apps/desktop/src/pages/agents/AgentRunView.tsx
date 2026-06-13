@@ -8,11 +8,6 @@ import { navigate } from "../../lib/router.ts";
 import { Composer, type ComposerAttachments } from "../workspace/Composer.tsx";
 import { SystemBanner } from "../workspace/SystemBanner.tsx";
 
-// The primed run page — a pseudo session. Looks like an empty chat configured
-// with the agent (system banner up top, the saved user template seeded into the
-// composer), but nothing exists in the session store yet: browsing agents
-// creates nothing. The REAL session materializes on send, bound per the agent's
-// workspace toggle, and you land in the chat to watch it run.
 export function AgentRunView({ id }: { id: string }) {
   const { t } = useTranslation();
   const agents = useAgents();
@@ -24,14 +19,12 @@ export function AgentRunView({ id }: { id: string }) {
       <div className="flex h-full items-center justify-center text-sm text-neutral-400">{t("agents.missing")}</div>
     );
   }
-  // Reachable by direct route even when the panel hides workspace agents in a
-  // chat context — block the run, not the view.
   const needsWorkspace = agent.workspace && workspaceId === null;
 
   function run(text: string, atts: ComposerAttachments) {
     if (!agent) return;
     runAgent(agent, text, atts);
-    navigate(""); // into the chat to watch it run
+    navigate("");
   }
 
   return (

@@ -1,4 +1,4 @@
-// IndexedDB adapter (web tier) — create() throws where IndexedDB doesn't exist, so detectStorage falls through to localStorage.
+// IndexedDB adapter (web tier) — create() throws so detectStorage falls through.
 import type { Storage } from "./types.ts";
 
 const DB_NAME = "v84-harness";
