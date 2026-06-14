@@ -1,5 +1,5 @@
-import type { MediaApiFlavor, MediaModel, MediaProvider, MediaService } from "./tools/types.ts";
-import { MEDIA_SERVICES } from "./tools/types.ts";
+import type { MediaApiKind, MediaService } from "../llm/types.ts";
+import { MEDIA_SERVICES } from "../llm/types.ts";
 import type { Ctx } from "./ctx.ts";
 import { createStore } from "../lib/store.ts";
 import { writeLLMConfig, type LLMConfig, type LLMConfigList } from "./config/llm.ts";
@@ -7,19 +7,40 @@ import { writeLLMConfig, type LLMConfig, type LLMConfigList } from "./config/llm
 // The media model registry — providers hosting models, plus a use-case → model assignment map.
 const KEY = "v84-harness:media";
 
-export interface ModelRef {
+export type MediaPromptStyle = "plain" | "cosmos-json";
+
+export interface MediaModel {
+  id: string;
+  modelId: string;
+  capabilities: MediaService[];
+  promptStyle?: MediaPromptStyle;
+  maxImageSize?: string;
+  maxVideoSize?: string;
+}
+
+export interface MediaProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string;
+  api: MediaApiKind;
+  detected?: string[];
+  models: MediaModel[];
+}
+
+export interface ModelAssignment {
   providerId: string;
   modelId: string; // MediaModel.id (the registry id, not the wire id)
 }
 
 export interface MediaRegistry {
   providers: MediaProvider[];
-  assignments: Partial<Record<MediaService, ModelRef>>;
+  assignments: Partial<Record<MediaService, ModelAssignment>>;
 }
 
 const DEFAULTS: MediaRegistry = { providers: [], assignments: {} };
 
-export function providerCaps(api: MediaApiFlavor): readonly MediaService[] {
+export function providerCaps(api: MediaApiKind): readonly MediaService[] {
   return api === "generate" ? ["imageGen"] : MEDIA_SERVICES;
 }
 
@@ -42,7 +63,7 @@ interface LegacyEntry {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
-  api?: MediaApiFlavor | "openai-images" | "plain-generate" | "openai-chat";
+  api?: MediaApiKind | "openai-images" | "plain-generate" | "openai-chat";
   capabilities?: MediaService[];
   promptStyle?: MediaModel["promptStyle"];
   maxSize?: string;
@@ -51,7 +72,7 @@ interface LegacyEntry {
   models?: string[];
 }
 
-function legacyApi(api: LegacyEntry["api"]): MediaApiFlavor {
+function legacyApi(api: LegacyEntry["api"]): MediaApiKind {
   return api === "plain-generate" || api === "generate" ? "generate" : "openai";
 }
 
@@ -237,7 +258,7 @@ function pruneAssignments(
 
 // ── assignment + resolution ──────────────────────────────────────────────────
 
-export function assignModel(useCase: MediaService, ref: ModelRef | null): void {
+export function assignModel(useCase: MediaService, ref: ModelAssignment | null): void {
   const cur = store.get();
   const assignments = { ...cur.assignments };
   if (ref) assignments[useCase] = ref;
@@ -245,8 +266,8 @@ export function assignModel(useCase: MediaService, ref: ModelRef | null): void {
   store.set({ ...cur, assignments });
 }
 
-export function slotOptions(useCase: MediaService, reg: MediaRegistry): Array<{ ref: ModelRef; label: string }> {
-  const out: Array<{ ref: ModelRef; label: string }> = [];
+export function slotOptions(useCase: MediaService, reg: MediaRegistry): Array<{ ref: ModelAssignment; label: string }> {
+  const out: Array<{ ref: ModelAssignment; label: string }> = [];
   for (const p of reg.providers) {
     for (const m of p.models) {
       if (!m.capabilities.includes(useCase)) continue;

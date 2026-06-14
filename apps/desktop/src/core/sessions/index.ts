@@ -13,8 +13,8 @@ export {
   getSessionsForWorkspace,
 } from "./store.ts";
 export { SessionEngine } from "./engine.ts";
-export type { TurnResult, SendOptions, Validate } from "./engine.ts";
-export type { Session, Message, Role, MediaRef, FileAttachment, Tool, ToolCallRequest } from "./types.ts";
+export type { TurnResult, SendOptions, OutputValidator } from "./engine.ts";
+export type { Session, Message, Role, MediaRef, FileAttachment, Attachments, SessionTool, ToolCallRequest } from "./types.ts";
 export {
   useSessions,
   useActiveId,

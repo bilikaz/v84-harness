@@ -1,4 +1,6 @@
-import { type MediaService, type ToolResult, type LLMConfig } from "../types.ts";
+import { type ToolResult } from "../types.ts";
+import type { LLMConfig } from "../../config/llm.ts";
+import type { MediaService } from "../../../llm/types.ts";
 import { BaseTool } from "../base.ts";
 
 // General tools: available in any session (chat or workspace), never permission-checked, run in the renderer.

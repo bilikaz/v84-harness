@@ -3,7 +3,7 @@ import { createStore } from "../lib/store.ts";
 import { errorMessage } from "../lib/errors.ts";
 import { writeLLMConfig, type LLMConfig } from "./config/llm.ts";
 
-export interface MainSettings extends LLMConfig {
+export interface ChatModelSettings extends LLMConfig {
   input?: { image?: boolean; video?: boolean; audio?: boolean };
   imageMaxDim?: number;
   contextReserve?: number;
@@ -13,47 +13,47 @@ export interface MainSettings extends LLMConfig {
 
 const KEY = "v84-harness:provider";
 
-const DEFAULTS: MainSettings = {
+const DEFAULTS: ChatModelSettings = {
   provider: { name: "Default", type: "openai", baseUrl: "/llm" },
   model: { id: "Holo-3.1-35B", maxTokens: 30000, reasoningEffort: "off" },
   input: { image: true },
   models: [],
 };
 
-function load(): MainSettings | null {
+function load(): ChatModelSettings | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<MainSettings>;
+    const parsed = JSON.parse(raw) as Partial<ChatModelSettings>;
     return parsed && typeof parsed.provider === "object" && parsed.provider !== null && typeof parsed.model === "object"
-      ? (parsed as MainSettings)
+      ? (parsed as ChatModelSettings)
       : null;
   } catch {
     return null;
   }
 }
 
-const store = createStore<MainSettings>(KEY, DEFAULTS, load);
+const store = createStore<ChatModelSettings>(KEY, DEFAULTS, load);
 
-export function getProvider(): MainSettings {
+export function getProvider(): ChatModelSettings {
   return store.get();
 }
 
 // The chat model, or null when no endpoint/model is configured (the no-model guard + cfg.input read this).
-export function resolveMain(): MainSettings | null {
+export function resolveMain(): ChatModelSettings | null {
   const cfg = store.get();
   return cfg.provider.baseUrl && cfg.model.id ? cfg : null;
 }
 
-export function saveProvider(patch: Partial<MainSettings>): void {
+export function saveProvider(patch: Partial<ChatModelSettings>): void {
   store.patch(patch);
 }
 
-export function saveProviderBlock(patch: Partial<MainSettings["provider"]>): void {
+export function saveProviderBlock(patch: Partial<ChatModelSettings["provider"]>): void {
   store.patch({ provider: { ...store.get().provider, ...patch } });
 }
 
-export function saveModelBlock(patch: Partial<MainSettings["model"]>): void {
+export function saveModelBlock(patch: Partial<ChatModelSettings["model"]>): void {
   store.patch({ model: { ...store.get().model, ...patch } });
 }
 
@@ -72,7 +72,7 @@ export async function detectModels(): Promise<{ ok: boolean; count: number; erro
   }
 }
 
-export function useProvider(): MainSettings {
+export function useProvider(): ChatModelSettings {
   return store.use();
 }
 

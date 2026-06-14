@@ -3,7 +3,7 @@ export type {
   MediaRef,
   FileAttachment,
   Message,
-  Tool,
+  SessionTool,
   Session,
   ToolCallRequest,
 } from "../core/sessions/types.ts";

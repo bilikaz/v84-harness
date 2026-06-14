@@ -1,10 +1,10 @@
 import { createStore } from "../lib/store.ts";
-import { type GatedTool, type ToolPermission, type ToolName } from "./tools/types.ts";
+import { type ToolName, type ToolPermission } from "./tools/types.ts";
 
 // Workspace store — a folder (the agent's root) + name + per-workspace settings.
 const KEY = "v84-harness:workspaces";
 
-export type { GatedTool, ToolPermission, ToolName };
+export type { ToolName, ToolPermission };
 
 export type Isolation = "worktree" | "direct";
 
@@ -15,10 +15,10 @@ export interface Workspace {
   defaultModelId?: string;
   isolation: Isolation;
   instructions?: string;
-  tools: Record<GatedTool, ToolPermission>; // gated tools the user has set a mode for; the rest fall back to each tool's defaultPermission()
+  tools: Record<ToolName, ToolPermission>; // gated tools the user has set a mode for; the rest fall back to each tool's defaultPermission()
 }
 
-interface WsState {
+interface WorkspacesState {
   workspaces: Workspace[];
   activeId: string | null;
 }
@@ -45,7 +45,7 @@ function normalize(w: Partial<Workspace>): Workspace {
   };
 }
 
-function load(): WsState | null {
+function load(): WorkspacesState | null {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -60,7 +60,7 @@ function load(): WsState | null {
   return null;
 }
 
-const store = createStore<WsState>(KEY, { workspaces: [], activeId: null }, load);
+const store = createStore<WorkspacesState>(KEY, { workspaces: [], activeId: null }, load);
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export function getWorkspaces(): Workspace[] {

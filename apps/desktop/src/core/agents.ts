@@ -1,5 +1,5 @@
 import { createStore } from "../lib/store.ts";
-import { type GatedTool, type ToolPermission } from "./tools/types.ts";
+import { type ToolName, type ToolPermission } from "./tools/types.ts";
 
 // Agents store — reusable playbooks (system + user markdown) executed as sessions.
 const KEY = "v84-harness:agents";
@@ -7,7 +7,7 @@ const LEGACY_KEY = "v84-harness:procedures"; // pre-rename storage; migrated on 
 
 // An agent's tool CEILING — the effective per-call permission is the STRICTER of
 // this and the workspace policy (min); an agent can restrict but never extend it.
-export type AgentTools = Record<GatedTool, ToolPermission>;
+export type AgentTools = Record<ToolName, ToolPermission>;
 // Empty default = no ceiling set; effectiveMode treats a missing entry as 2 (allow), so an agent only ever restricts.
 export const AGENT_TOOLS_DEFAULT: AgentTools = {};
 

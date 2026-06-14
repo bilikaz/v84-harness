@@ -1,54 +1,25 @@
 // Tool subsystem vocabulary — bridge and renderer import from here, never the reverse. The model-facing shapes
-// (ToolSpec, ToolCallRequest, MediaRef, service unions) are owned by the llm layer and re-exported here.
+// (ToolSpec, ToolCallRequest, MediaRef) are owned by the llm layer and re-exported here.
 
 import type { Config } from "../config/index.ts";
-import type { MediaApiFlavor, MediaService, MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
-export type { MediaApiFlavor, MediaService, MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
-export { MEDIA_SERVICES } from "../../llm/types.ts";
-export type { LLMConfig } from "../config/index.ts";
+import type { MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
+export type { MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
 
 export interface ToolResult {
   ok: boolean;
   output: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
-}
-
-export type MediaPromptStyle = "plain" | "cosmos-json";
-
-export interface MediaModel {
-  id: string;
-  modelId: string;
-  capabilities: MediaService[];
-  promptStyle?: MediaPromptStyle;
-  maxImageSize?: string;
-  maxVideoSize?: string;
-}
-
-export interface MediaProvider {
-  id: string;
-  name: string;
-  baseUrl: string;
-  apiKey?: string;
-  api: MediaApiFlavor;
-  detected?: string[];
-  models: MediaModel[];
-}
-
-export interface MediaEndpoint {
-  baseUrl: string;
-  apiKey?: string;
+  images?: Image[];
+  video?: Video[];
 }
 
 // What crosses the bridge to the main runner alongside the call: the config snapshot (functions/clients can't
 // cross IPC, so main seeds its Ctx from this). The cwd rides on the ToolCallRequest itself.
-export interface ToolWire {
+export interface WireConfig {
   config: Config;
 }
 
 // A tool's model-facing name. Tools are discovered dynamically (no static list); whether a tool is
 // permission-gated is its own isPermissioned() (surfaced in the filter result), not a hard-coded set.
-export type GatedTool = string;
 export type ToolName = string;
 export type ToolPermission = 0 | 1 | 2;
 

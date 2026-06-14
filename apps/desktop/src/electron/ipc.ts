@@ -1,6 +1,6 @@
 // Registers the main-side handlers behind the `window.harness` bridge.
 
-import { IPC, type ToolCallRequest, type ToolWire, type ToolFilterParams, type MediaEndpoint, type MediaModelsResult } from "./bridge.ts";
+import { IPC, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type MediaModelsResult } from "./bridge.ts";
 import { cancelTool, execTool, toolFilter } from "./tools.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
 import { openStorage } from "./storage.ts";
@@ -24,8 +24,8 @@ export function registerIpc(electron: Electron): void {
     });
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0];
   });
-  ipcMain.handle(IPC.toolsFilter, (_e: unknown, wire: ToolWire, params?: ToolFilterParams) => toolFilter(wire, params));
-  ipcMain.handle(IPC.toolsExec, (_e: unknown, call: ToolCallRequest, wire: ToolWire) => execTool(call, wire));
+  ipcMain.handle(IPC.toolsFilter, (_e: unknown, wire: WireConfig, params?: ToolFilterParams) => toolFilter(wire, params));
+  ipcMain.handle(IPC.toolsExec, (_e: unknown, call: ToolCallRequest, wire: WireConfig) => execTool(call, wire));
   ipcMain.handle(IPC.toolsCancel, (_e: unknown, callId: string) => cancelTool(callId));
 
   ipcMain.handle(IPC.mediaModels, async (_e: unknown, cfg: MediaEndpoint): Promise<MediaModelsResult> => {

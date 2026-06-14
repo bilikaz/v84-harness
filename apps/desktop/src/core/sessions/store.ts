@@ -1,5 +1,5 @@
 import type { ChatMessage } from "../../llm/types.ts";
-import type { MainSettings } from "../settings.ts";
+import type { ChatModelSettings } from "../settings.ts";
 import type { FileAttachment, MediaRef, Message, Session, ToolCallRequest } from "./types.ts";
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
@@ -248,7 +248,7 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
-export function pushTurn(sid: string, userText: string, images?: MediaRef[], files?: FileAttachment[], video?: MediaRef[]): void {
+export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], video?: Video[]): void {
   const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
   sessions = sessions.map((s) =>
@@ -286,8 +286,8 @@ export function pushToolResult(
   sid: string,
   toolCallId: string,
   output: string,
-  images?: MediaRef[],
-  video?: MediaRef[],
+  images?: Image[],
+  video?: Video[],
   childSessionIds?: string[],
 ): void {
   const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video, childSessionIds };
@@ -310,7 +310,7 @@ export function getChildRuns(): Record<string, string[]> {
 
 // Feed tool-produced media back to the model as a hidden user turn (skipped in
 // the UI — it already shows in the tool card; this lets a vision agent see it).
-export function pushMediaFeedback(sid: string, images?: MediaRef[], video?: MediaRef[]): void {
+export function pushMediaFeedback(sid: string, images?: Image[], video?: Video[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
     role: "user",
@@ -366,7 +366,7 @@ export function setTitle(id: string, title: string): void {
 // The usable token budget = context window − the reserve (headroom for the
 // response). 0 when the window is unknown. Tiny windows fall back to the full
 // window so they aren't permanently "full".
-export function contextLimit(cfg: MainSettings): number {
+export function contextLimit(cfg: ChatModelSettings): number {
   if (!cfg.model.contextLength) return 0;
   const { contextReserve, reserveMinFraction } = getAppConfig().session;
   // Reserve at least the configured fraction of the window — never let the
@@ -376,7 +376,7 @@ export function contextLimit(cfg: MainSettings): number {
   return cfg.model.contextLength > reserve ? cfg.model.contextLength - reserve : cfg.model.contextLength;
 }
 
-export function isFull(cfg: MainSettings, session: Session = getActive()): boolean {
+export function isFull(cfg: ChatModelSettings, session: Session = getActive()): boolean {
   const limit = contextLimit(cfg);
   return limit > 0 && (session.usedTokens ?? 0) >= limit;
 }
@@ -460,7 +460,7 @@ function hiddenNote(hidden: MediaRef[]): string {
 // model can't take is withheld (with a note) instead of letting the endpoint
 // 400 the whole turn. Image assumed on unless declared off, video only when
 // declared on. Callers that omit `input` (tests) get everything.
-export function toChatMessages(messages: Message[], input?: NonNullable<MainSettings["input"]>): ChatMessage[] {
+export function toChatMessages(messages: Message[], input?: NonNullable<ChatModelSettings["input"]>): ChatMessage[] {
   const allowImage = input ? input.image !== false : true;
   const allowVideo = input ? input.video === true : true;
   const window = mediaWindow(messages);

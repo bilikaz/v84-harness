@@ -16,19 +16,15 @@ import {
   updateProvider,
   useMediaRegistry,
   type MediaRegistry,
-} from "../../core/media.ts";
-import {
-  MEDIA_SERVICES,
-  type MediaApiFlavor,
   type MediaModel,
   type MediaProvider,
-  type MediaService,
-} from "../../core/tools/types.ts";
+} from "../../core/media.ts";
+import { MEDIA_SERVICES, type MediaApiKind, type MediaService } from "../../llm/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 
-const FLAVORS: readonly MediaApiFlavor[] = ["openai", "generate"];
-const FLAVOR_KEY: Record<MediaApiFlavor, string> = { openai: "apiOpenai", generate: "apiGenerate" };
+const FLAVORS: readonly MediaApiKind[] = ["openai", "generate"];
+const FLAVOR_KEY: Record<MediaApiKind, string> = { openai: "apiOpenai", generate: "apiGenerate" };
 
 const FIELD = "w-80";
 
@@ -197,7 +193,7 @@ function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => 
             <div className={FIELD}>
               <select
                 value={p.api}
-                onChange={(e) => updateProvider(p.id, { api: e.target.value as MediaApiFlavor })}
+                onChange={(e) => updateProvider(p.id, { api: e.target.value as MediaApiKind })}
                 className={fieldInputFull}
               >
                 {FLAVORS.map((f) => (

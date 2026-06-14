@@ -6,8 +6,7 @@ import { StorageEngine, type Storage } from "../core/storage/index.ts";
 import { IdbStorage } from "./idbStorage.ts";
 import { LocalStorage } from "./localStorage.ts";
 import { ToolRegistry } from "../core/tools/registry.ts";
-import type { HostApi, MediaModelsResult } from "../core/host.ts";
-import type { MediaEndpoint } from "../core/tools/types.ts";
+import type { HostApi, MediaModelsResult, MediaEndpoint } from "../core/host.ts";
 import { errorMessage } from "../lib/errors.ts";
 
 const MODULES = import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true });

@@ -2,13 +2,13 @@
 // write into it; config knows nothing of how the values arrived. The service vocabulary (ModelService) is
 // owned by the llm layer and imported here.
 
-import type { ProviderType, ReasoningEffort, ModelService } from "../../llm/types.ts";
+import type { ProviderKind, ReasoningEffort, ModelService } from "../../llm/types.ts";
 import { createStore } from "../../lib/store.ts";
 
 export interface LLMConfig {
   provider: {
     name: string;
-    type: ProviderType;
+    type: ProviderKind;
     baseUrl: string;
     apiKey?: string;
   };

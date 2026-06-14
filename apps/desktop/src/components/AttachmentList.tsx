@@ -5,7 +5,7 @@ import type { FileAttachment, MediaRef } from "../lib/types.ts";
 
 // Image/video/file attachment previews with remove buttons.
 export function AttachmentList(props: {
-  images?: MediaRef[];
+  images?: Image[];
   videos?: MediaRef[];
   files?: FileAttachment[];
   onRemoveImage?: (i: number) => void;

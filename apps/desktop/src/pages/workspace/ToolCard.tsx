@@ -18,8 +18,8 @@ export const ToolCard = memo(function ToolCard({
 }: {
   call: ToolCallRequest;
   output?: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
   childSessionIds?: string[];
 }) {
   const { t } = useTranslation();

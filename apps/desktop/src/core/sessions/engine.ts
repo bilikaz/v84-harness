@@ -1,14 +1,14 @@
 import type { ToolCallRequest, ToolSpec } from "../../llm/types.ts";
 import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
 import { llmLog } from "../../llm/debug.ts";
-import type { FileAttachment, MediaRef, Session } from "./types.ts";
+import type { Attachments, MediaRef, Session } from "./types.ts";
 import { resolveMain } from "../settings.ts";
 import type { Ctx } from "../ctx.ts";
 import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";
 import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
-import { type GatedTool, type ToolPermission, type ToolResult } from "../tools/types.ts";
+import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
 import { pt } from "../../lib/prompts.ts";
 import { cap } from "../tools/base.ts";
 import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgent } from "./agentTools.ts";
@@ -32,7 +32,7 @@ import { nameSession } from "./naming.ts";
 import { compact as compactSession } from "./compaction.ts";
 
 // Validator for the model's final (no-tool) turn: throw to reject — the engine injects a correction and retries.
-export type Validate = (text: string) => void;
+export type OutputValidator = (text: string) => void;
 
 // How a turn ended; `text` is the final answer — partial if aborted.
 export interface TurnResult {
@@ -41,12 +41,9 @@ export interface TurnResult {
   aborted: boolean;
 }
 
-export interface SendOptions {
-  images?: MediaRef[];
-  video?: MediaRef[];
-  files?: FileAttachment[];
+export interface SendOptions extends Attachments {
   autoName?: boolean;
-  validate?: Validate;
+  validate?: OutputValidator;
 }
 
 // The sessions engine: the turn loop, sub-agent orchestration, naming/compaction triggers — all bound to one ctx.
@@ -93,7 +90,7 @@ export class SessionEngine {
 
   // The per-tool modes exactly as the turn loop computes them — includeDisabled so the UI lists gated tools
   // that are currently off. Async: in electron the gateway resolves the policy in main over the bridge.
-  async sessionToolModes(session: Session): Promise<Record<GatedTool, ToolPermission>> {
+  async sessionToolModes(session: Session): Promise<Record<ToolName, ToolPermission>> {
     const { ws, agent } = capabilityContext(session);
     const filtered = await this.ctx.tools.filter({
       hasWorkspace: !!ws,
@@ -105,7 +102,7 @@ export class SessionEngine {
       Object.values(filtered)
         .filter((e) => e.permissioned)
         .map((e) => [e.name, e.effectiveMode]),
-    ) as Record<GatedTool, ToolPermission>;
+    ) as Record<ToolName, ToolPermission>;
   }
 
   // Returns null when the send is refused: nothing to send / that session already streaming / context full.
@@ -232,8 +229,8 @@ export class SessionEngine {
         }
         // Run all calls concurrently — results link back via toolCallId, so completion order doesn't matter.
         bus.emit("tool:calls", { sessionId: sid, calls });
-        const fedImages: MediaRef[] = []; // tool-produced images to show the vision agent this step
-        const fedVideo: MediaRef[] = []; // tool-produced video — fed back only when the model takes video input
+        const fedImages: Image[] = []; // tool-produced images to show the vision agent this step
+        const fedVideo: Video[] = []; // tool-produced video — fed back only when the model takes video input
         await Promise.all(
           calls.map(async (call) => {
             // The sub-agent pair is driver-level (it spawns sessions) — handled before the registry/policy paths.

@@ -25,8 +25,8 @@ function MessageImpl({
   role: Role;
   text: string;
   thinking?: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
   files?: FileAttachment[];
   toolCalls?: ToolCallRequest[];
   results?: Map<string, string>;

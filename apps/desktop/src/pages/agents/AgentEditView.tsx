@@ -5,7 +5,7 @@ import { ArrowLeft, Trash2 } from "lucide-react";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { ToolModePicker } from "../../components/ToolModePicker.tsx";
 import { deleteAgent, saveAgent, useAgents } from "../../core/agents.ts";
-import { type GatedTool, type ToolPermission } from "../../core/tools/types.ts";
+import { type ToolName, type ToolPermission } from "../../core/tools/types.ts";
 import { useGatedTools } from "../../renderer/gatedTools.ts";
 import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
@@ -33,7 +33,7 @@ export function AgentEditView({ id }: { id: string }) {
     navigate("");
   }
 
-  function setTool(tool: GatedTool, mode: ToolPermission) {
+  function setTool(tool: ToolName, mode: ToolPermission) {
     if (!agent) return;
     saveAgent(id, { tools: { ...agent.tools, [tool]: mode } });
   }

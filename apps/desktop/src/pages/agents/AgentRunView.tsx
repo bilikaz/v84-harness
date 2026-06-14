@@ -5,7 +5,8 @@ import { useAgents } from "../../core/agents.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import { useActiveWorkspaceId } from "../../core/workspaces.ts";
 import { navigate } from "../../lib/router.ts";
-import { Composer, type ComposerAttachments } from "../workspace/Composer.tsx";
+import { Composer } from "../workspace/Composer.tsx";
+import type { Attachments } from "../../core/sessions/index.ts";
 import { SystemBanner } from "../workspace/SystemBanner.tsx";
 
 export function AgentRunView({ id }: { id: string }) {
@@ -22,7 +23,7 @@ export function AgentRunView({ id }: { id: string }) {
   }
   const needsWorkspace = agent.workspace && workspaceId === null;
 
-  function run(text: string, atts: ComposerAttachments) {
+  function run(text: string, atts: Attachments) {
     if (!agent) return;
     ctx.sessions.runAgent(agent, text, atts);
     navigate("");

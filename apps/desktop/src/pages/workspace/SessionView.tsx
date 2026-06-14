@@ -20,7 +20,8 @@ import { useOutsideClick } from "../../lib/hooks.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
 import { InlineEdit } from "../../components/InlineEdit.tsx";
-import { Composer, type ComposerAttachments } from "./Composer.tsx";
+import { Composer } from "./Composer.tsx";
+import type { Attachments } from "../../core/sessions/index.ts";
 import { Message } from "./Message.tsx";
 import { SystemBanner } from "./SystemBanner.tsx";
 import { cn } from "../../lib/cn.ts";
@@ -110,7 +111,7 @@ export function SessionView() {
     setRenaming(false);
   }
 
-  function submit(text: string, atts: ComposerAttachments) {
+  function submit(text: string, atts: Attachments) {
     void ctx.sessions.send(text, atts);
   }
 

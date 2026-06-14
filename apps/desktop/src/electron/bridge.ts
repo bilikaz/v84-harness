@@ -1,18 +1,18 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
-import type { ToolSpec, ToolCallRequest, ToolResult, ToolWire, ToolFilterParams, ToolFilterResult, MediaEndpoint } from "../core/tools/types.ts";
-import type { MediaModelsResult } from "../core/host.ts";
+import type { ToolSpec, ToolCallRequest, ToolResult, WireConfig, ToolFilterParams, ToolFilterResult } from "../core/tools/types.ts";
+import type { MediaModelsResult, MediaEndpoint } from "../core/host.ts";
 
-export type { ToolSpec, ToolCallRequest, ToolResult, ToolWire, ToolFilterParams, ToolFilterResult, MediaEndpoint };
-export type { MediaModelsResult };
+export type { ToolSpec, ToolCallRequest, ToolResult, WireConfig, ToolFilterParams, ToolFilterResult };
+export type { MediaModelsResult, MediaEndpoint };
 
 export interface ElectronApi {
   isElectron: true;
   pickFolder(): Promise<string | null>;
   tools: {
     // The wire carries the config snapshot main seeds its Ctx from; the cwd rides on the call.
-    filter(wire: ToolWire, params?: ToolFilterParams): Promise<ToolFilterResult>;
-    exec(call: ToolCallRequest, wire: ToolWire): Promise<ToolResult>;
+    filter(wire: WireConfig, params?: ToolFilterParams): Promise<ToolFilterResult>;
+    exec(call: ToolCallRequest, wire: WireConfig): Promise<ToolResult>;
     // Resolving says the cancel was DELIVERED, not that the tool has exited.
     cancel(callId: string): Promise<void>;
   };

@@ -1,13 +1,12 @@
 // Chat domain vocabulary — Session, Message, attachments.
 
 import type { ToolCallRequest } from "../../llm/types.ts";
-
 export type { ToolCallRequest };
 
-export type Role = "user" | "assistant" | "tool";
+export type { MediaRef } from "../../llm/types.ts";
+import type { MediaRef } from "../../llm/types.ts";
 
-export type { MediaRef } from "../tools/types.ts";
-import type { MediaRef } from "../tools/types.ts";
+export type Role = "user" | "assistant" | "tool";
 
 export interface FileAttachment {
   name: string;
@@ -15,13 +14,20 @@ export interface FileAttachment {
   bytes?: number;
 }
 
+// A turn's attachment bundle — what the composer collects and the engine sends.
+export interface Attachments {
+  images?: Image[];
+  video?: Video[];
+  files?: FileAttachment[];
+}
+
 export interface Message {
   id: string;
   role: Role;
   text: string;
   thinking?: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
   files?: FileAttachment[];
   toolCalls?: ToolCallRequest[];
   toolCallId?: string;
@@ -30,7 +36,7 @@ export interface Message {
   hidden?: boolean;
 }
 
-export interface Tool {
+export interface SessionTool {
   id: string;
   name: string;
   enabled: boolean;
@@ -43,7 +49,7 @@ export interface Session {
   workspaceId?: string | null;
   agentId?: string;
   parentId?: string;
-  tools: Tool[];
+  tools: SessionTool[];
   messages: Message[];
   usedTokens?: number;
   unread?: boolean;

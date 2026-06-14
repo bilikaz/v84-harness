@@ -7,13 +7,15 @@ import rendererConfig from "./vite.config.ts";
 
 const appDir = fileURLToPath(new URL(".", import.meta.url));
 
-// electron-vite config — preload auto-detects src/preload/; the main process lives in src/electron/ (not the
-// default src/main/), so its entry is pointed at explicitly. Output keys stay main/preload/renderer (→ out/main,
-// etc.), so package.json's "main" is unchanged. Renderer reuses vite.config.ts so web and desktop share one config.
+// electron-vite config — the whole Electron platform lives in src/electron/ (main + preload), not the default
+// src/main/ + src/preload/, so both entries are pointed at explicitly. The preload output is pinned to index.mjs
+// so the BrowserWindow's preload path (src/electron/index.ts) stays valid. Output keys stay main/preload/renderer
+// (→ out/main, etc.), so package.json's "main" is unchanged. Renderer reuses vite.config.ts (web + desktop share one).
 export default defineConfig({
   // @ts-expect-error electron-vite 5 build typings (same Vite 5 mismatch as the renderer note below).
   main: { build: { rollupOptions: { input: resolve(appDir, "src/electron/index.ts") } } },
-  preload: {},
+  // @ts-expect-error electron-vite 5 build typings (same Vite 5 mismatch as the renderer note below).
+  preload: { build: { rollupOptions: { input: resolve(appDir, "src/electron/preload.ts"), output: { entryFileNames: "index.mjs" } } } },
   renderer: {
     root: appDir,
     plugins: rendererConfig.plugins,

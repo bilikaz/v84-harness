@@ -7,8 +7,8 @@ import type { FileAttachment, MediaRef } from "./types.ts";
 export interface TurnStart {
   sessionId: string;
   text: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
   files?: FileAttachment[];
 }
 export interface TextDelta {
@@ -48,12 +48,12 @@ export interface ToolCalls {
   calls: ToolCallRequest[];
 }
 // `childSessionIds` are display-only — the model gets the answer text, never session ids.
-export interface ToolResultEvt {
+export interface ToolResultEvent {
   sessionId: string;
   toolCallId: string;
   output: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
   childSessionIds?: string[];
 }
 // One event per child; a multi-run call emits several with the same toolCallId.
@@ -64,8 +64,8 @@ export interface ToolChild {
 }
 export interface MediaFeedback {
   sessionId: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
 }
 export interface AssistantOpen {
   sessionId: string;
@@ -91,7 +91,7 @@ declare module "../../lib/bus.ts" {
     "session:message:done": MessageDone;
     "session:turn:end": TurnEnd;
     "session:tool:calls": ToolCalls;
-    "session:tool:result": ToolResultEvt;
+    "session:tool:result": ToolResultEvent;
     "session:tool:child": ToolChild;
     "session:assistant:open": AssistantOpen;
     "session:heal": Heal;

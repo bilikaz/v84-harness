@@ -8,12 +8,7 @@ import { readAttachments } from "../../lib/attachments.ts";
 import { navigate } from "../../lib/router.ts";
 import { AttachmentList } from "../../components/AttachmentList.tsx";
 import type { FileAttachment, MediaRef } from "../../lib/types.ts";
-
-export interface ComposerAttachments {
-  images?: MediaRef[];
-  video?: MediaRef[];
-  files?: FileAttachment[];
-}
+import type { Attachments } from "../../core/sessions/index.ts";
 
 // Message composer shared by chat and agent runs — owns its input state; the parent owns what submit means.
 export function Composer(props: {
@@ -21,7 +16,7 @@ export function Composer(props: {
   disabled?: boolean; // blocks send (context full, compacting, missing workspace)
   streaming?: boolean;
   onStop?: () => void;
-  onSubmit: (text: string, atts: ComposerAttachments) => void;
+  onSubmit: (text: string, atts: Attachments) => void;
 }) {
   const { t } = useTranslation();
   const provider = useProvider();
@@ -103,7 +98,7 @@ export function Composer(props: {
   function submit() {
     if (!canSend) return;
     const text = input.trim();
-    const atts: ComposerAttachments = {
+    const atts: Attachments = {
       images: images.length ? images : undefined,
       video: videos.length ? videos : undefined,
       files: files.length ? files : undefined,
