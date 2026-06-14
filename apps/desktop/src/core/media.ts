@@ -1,8 +1,8 @@
-import type { MediaApiFlavor, MediaModel, MediaProvider, MediaUseCase } from "./tools/types.ts";
-import { MEDIA_USE_CASES } from "./tools/types.ts";
+import type { MediaApiFlavor, MediaModel, MediaProvider, MediaService } from "./tools/types.ts";
+import { MEDIA_SERVICES } from "./tools/types.ts";
 import type { Ctx } from "./ctx.ts";
 import { createStore } from "../lib/store.ts";
-import { writeConfigLLM, type ConfigLLM, type ConfigLLMList } from "./config/llm.ts";
+import { writeLLMConfig, type LLMConfig, type LLMConfigList } from "./config/llm.ts";
 
 // The media model registry — providers hosting models, plus a use-case → model assignment map.
 const KEY = "v84-harness:media";
@@ -14,13 +14,13 @@ export interface ModelRef {
 
 export interface MediaRegistry {
   providers: MediaProvider[];
-  assignments: Partial<Record<MediaUseCase, ModelRef>>;
+  assignments: Partial<Record<MediaService, ModelRef>>;
 }
 
 const DEFAULTS: MediaRegistry = { providers: [], assignments: {} };
 
-export function providerCaps(api: MediaApiFlavor): readonly MediaUseCase[] {
-  return api === "generate" ? ["imageGen"] : MEDIA_USE_CASES;
+export function providerCaps(api: MediaApiFlavor): readonly MediaService[] {
+  return api === "generate" ? ["imageGen"] : MEDIA_SERVICES;
 }
 
 function newId(): string {
@@ -43,7 +43,7 @@ interface LegacyEntry {
   apiKey?: string;
   model?: string;
   api?: MediaApiFlavor | "openai-images" | "plain-generate" | "openai-chat";
-  capabilities?: MediaUseCase[];
+  capabilities?: MediaService[];
   promptStyle?: MediaModel["promptStyle"];
   maxSize?: string;
   maxImageSize?: string;
@@ -55,11 +55,11 @@ function legacyApi(api: LegacyEntry["api"]): MediaApiFlavor {
   return api === "plain-generate" || api === "generate" ? "generate" : "openai";
 }
 
-function migrateEntries(entries: LegacyEntry[], oldAssignments: Partial<Record<MediaUseCase, string>>): MediaRegistry {
+function migrateEntries(entries: LegacyEntry[], oldAssignments: Partial<Record<MediaService, string>>): MediaRegistry {
   const providers: MediaProvider[] = [];
   const assignments: MediaRegistry["assignments"] = {};
   for (const e of entries) {
-    const assignedSlots = MEDIA_USE_CASES.filter((uc) => oldAssignments[uc] === e.id);
+    const assignedSlots = MEDIA_SERVICES.filter((uc) => oldAssignments[uc] === e.id);
     const model: MediaModel = {
       id: newId(),
       modelId: e.model ?? "",
@@ -91,7 +91,7 @@ function load(): MediaRegistry | null {
       return { providers: parsed.providers, assignments: parsed.assignments ?? {} };
     }
     if (Array.isArray(parsed.entries)) {
-      return migrateEntries(parsed.entries, (parsed.assignments ?? {}) as Partial<Record<MediaUseCase, string>>);
+      return migrateEntries(parsed.entries, (parsed.assignments ?? {}) as Partial<Record<MediaService, string>>);
     }
     if (typeof parsed.baseUrl === "string" && parsed.baseUrl) {
       const model: MediaModel = {
@@ -226,7 +226,7 @@ function pruneAssignments(
   providers: MediaProvider[],
 ): MediaRegistry["assignments"] {
   const out: MediaRegistry["assignments"] = {};
-  for (const uc of MEDIA_USE_CASES) {
+  for (const uc of MEDIA_SERVICES) {
     const ref = assignments[uc];
     if (!ref) continue;
     const model = providers.find((p) => p.id === ref.providerId)?.models.find((m) => m.id === ref.modelId);
@@ -237,7 +237,7 @@ function pruneAssignments(
 
 // ── assignment + resolution ──────────────────────────────────────────────────
 
-export function assignModel(useCase: MediaUseCase, ref: ModelRef | null): void {
+export function assignModel(useCase: MediaService, ref: ModelRef | null): void {
   const cur = store.get();
   const assignments = { ...cur.assignments };
   if (ref) assignments[useCase] = ref;
@@ -245,7 +245,7 @@ export function assignModel(useCase: MediaUseCase, ref: ModelRef | null): void {
   store.set({ ...cur, assignments });
 }
 
-export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ ref: ModelRef; label: string }> {
+export function slotOptions(useCase: MediaService, reg: MediaRegistry): Array<{ ref: ModelRef; label: string }> {
   const out: Array<{ ref: ModelRef; label: string }> = [];
   for (const p of reg.providers) {
     for (const m of p.models) {
@@ -257,7 +257,7 @@ export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ 
 }
 
 // Null when the slot is unassigned or the provider has no endpoint; tools stay inert on null.
-export function resolveMediaProvider(useCase: MediaUseCase): ConfigLLM | null {
+export function resolveMediaProvider(useCase: MediaService): LLMConfig | null {
   const reg = store.get();
   const ref = reg.assignments[useCase];
   if (!ref) return null;
@@ -281,11 +281,11 @@ export function resolveMediaProvider(useCase: MediaUseCase): ConfigLLM | null {
 }
 
 // Owns config.llm's media slots — write them now and on every change. Called once at app init.
-export function syncMediaToConfigLLM(): void {
+export function syncMediaToLLMConfig(): void {
   const write = (): void => {
-    const slice: ConfigLLMList = {};
-    for (const uc of MEDIA_USE_CASES) slice[uc] = resolveMediaProvider(uc) ?? undefined;
-    writeConfigLLM(slice);
+    const slice: LLMConfigList = {};
+    for (const uc of MEDIA_SERVICES) slice[uc] = resolveMediaProvider(uc) ?? undefined;
+    writeLLMConfig(slice);
   };
   store.subscribe(write);
   write();

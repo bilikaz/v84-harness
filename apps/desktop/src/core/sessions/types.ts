@@ -1,8 +1,8 @@
 // Chat domain vocabulary — Session, Message, attachments.
 
-import type { ToolCall } from "../../llm/types.ts";
+import type { ToolCallRequest } from "../../llm/types.ts";
 
-export type { ToolCall };
+export type { ToolCallRequest };
 
 export type Role = "user" | "assistant" | "tool";
 
@@ -23,7 +23,7 @@ export interface Message {
   images?: MediaRef[];
   video?: MediaRef[];
   files?: FileAttachment[];
-  toolCalls?: ToolCall[];
+  toolCalls?: ToolCallRequest[];
   toolCallId?: string;
   childSessionIds?: string[];
   summary?: boolean;

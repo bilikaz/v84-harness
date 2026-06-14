@@ -1,7 +1,7 @@
 // Registers the main-side handlers behind the `window.harness` bridge.
 
-import { IPC, type MediaEndpoint, type MediaModelsResult } from "./bridge.ts";
-//import { cancelTool, execTool, toolFilter } from "./tools.ts";
+import { IPC, type ToolCallRequest, type ToolWire, type ToolFilterParams, type MediaEndpoint, type MediaModelsResult } from "./bridge.ts";
+import { cancelTool, execTool, toolFilter } from "./tools.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
 import { openStorage } from "./storage.ts";
 import { errorMessage } from "../lib/errors.ts";
@@ -24,15 +24,9 @@ export function registerIpc(electron: Electron): void {
     });
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0];
   });
-/* why they need to if exist if they need what needs to be changed??
-  ipcMain.handle(IPC.toolsFilter, async (_e: unknown, params: ToolFilterParams) => toolFilter(params));
-
-  ipcMain.handle(IPC.toolsExec, async (_e: unknown, call: ToolCallRequest) => {
-    return execTool(call, wire);
-  });
-
+  ipcMain.handle(IPC.toolsFilter, (_e: unknown, wire: ToolWire, params?: ToolFilterParams) => toolFilter(wire, params));
+  ipcMain.handle(IPC.toolsExec, (_e: unknown, call: ToolCallRequest, wire: ToolWire) => execTool(call, wire));
   ipcMain.handle(IPC.toolsCancel, (_e: unknown, callId: string) => cancelTool(callId));
-*/
 
   ipcMain.handle(IPC.mediaModels, async (_e: unknown, cfg: MediaEndpoint): Promise<MediaModelsResult> => {
     try {

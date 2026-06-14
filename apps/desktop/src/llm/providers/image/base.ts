@@ -10,7 +10,7 @@ export abstract class BaseImageProvider extends BaseProvider {
   protected abstract generate(prompt: string, p: GenParams): Promise<MediaOut>;
 
   async call<T>(handler: ResponseHandler<T>): Promise<T> {
-    const payload = await this.generate(this.prompt(), this.ctx.params ?? {});
+    const payload = await this.generate(this.prompt(), this.callCtx.params ?? {});
     return handler.handle({ kind: "media", payload });
   }
 
@@ -19,7 +19,7 @@ export abstract class BaseImageProvider extends BaseProvider {
   }
 
   protected async inlineUrl(url: string): Promise<MediaOut> {
-    const img = await fetch(url, { signal: this.ctx.signal });
+    const img = await fetch(url, { signal: this.callCtx.signal });
     if (!img.ok) throw new Error(`fetching generated image URL failed: ${img.status}`);
     return { b64: bytesToB64(new Uint8Array(await img.arrayBuffer())), mime: img.headers.get("content-type") || "image/png" };
   }

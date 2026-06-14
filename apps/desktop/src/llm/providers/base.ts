@@ -1,6 +1,6 @@
 // Provider base — every provider IS one of these.
 
-import type { CallContext, ResponseHandler, ConfigLLM, Provider } from "../types.ts";
+import type { CallContext, ResponseHandler, LLMConfig, Provider } from "../types.ts";
 import { trimBase } from "../../lib/format.ts";
 
 export interface RequestOpts {
@@ -12,8 +12,8 @@ export interface RequestOpts {
 
 export abstract class BaseProvider implements Provider {
   constructor(
-    protected target: ConfigLLM,
-    protected ctx: CallContext,
+    protected target: LLMConfig,
+    protected callCtx: CallContext,
   ) {
     this.init();
   }
@@ -27,7 +27,7 @@ export abstract class BaseProvider implements Provider {
     const { provider } = this.target;
     const res = await fetch(`${trimBase(provider.baseUrl)}${path}`, {
       method: opts.method ?? (opts.json !== undefined || opts.form ? "POST" : "GET"),
-      signal: this.ctx.signal,
+      signal: this.callCtx.signal,
       headers: {
         ...(opts.json !== undefined ? { "content-type": "application/json" } : {}),
         ...(provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {}),
@@ -41,7 +41,7 @@ export abstract class BaseProvider implements Provider {
   }
 
   protected prompt(): string {
-    const { messages } = this.ctx;
+    const { messages } = this.callCtx;
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "user" && messages[i].content) return messages[i].content;
     }

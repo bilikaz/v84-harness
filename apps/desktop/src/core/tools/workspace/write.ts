@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type ToolResult, type ToolSchema } from "../types.ts";
+import { type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { errorMessage } from "../../../lib/errors.ts";
 
 export class Write extends BaseWorkspaceTool {
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {

@@ -11,7 +11,7 @@ export abstract class BaseTextProvider extends BaseProvider {
   call<T>(handler: ResponseHandler<T>): Promise<T> {
     return handler.handle({
       kind: "chat",
-      events: this.demuxInlineThink(withRetry(() => this.stream(), this.ctx.signal)),
+      events: this.demuxInlineThink(withRetry(() => this.stream(), this.callCtx.signal)),
     });
   }
 
@@ -20,7 +20,7 @@ export abstract class BaseTextProvider extends BaseProvider {
   }
 
   protected tools(): ToolSpec[] | undefined {
-    return this.ctx.tools?.length ? this.ctx.tools : undefined;
+    return this.callCtx.tools?.length ? this.callCtx.tools : undefined;
   }
 
   private static readonly OPEN_TAGS = [" thinking", "<thinking>"];

@@ -4,7 +4,7 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type ElectronApi, type ToolCallRequest, type ToolWire, type MediaEndpoint } from "../electron/bridge.ts";
+import { IPC, type ElectronApi, type ToolCallRequest, type ToolWire, type ToolFilterParams, type MediaEndpoint } from "../electron/bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
@@ -12,8 +12,8 @@ const api: ElectronApi = {
   isElectron: true,
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
-    filter: (params) => ipcRenderer.invoke(IPC.toolsFilter, params),
-    // The wire is plain JSON (cwd + config); main wraps it into its own Ctx and mints the signal/client.
+    // The wire is plain JSON (the config snapshot); main wraps it into its own Ctx and mints the signal/client.
+    filter: (wire: ToolWire, params?: ToolFilterParams) => ipcRenderer.invoke(IPC.toolsFilter, wire, params),
     exec: (call: ToolCallRequest, wire: ToolWire) => ipcRenderer.invoke(IPC.toolsExec, call, wire),
     cancel: (callId: string) => ipcRenderer.invoke(IPC.toolsCancel, callId),
   },

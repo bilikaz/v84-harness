@@ -1,6 +1,5 @@
 import type { LLMClient } from "../../llm/index.ts";
-import { type ToolResult, type ToolSchema, type ToolPermission } from "./types.ts";
-import type { Ctx } from "../ctx.ts";
+import { type ToolResult, type ToolSpec, type ToolPermission } from "./types.ts";
 
 // Largest tool output handed back to the model — a runaway command can't blow its context.
 export const OUTPUT_CAP = 64 * 1024;
@@ -11,12 +10,12 @@ export function cap(s: string): string {
   return s.slice(0, OUTPUT_CAP) + `\n\n[...output truncated; ${s.length - OUTPUT_CAP} more bytes dropped]`;
 }
 
-// Every tool is a class constructed once with its host ctx. `schema` is a getter so a
-// tool's advertised shape can depend on the ctx; the LLM client comes straight off the ctx (this.ctx.llm).
+// Every tool is a class constructed once with the LLM client — its only host dependency (model calls +
+// slot resolution via llm.resolve). `schema` is a getter so a tool's advertised shape can vary if needed.
 export abstract class BaseTool {
-  constructor(protected readonly ctx: Ctx) {}
+  constructor(protected readonly llm: LLMClient) {}
 
-  abstract get schema(): ToolSchema;
+  abstract get schema(): ToolSpec;
 
   abstract run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal): Promise<ToolResult>;
 
@@ -42,14 +41,10 @@ export abstract class BaseTool {
     return 2;
   }
 
-  protected get llm(): LLMClient {
-    return this.ctx.llm;
-  }
-
   protected cap(s: string): string {
     return cap(s);
   }
 }
 
 // What a tool module exports: a constructor the registry resolves by folder layout.
-export type ToolCtor = new (ctx: Ctx) => BaseTool;
+export type ToolCtor = new (llm: LLMClient) => BaseTool;

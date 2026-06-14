@@ -51,7 +51,7 @@ function browserHost(): HostApi {
 
 export async function init(): Promise<Ctx> {
   const ctx = new Ctx(new StorageEngine(await pickBackend()));
-  const reg = new ToolRegistry(ctx, MODULES);
+  const reg = new ToolRegistry(ctx.llm, MODULES);
   ctx.tools = {
     filter: (params) => reg.filter(params),
     run: (call) => reg.run(call),

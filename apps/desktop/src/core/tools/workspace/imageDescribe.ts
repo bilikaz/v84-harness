@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type MediaRef, type ToolResult, type ToolSchema } from "../types.ts";
+import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { textHandler } from "../../../llm/index.ts";
 import { bytesToB64, extToMime } from "../../../lib/dataUrl.ts";
@@ -25,10 +25,10 @@ const SYSTEM =
 
 export class ImageDescribe extends BaseWorkspaceTool {
   override canRun(): boolean {
-    return this.ctx.config.llm.imageRec != null;
+    return this.llm.resolve("imageRec") != null;
   }
 
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {
@@ -58,7 +58,7 @@ export class ImageDescribe extends BaseWorkspaceTool {
   async run(args: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ToolResult> {
     const p = String(args.path ?? "");
     if (!p) return { ok: false, output: `ImageDescribe rejected: missing required "path". Example: {"path":"/workspace/assets/photo.png"}` };
-    if (!this.ctx.config.llm.imageRec) {
+    if (!this.llm.resolve("imageRec")) {
       return { ok: false, output: `ImageDescribe is not configured. Assign an image recognition model in Settings → Media models.` };
     }
     const query = typeof args.query === "string" && args.query.trim() ? args.query.trim() : "Describe this image in detail: subjects, layout, text, and anything notable.";

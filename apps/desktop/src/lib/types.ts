@@ -5,5 +5,5 @@ export type {
   Message,
   Tool,
   Session,
-  ToolCall,
+  ToolCallRequest,
 } from "../core/sessions/types.ts";

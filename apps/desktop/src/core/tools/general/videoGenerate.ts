@@ -1,4 +1,4 @@
-import { type MediaRef, type ToolResult, type ToolSchema } from "../types.ts";
+import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
 import { videoHandler } from "../../../llm/index.ts";
@@ -10,10 +10,10 @@ import { getAppConfig } from "../../config/index.ts";
 // VideoGenerate: prompt → videoGen slot model → clip as a data-URL riding the message. Generation is SLOW (~minutes per second of video).
 export class VideoGenerate extends BaseGeneralTool {
   override canRun(): boolean {
-    return this.ctx.config.llm.videoGen != null;
+    return this.llm.resolve("videoGen") != null;
   }
 
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {

@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type MediaRef, type ToolResult, type ToolSchema } from "../types.ts";
+import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { bytesToB64, extToMime } from "../../../lib/dataUrl.ts";
 import { errorMessage } from "../../../lib/errors.ts";
@@ -15,7 +15,7 @@ function fmtMB(bytes: number): string {
 }
 
 export class ImageLoad extends BaseWorkspaceTool {
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {

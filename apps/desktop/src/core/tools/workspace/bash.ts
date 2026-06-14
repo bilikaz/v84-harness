@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-import { type ToolResult, type ToolSchema, type ToolPermission } from "../types.ts";
+import { type ToolResult, type ToolSpec, type ToolPermission } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 
 // Bash (gated — a shell can't be path-confined): expands the /workspace marker to the real root, scrubs the real root back to /workspace in output so no host path leaks.
@@ -9,7 +9,7 @@ export class Bash extends BaseWorkspaceTool {
     return 1; // a shell asks by default
   }
 
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {

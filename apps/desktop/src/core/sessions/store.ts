@@ -1,6 +1,6 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import type { MainSettings } from "../settings.ts";
-import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
+import type { FileAttachment, MediaRef, Message, Session, ToolCallRequest } from "./types.ts";
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
@@ -268,7 +268,7 @@ export function pushHeal(sid: string, correction: string): void {
   notify();
 }
 
-export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
+export function setLastToolCalls(sid: string, calls: ToolCallRequest[]): void {
   sessions = sessions.map((s) => {
     if (s.id !== sid) return s;
     const messages = s.messages.slice();

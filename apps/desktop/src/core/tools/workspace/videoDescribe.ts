@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type MediaRef, type ToolResult, type ToolSchema } from "../types.ts";
+import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { textHandler } from "../../../llm/index.ts";
 import { bytesToB64, extToMime } from "../../../lib/dataUrl.ts";
@@ -25,10 +25,10 @@ const SYSTEM =
 
 export class VideoDescribe extends BaseWorkspaceTool {
   override canRun(): boolean {
-    return this.ctx.config.llm.videoRec != null;
+    return this.llm.resolve("videoRec") != null;
   }
 
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {
@@ -58,7 +58,7 @@ export class VideoDescribe extends BaseWorkspaceTool {
   async run(args: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ToolResult> {
     const p = String(args.path ?? "");
     if (!p) return { ok: false, output: `VideoDescribe rejected: missing required "path". Example: {"path":"/workspace/assets/clip.mp4"}` };
-    if (!this.ctx.config.llm.videoRec) {
+    if (!this.llm.resolve("videoRec")) {
       return { ok: false, output: `VideoDescribe is not configured. Assign a video recognition model in Settings → Media models.` };
     }
     const query = typeof args.query === "string" && args.query.trim() ? args.query.trim() : "Describe this video in detail: what happens over time, the subjects and their actions, the setting, and anything notable.";

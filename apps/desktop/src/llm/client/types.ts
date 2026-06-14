@@ -1,8 +1,9 @@
-import type { ResponseHandler, ConfigLLM, ChatMessage, GenParams, ModelService, ToolSpec } from "../types.ts";
+import type { ResponseHandler, LLMConfig, ChatMessage, GenParams, ModelService, ToolSpec, StreamUsage } from "../types.ts";
 
-// null = the service has no usable model.
-export interface ConfigSource {
-  resolve(service: ModelService): ConfigLLM | null;
+// Resolves a service to its configured LLM target (LLMConfig), or null if none is assigned. The client reads
+// it live per call, so the renderer can back it with the config store and main with the wire snapshot.
+export interface LLMConfigResolver {
+  resolve(service: ModelService): LLMConfig | null;
 }
 
 export class HealError extends Error {
@@ -18,7 +19,7 @@ export class HealError extends Error {
 export interface ChatOutcome {
   text: string;
   thinkingChars: number;
-  usage?: { inputTokens?: number; outputTokens?: number; thinkingTokens?: number };
+  usage?: StreamUsage;
 }
 
 export interface CallOptions<T> {
@@ -34,4 +35,6 @@ export interface CallOptions<T> {
 
 export interface LLMClient {
   call<T = string>(opts: CallOptions<T>): Promise<T>;
+  // The configured target for a service (or null) — tools read this for canRun/slot checks, so they depend only on the client.
+  resolve(service: ModelService): LLMConfig | null;
 }

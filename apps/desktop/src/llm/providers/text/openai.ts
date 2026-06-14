@@ -1,4 +1,4 @@
-import type { ConfigLLM, ChatMessage, ModelInfo, StreamEvent, ToolSpec } from "../../types.ts";
+import type { LLMConfig, ChatMessage, ModelInfo, StreamEvent, ToolSpec } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
 import { parseSSE } from "../../sse.ts";
 import { sseRequest } from "../../transport.ts";
@@ -41,7 +41,7 @@ function toOpenAIMessages(messages: ChatMessage[], system?: string): unknown[] {
   return out;
 }
 
-function reasoningFields(target: ConfigLLM): Record<string, unknown> {
+function reasoningFields(target: LLMConfig): Record<string, unknown> {
   const m = target.model;
   const on = !!(m.reasoningEffort && m.reasoningEffort !== "off");
   if (/api\.openai\.com/i.test(target.provider.baseUrl)) {
@@ -53,7 +53,7 @@ function reasoningFields(target: ConfigLLM): Record<string, unknown> {
 }
 
 export async function* streamOpenAI(
-  target: ConfigLLM,
+  target: LLMConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
@@ -125,14 +125,14 @@ export async function* streamOpenAI(
   }
 
   for (const c of [...toolAcc.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1])) {
-    if (c.name) yield { type: "tool_call", call: { id: c.id, name: c.name, arguments: c.args } };
+    if (c.name) yield { type: "tool_call", call: { id: c.id, name: c.name, arguments: c.args, cwd: "" } };
   }
   yield { type: "done" };
 }
 
 export class Provider extends BaseTextProvider {
   protected stream(): AsyncGenerator<StreamEvent> {
-    return streamOpenAI(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
+    return streamOpenAI(this.target, this.callCtx.messages, this.callCtx.signal, this.callCtx.system, this.tools());
   }
 
   static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {

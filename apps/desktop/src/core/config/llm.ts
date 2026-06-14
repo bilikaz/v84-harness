@@ -1,23 +1,11 @@
-// The LLM config — sole source of truth for every model the app can call, keyed by service.
-// Passive: it holds resolved entries and serves them. The parties that own the editable
-// settings write into it; config knows nothing of how the values arrived or get updated.
+// The LLM config — holds a resolved entry per service. Passive: the parties that own the editable settings
+// write into it; config knows nothing of how the values arrived. The service vocabulary (ModelService) is
+// owned by the llm layer and imported here.
 
-import type { ProviderType, ReasoningEffort } from "../../llm/types.ts";
+import type { ProviderType, ReasoningEffort, ModelService } from "../../llm/types.ts";
 import { createStore } from "../../lib/store.ts";
 
-// The services config covers — config owns this vocabulary; other layers consume it from here.
-export const CONFIG_MODEL_SERVICES = [
-  "main",
-  "imageGen",
-  "videoGen",
-  "imageRec",
-  "videoRec",
-  "audioGen",
-  "audioRec",
-] as const;
-export type ConfigModelService = (typeof CONFIG_MODEL_SERVICES)[number];
-
-export interface ConfigLLM {
+export interface LLMConfig {
   provider: {
     name: string;
     type: ProviderType;
@@ -37,29 +25,29 @@ export interface ConfigLLM {
   };
 }
 
-export type ConfigLLMList = Partial<Record<ConfigModelService, ConfigLLM>>;
+export type LLMConfigList = Partial<Record<ModelService, LLMConfig>>;
 
 // Transient: rebuilt from the owning stores on load, never persisted itself.
-const store = createStore<ConfigLLMList>(null, {});
+const store = createStore<LLMConfigList>(null, {});
 
-export function getConfigLLMList(): ConfigLLMList {
+export function getLLMConfigList(): LLMConfigList {
   return store.get();
 }
 
-export function getConfigLLM(service: ConfigModelService): ConfigLLM | null {
+export function getLLMConfig(service: ModelService): LLMConfig | null {
   return store.get()[service] ?? null;
 }
 
-export function useConfigLLMList(): ConfigLLMList {
+export function useLLMConfigList(): LLMConfigList {
   return store.use();
 }
 
 // Merge a slice; undefined/null value clears that service's slot.
-export function writeConfigLLM(patch: ConfigLLMList): void {
+export function writeLLMConfig(patch: LLMConfigList): void {
   const next = { ...store.get() };
   for (const [service, entry] of Object.entries(patch)) {
-    if (entry) next[service as ConfigModelService] = entry;
-    else delete next[service as ConfigModelService];
+    if (entry) next[service as ModelService] = entry;
+    else delete next[service as ModelService];
   }
   store.set(next);
 }

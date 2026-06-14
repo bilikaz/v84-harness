@@ -1,6 +1,6 @@
-import type { ConfigLLM, ModelInfo } from "../../types.ts";
+import type { LLMConfig, ModelInfo } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
-import type { ChatImage, ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
+import type { MediaRef, ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
 import { parseSSE } from "../../sse.ts";
 import { sseRequest } from "../../transport.ts";
 import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "../../util.ts";
@@ -21,7 +21,7 @@ function authHeaders(cfg: { apiKey?: string }): Record<string, string> {
   };
 }
 
-function reasoningFields(target: ConfigLLM): Record<string, unknown> {
+function reasoningFields(target: LLMConfig): Record<string, unknown> {
   const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
   return {
@@ -30,7 +30,7 @@ function reasoningFields(target: ConfigLLM): Record<string, unknown> {
   };
 }
 
-function imageBlock(im: ChatImage): unknown {
+function imageBlock(im: MediaRef): unknown {
   const data = parseDataUrl(im.url);
   return data
     ? { type: "image", source: { type: "base64", media_type: data.mime, data: data.b64 } }
@@ -67,7 +67,7 @@ function toAnthropicMessages(messages: ChatMessage[]): unknown[] {
 }
 
 export async function* streamAnthropic(
-  target: ConfigLLM,
+  target: LLMConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
@@ -133,7 +133,7 @@ export async function* streamAnthropic(
         const cur = toolAcc.get(evt.index);
         if (cur) {
           toolAcc.delete(evt.index);
-          yield { type: "tool_call", call: { id: cur.id, name: cur.name, arguments: cur.args } };
+          yield { type: "tool_call", call: { id: cur.id, name: cur.name, arguments: cur.args, cwd: "" } };
         }
         break;
       }
@@ -159,6 +159,6 @@ export class Provider extends BaseTextProvider {
   }
 
   protected stream(): AsyncGenerator<StreamEvent> {
-    return streamAnthropic(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
+    return streamAnthropic(this.target, this.callCtx.messages, this.callCtx.signal, this.callCtx.system, this.tools());
   }
 }

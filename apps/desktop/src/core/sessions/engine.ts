@@ -1,4 +1,4 @@
-import type { ToolCall, ToolSpec } from "../../llm/types.ts";
+import type { ToolCallRequest, ToolSpec } from "../../llm/types.ts";
 import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
 import { llmLog } from "../../llm/debug.ts";
 import type { FileAttachment, MediaRef, Session } from "./types.ts";
@@ -325,14 +325,14 @@ export class SessionEngine {
   }
 
   // Streams one chat step's events onto the session bus; `onError` flags a terminal stream error (already emitted) so the turn loop stops.
-  private chatStepHandler(sid: string, onError: () => void): ResponseHandler<{ text: string; thinking: string; calls: ToolCall[] }> {
+  private chatStepHandler(sid: string, onError: () => void): ResponseHandler<{ text: string; thinking: string; calls: ToolCallRequest[] }> {
     return {
       async handle(interaction) {
         if (interaction.kind !== "chat") throw new Error("the chat step expects a chat interaction.");
         let text = "";
         let thinking = "";
         let thinkingDone = false;
-        const calls: ToolCall[] = [];
+        const calls: ToolCallRequest[] = [];
         for await (const evt of interaction.events) {
           if (evt.type === "text") {
             if (thinking && !thinkingDone) {
@@ -367,7 +367,7 @@ export class SessionEngine {
     };
   }
 
-  private async execAgentTool(sid: string, call: ToolCall, ws: Workspace | undefined, signal: AbortSignal, isChild: boolean): Promise<void> {
+  private async execAgentTool(sid: string, call: ToolCallRequest, ws: Workspace | undefined, signal: AbortSignal, isChild: boolean): Promise<void> {
     const respond = (output: string, childSessionIds?: string[]): void =>
       bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, childSessionIds });
     // A model can hallucinate the pair even though children aren't advertised it — depth-1 must hold at run time too.

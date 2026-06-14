@@ -3,7 +3,7 @@
 
 import { BaseTool, type ToolCtor } from "./base.ts";
 import { type ToolCallRequest, type ToolResult, type ToolFilterParams, type ToolFilterResult, type ToolFilterEntry } from "./types.ts";
-import type { Ctx } from "../ctx.ts";
+import type { LLMClient } from "../../llm/index.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import type { ToolPermission } from "./types.ts";
 
@@ -11,13 +11,13 @@ export class ToolRegistry {
   readonly byName = new Map<string, BaseTool>();
   readonly running = new Map<string, AbortController>();
 
-  constructor(ctx: Ctx, modules: Record<string, Record<string, unknown>>) {
+  constructor(llm: LLMClient, modules: Record<string, Record<string, unknown>>) {
     const ctors: ToolCtor[] = Object.entries(modules)
       .filter(([path]) => !path.endsWith("/base.ts"))
       .flatMap(([, mod]) => Object.values(mod).filter((v): v is ToolCtor => typeof v === "function"));
 
     for (const Ctor of ctors) {
-      const tool = new Ctor(ctx);
+      const tool = new Ctor(llm);
       this.byName.set(tool.schema.function.name, tool);
     }
   }

@@ -1,4 +1,4 @@
-import { type MediaRef, type ToolResult, type ToolSchema } from "../types.ts";
+import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
 import { imageHandler } from "../../../llm/index.ts";
@@ -10,10 +10,10 @@ import { getAppConfig } from "../../config/index.ts";
 // ImageGenerate: prompt → imageGen slot model → image as a data-URL riding the message (no files, no workspace; the model gets it back to inspect).
 export class ImageGenerate extends BaseGeneralTool {
   override canRun(): boolean {
-    return this.ctx.config.llm.imageGen != null;
+    return this.llm.resolve("imageGen") != null;
   }
 
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {

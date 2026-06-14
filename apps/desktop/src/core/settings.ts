@@ -1,9 +1,9 @@
 import { listProviderModels } from "../llm/index.ts";
 import { createStore } from "../lib/store.ts";
 import { errorMessage } from "../lib/errors.ts";
-import { writeConfigLLM, type ConfigLLM } from "./config/llm.ts";
+import { writeLLMConfig, type LLMConfig } from "./config/llm.ts";
 
-export interface MainSettings extends ConfigLLM {
+export interface MainSettings extends LLMConfig {
   input?: { image?: boolean; video?: boolean; audio?: boolean };
   imageMaxDim?: number;
   contextReserve?: number;
@@ -77,10 +77,10 @@ export function useProvider(): MainSettings {
 }
 
 // Owns config.llm's `main` slot — write it now and on every change. Called once at app init.
-export function syncMainToConfigLLM(): void {
+export function syncMainToLLMConfig(): void {
   const write = (): void => {
     const cfg = store.get();
-    writeConfigLLM({ main: cfg.provider.baseUrl && cfg.model.id ? cfg : undefined });
+    writeLLMConfig({ main: cfg.provider.baseUrl && cfg.model.id ? cfg : undefined });
   };
   store.subscribe(write);
   write();

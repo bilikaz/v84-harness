@@ -1,16 +1,11 @@
-// Tool subsystem vocabulary — bridge and renderer import from here, never the reverse.
+// Tool subsystem vocabulary — bridge and renderer import from here, never the reverse. The model-facing shapes
+// (ToolSpec, ToolCallRequest, MediaRef, service unions) are owned by the llm layer and re-exported here.
 
-export interface ToolSchema {
-  type: "function";
-  function: { name: string; description: string; parameters: unknown };
-}
-
-export interface ToolCallRequest {
-  id: string;
-  name: string;
-  arguments: string;
-  cwd: string;
-}
+import type { Config } from "../config/index.ts";
+import type { MediaApiFlavor, MediaService, MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
+export type { MediaApiFlavor, MediaService, MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
+export { MEDIA_SERVICES } from "../../llm/types.ts";
+export type { LLMConfig } from "../config/index.ts";
 
 export interface ToolResult {
   ok: boolean;
@@ -19,27 +14,12 @@ export interface ToolResult {
   video?: MediaRef[];
 }
 
-export interface MediaRef {
-  url: string;
-  mime?: string;
-  name?: string;
-  id?: string;
-}
-
-export type MediaUseCase = MediaService;
-export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
-
-export type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
-import type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
-import type { Config } from "../config/index.ts";
-export type { ConfigLLM } from "../config/index.ts";
-
 export type MediaPromptStyle = "plain" | "cosmos-json";
 
 export interface MediaModel {
   id: string;
   modelId: string;
-  capabilities: MediaUseCase[];
+  capabilities: MediaService[];
   promptStyle?: MediaPromptStyle;
   maxImageSize?: string;
   maxVideoSize?: string;
@@ -60,10 +40,9 @@ export interface MediaEndpoint {
   apiKey?: string;
 }
 
-// What crosses the bridge to the main runner: cwd (virtual-root "/workspace" = workspace root; paths outside
-// are refused) + the config snapshot. Main wraps it into a Ctx; in-process tools get (ctx, cwd, signal) directly.
+// What crosses the bridge to the main runner alongside the call: the config snapshot (functions/clients can't
+// cross IPC, so main seeds its Ctx from this). The cwd rides on the ToolCallRequest itself.
 export interface ToolWire {
-  cwd: string;
   config: Config;
 }
 
@@ -90,7 +69,7 @@ export interface ToolFilterParams {
 // One entry in the filter result — schema + permission metadata.
 export interface ToolFilterEntry {
   name: string;
-  schema: ToolSchema;
+  schema: ToolSpec;
   permissioned: boolean;
   /** Requires a workspace folder to run; forced off when filtered with hasWorkspace: false. */
   needsWorkspace: boolean;

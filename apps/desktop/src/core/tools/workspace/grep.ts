@@ -1,13 +1,13 @@
 import { spawn } from "node:child_process";
 
-import { type ToolResult, type ToolSchema } from "../types.ts";
+import { type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool, WORKSPACE_ROOT } from "./base.ts";
 
 const GREP_TIMEOUT_MS = 30_000;
 
 // Grep — read-only and argv-controlled (not a free-form shell), so it stays auto-run rather than going through the Bash gate.
 export class Grep extends BaseWorkspaceTool {
-  get schema(): ToolSchema {
+  get schema(): ToolSpec {
     return {
       type: "function",
       function: {

@@ -1,5 +1,5 @@
 import { scope } from "../../lib/bus.ts";
-import type { StreamUsage, ToolCall } from "../../llm/types.ts";
+import type { StreamUsage, ToolCallRequest } from "../../llm/types.ts";
 import type { FileAttachment, MediaRef } from "./types.ts";
 
 // The session domain's events, registered on the bus via declaration merging.
@@ -45,7 +45,7 @@ export interface TurnEnd {
 }
 export interface ToolCalls {
   sessionId: string;
-  calls: ToolCall[];
+  calls: ToolCallRequest[];
 }
 // `childSessionIds` are display-only — the model gets the answer text, never session ids.
 export interface ToolResultEvt {

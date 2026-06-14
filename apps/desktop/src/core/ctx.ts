@@ -4,10 +4,10 @@
 // The main process creates a Ctx from a wire config (no storage).
 
 import { createClient, type LLMClient, type ModelService } from "../llm/index.ts";
-import type { Config, ConfigLLM } from "./config/index.ts";
+import type { Config, LLMConfig } from "./config/index.ts";
 import { getConfig } from "./config/index.ts";
-import { syncMainToConfigLLM } from "./settings.ts";
-import { syncMediaToConfigLLM } from "./media.ts";
+import { syncMainToLLMConfig } from "./settings.ts";
+import { syncMediaToLLMConfig } from "./media.ts";
 import type { ToolGateway } from "./tools/types.ts";
 import type { StorageEngine } from "./storage/index.ts";
 import type { HostApi } from "./host.ts";
@@ -23,8 +23,8 @@ export class Ctx {
 
   constructor(storage: StorageEngine) {
     this.storage = storage;
-    syncMainToConfigLLM(); //needs refactor
-    syncMediaToConfigLLM(); //needs refactor
+    syncMainToLLMConfig(); //needs refactor
+    syncMediaToLLMConfig(); //needs refactor
     this.llm = createClient(this, {
       get maxHeals() {
         return getConfig().app.llm.maxHealAttempts;
@@ -38,7 +38,7 @@ export class Ctx {
   }
 
   // The llm client resolves a service's target from the config.
-  resolve(service: ModelService): ConfigLLM | null {
+  resolve(service: ModelService): LLMConfig | null {
     return this.config.llm[service] ?? null;
   }
 

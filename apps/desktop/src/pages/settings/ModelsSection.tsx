@@ -18,11 +18,11 @@ import {
   type MediaRegistry,
 } from "../../core/media.ts";
 import {
-  MEDIA_USE_CASES,
+  MEDIA_SERVICES,
   type MediaApiFlavor,
   type MediaModel,
   type MediaProvider,
-  type MediaUseCase,
+  type MediaService,
 } from "../../core/tools/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
@@ -68,14 +68,14 @@ function UseCasesTab({ reg }: { reg: MediaRegistry }) {
   return (
     <div>
       <p className="mt-3 text-xs text-neutral-400">{t("media.coverageHint")}</p>
-      {MEDIA_USE_CASES.map((uc) => (
+      {MEDIA_SERVICES.map((uc) => (
         <SlotRow key={uc} uc={uc} reg={reg} />
       ))}
     </div>
   );
 }
 
-function SlotRow({ uc, reg }: { uc: MediaUseCase; reg: MediaRegistry }) {
+function SlotRow({ uc, reg }: { uc: MediaService; reg: MediaRegistry }) {
   const { t } = useTranslation();
   const options = slotOptions(uc, reg);
   const ref = reg.assignments[uc];

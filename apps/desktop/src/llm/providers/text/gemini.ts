@@ -1,4 +1,4 @@
-import type { ConfigLLM, ModelInfo } from "../../types.ts";
+import type { LLMConfig, ModelInfo } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
 import type { ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
 import { parseSSE } from "../../sse.ts";
@@ -16,7 +16,7 @@ function keyParam(cfg: { apiKey?: string }, sep: "?" | "&"): string {
   return cfg.apiKey ? `${sep}key=${encodeURIComponent(cfg.apiKey)}` : "";
 }
 
-function reasoningFields(target: ConfigLLM): Record<string, unknown> {
+function reasoningFields(target: LLMConfig): Record<string, unknown> {
   const effort = target.model.reasoningEffort;
   if (!effort || effort === "off") return {};
   const budget = target.model.thinkingBudget && target.model.thinkingBudget > 0 ? target.model.thinkingBudget : -1;
@@ -60,7 +60,7 @@ function toGeminiContents(messages: ChatMessage[]): unknown[] {
 }
 
 export async function* streamGemini(
-  target: ConfigLLM,
+  target: LLMConfig,
   messages: ChatMessage[],
   signal: AbortSignal,
   system?: string,
@@ -95,7 +95,7 @@ export async function* streamGemini(
       if (p.functionCall?.name) {
         yield {
           type: "tool_call",
-          call: { id: `call_${crypto.randomUUID()}`, name: p.functionCall.name, arguments: JSON.stringify(p.functionCall.args ?? {}) },
+          call: { id: `call_${crypto.randomUUID()}`, name: p.functionCall.name, arguments: JSON.stringify(p.functionCall.args ?? {}), cwd: "" },
         };
         continue;
       }
@@ -121,7 +121,7 @@ export async function* streamGemini(
 
 export class Provider extends BaseTextProvider {
   protected stream(): AsyncGenerator<StreamEvent> {
-    return streamGemini(this.target, this.ctx.messages, this.ctx.signal, this.ctx.system, this.tools());
+    return streamGemini(this.target, this.callCtx.messages, this.callCtx.signal, this.callCtx.system, this.tools());
   }
 
   static async listModels(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]> {

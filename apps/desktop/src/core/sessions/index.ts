@@ -14,7 +14,7 @@ export {
 } from "./store.ts";
 export { SessionEngine } from "./engine.ts";
 export type { TurnResult, SendOptions, Validate } from "./engine.ts";
-export type { Session, Message, Role, MediaRef, FileAttachment, Tool, ToolCall } from "./types.ts";
+export type { Session, Message, Role, MediaRef, FileAttachment, Tool, ToolCallRequest } from "./types.ts";
 export {
   useSessions,
   useActiveId,
