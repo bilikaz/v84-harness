@@ -2,13 +2,14 @@ import { useTranslation } from "react-i18next";
 import { Bot, Pencil, Play, Plus } from "lucide-react";
 
 import { createAgent, useAgents, type Agent } from "../../core/agents.ts";
-import { runAgent } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import { useActiveWorkspaceId } from "../../core/workspaces.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 
 export function AgentsPanel() {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const agents = useAgents();
   const workspaceId = useActiveWorkspaceId();
   const route = useRoute();
@@ -24,7 +25,7 @@ export function AgentsPanel() {
       navigate(`agents/${agent.id}`);
       return;
     }
-    runAgent(agent, agent.user);
+    ctx.sessions.runAgent(agent, agent.user);
     navigate("");
   }
 

@@ -1,8 +1,7 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import { bufferedTextHandler } from "../../llm/index.ts";
 import { resolveMain } from "../settings.ts";
-import { ctx } from "../ctx.ts";
-import { sessionBus as bus } from "./events.ts";
+import type { Ctx } from "../ctx.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { getAppConfig } from "../config/index.ts";
@@ -11,7 +10,6 @@ import {
   getCompactingIds,
   getSession,
   getStreamingIds,
-  isFull,
   notify,
   replaceWithSummary,
   setCompacting,
@@ -27,7 +25,7 @@ const COMPACT_INSTRUCTION =
   "file/code state and paths touched, tool results that still matter, and any open tasks or next steps. Use " +
   "clear sections. Omit nothing the assistant would need to continue seamlessly. Output only the summary.";
 
-export async function compact(sid: string): Promise<void> {
+export async function compact(ctx: Ctx, sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session || session.messages.length === 0) return;
   if (getCompactingIds().has(sid) || getStreamingIds().has(sid)) return;
@@ -73,12 +71,3 @@ export async function compact(sid: string): Promise<void> {
     notify();
   }
 }
-
-const off = bus.on("turn:end", (e) => {
-  if (e.errored) return;
-  const cfg = resolveMain();
-  const s = getSession(e.sessionId);
-  if (cfg && s && isFull(cfg, s)) void compact(e.sessionId);
-});
-
-if (import.meta.hot) import.meta.hot.dispose(() => off());

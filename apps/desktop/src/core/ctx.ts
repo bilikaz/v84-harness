@@ -10,21 +10,25 @@ import { syncMainToConfigLLM } from "./settings.ts";
 import { syncMediaToConfigLLM } from "./media.ts";
 import type { ToolGateway } from "./tools/types.ts";
 import type { Storage } from "./storage/types.ts";
+import { SessionEngine } from "./sessions/engine.ts";
 
 export class Ctx {
   readonly storage?: Storage;
+  // Host-agnostic collaborators are built here; only the platform-specific tool gateway is injected by init().
   tools!: ToolGateway;
   llm!: LLMClient;
+  sessions: SessionEngine;
 
   constructor(storage: Storage) {
     this.storage = storage;
-    syncMainToConfigLLM();
-    syncMediaToConfigLLM();
+    syncMainToConfigLLM(); //needs refactor
+    syncMediaToConfigLLM(); //needs refactor
     this.llm = createClient(this, {
       get maxHeals() {
         return getConfig().app.llm.maxHealAttempts;
       },
     });
+    this.sessions = new SessionEngine(this);
   }
 
   get config(): Config {

@@ -65,11 +65,3 @@ export function isElectron(): boolean {
   return api?.isElectron === true;
 }
 
-/*
-export function requireHarness(): ElectronApi {
-  if (!harness) {
-    throw new Error("harness bridge unavailable — this feature requires the Electron app");
-  }
-  return harness;
-}
-  */

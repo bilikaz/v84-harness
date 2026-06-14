@@ -17,6 +17,7 @@ export async function init(): Promise<Ctx> {
   ctx.tools = {
     filter: (params) => reg.filter(params),
     run: (call) => reg.run(call),
+    cancel: (id) => reg.cancel(id),
   };
   return ctx;
 }

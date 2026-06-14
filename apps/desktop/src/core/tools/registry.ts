@@ -32,21 +32,27 @@ export class ToolRegistry {
 
       // permission metadata
       const permissioned = tool.isPermissioned();
+      const needsWorkspace = tool.needsWorkspace();
       const defaultMode = tool.defaultPermission();
 
-      // workspace + agent policy: only applies to permissioned tools
-      let effectiveMode:ToolPermission = 2;
+      // workspace + agent policy: only applies to permissioned tools (stricter of grant and ceiling wins)
+      let effectiveMode: ToolPermission = 2;
       if (permissioned) {
         const wsMode = params?.workspacePermissions?.[name] ?? defaultMode;
         const agentCeiling = params?.agentPermissions?.[name] ?? 2;
-        effectiveMode = Math.min(wsMode, agentCeiling) as 0 | 1 | 2;
-        if (effectiveMode === 0) continue;
+        effectiveMode = Math.min(wsMode, agentCeiling) as ToolPermission;
       }
+      // A tool that needs a workspace is off when none is in context.
+      if (needsWorkspace && params?.hasWorkspace === false) effectiveMode = 0;
+
+      // Drop disabled tools unless the caller wants them listed (the permissions UI shows them as "off").
+      if (effectiveMode === 0 && !params?.includeDisabled) continue;
 
       out[name] = {
         name,
         schema: tool.schema,
         permissioned,
+        needsWorkspace,
         defaultMode,
         effectiveMode,
       } satisfies ToolFilterEntry;
@@ -76,9 +82,9 @@ export class ToolRegistry {
       };
     }
     try {
-      return tool.run(args, call.cwd, controller.signal);
+      return await tool.run(args, call.cwd, controller.signal);
     } catch (e) {
-      return { ok: false, output: `error running ${name}: ${errorMessage(e)}` };
+      return { ok: false, output: `error running ${call.name}: ${errorMessage(e)}` };
     } finally {
       if (call.id) this.running.delete(call.id);
     }

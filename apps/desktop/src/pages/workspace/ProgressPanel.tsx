@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { ChevronRight, RefreshCw, Shrink } from "lucide-react";
 
-import { compact, contextLimit, useActiveSession, useCompacting } from "../../core/sessions/index.ts";
+import { contextLimit, useActiveSession, useCompacting } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import { useProvider } from "../../core/settings.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { cn } from "../../lib/cn.ts";
@@ -65,6 +66,7 @@ function ContextWindow({ used, total, limit, sid }: { used: number; total?: numb
 
 function SummarizeControl({ sid, ratio }: { sid: string; ratio: number }) {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const compacting = useCompacting();
   const [confirm, setConfirm] = useState(false);
   const hot = ratio >= 0.7; // turn the control red once context is 70% full
@@ -97,7 +99,7 @@ function SummarizeControl({ sid, ratio }: { sid: string; ratio: number }) {
               onCancel={() => setConfirm(false)}
               onConfirm={() => {
                 setConfirm(false);
-                void compact(sid);
+                void ctx.sessions.compact(sid);
               }}
             />
           </div>

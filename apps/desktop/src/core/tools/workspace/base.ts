@@ -24,6 +24,10 @@ export abstract class BaseWorkspaceTool extends BaseTool {
     return true;
   }
 
+  override needsWorkspace(): boolean {
+    return true;
+  }
+
   protected getRoot(cwd: string): string {
     return realpathSync(path.resolve(cwd));
   }

@@ -6,7 +6,7 @@ import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { ToolModePicker } from "../../components/ToolModePicker.tsx";
 import { deleteAgent, saveAgent, useAgents } from "../../core/agents.ts";
 import { type GatedTool, type ToolPermission } from "../../core/tools/types.ts";
-import { useToolDescriptors } from "../../core/tools/permissions.ts";
+import { useGatedTools } from "../../renderer/gatedTools.ts";
 import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 
@@ -18,7 +18,7 @@ const monoCls =
 export function AgentEditView({ id }: { id: string }) {
   const { t } = useTranslation();
   const agents = useAgents();
-  const gatedTools = useToolDescriptors().filter((d) => d.permissioned);
+  const gatedTools = useGatedTools();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const agent = agents.find((a) => a.id === id);
 

@@ -13,14 +13,14 @@ import {
   type Workspace,
 } from "../../core/workspaces.ts";
 import { type GatedTool, type ToolPermission } from "../../core/tools/types.ts";
-import { useToolDescriptors } from "../../core/tools/permissions.ts";
+import { useGatedTools } from "../../renderer/gatedTools.ts";
 
 // Add/edit workspace modal — edits a local draft copy; Save commits to the store.
 export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean; onClose: () => void }) {
   const { workspace, isNew, onClose } = props;
   const { t } = useTranslation();
   const provider = useProvider();
-  const gatedTools = useToolDescriptors().filter((d) => d.permissioned);
+  const gatedTools = useGatedTools();
   const [draft, setDraft] = useState<Workspace>(workspace);
 
   const set = <K extends keyof Workspace>(key: K, value: Workspace[K]) =>

@@ -31,6 +31,12 @@ export abstract class BaseTool {
     return false;
   }
 
+  // Whether this tool requires a workspace folder to run. The filter forces it to mode 0 when no workspace
+  // is in context. Separate axis from isPermissioned() — a tool can need a workspace without being gated.
+  needsWorkspace(): boolean {
+    return false;
+  }
+
   // Default policy mode when a workspace hasn't set one (only meaningful for permissioned tools).
   defaultPermission(): ToolPermission {
     return 2;

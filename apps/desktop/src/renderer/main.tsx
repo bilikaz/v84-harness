@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "../App.tsx";
+import { CtxProvider } from "./ctx.tsx";
 import { isElectron } from "../electron/bridge.ts";
 import "../index.css";
 import "../lib/i18n.ts";
@@ -17,6 +18,8 @@ const ctx = await init();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <CtxProvider value={ctx}>
+      <App />
+    </CtxProvider>
   </StrictMode>,
 );

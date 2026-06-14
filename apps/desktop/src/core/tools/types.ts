@@ -10,7 +10,6 @@ export interface ToolCallRequest {
   name: string;
   arguments: string;
   cwd: string;
-  signal?: AbortSignal;
 }
 
 export interface ToolResult {
@@ -82,6 +81,10 @@ export interface ToolFilterParams {
   workspacePermissions?: Record<string, ToolPermission>;
   /** Agent-level ceiling: tool name → mode. Applied on top of workspacePermissions (stricter wins). */
   agentPermissions?: Record<string, ToolPermission>;
+  /** Whether a workspace is in context. When false, needsWorkspace tools are forced to mode 0. */
+  hasWorkspace?: boolean;
+  /** Keep mode-0 entries in the result instead of dropping them — the permissions UI shows them as "off". */
+  includeDisabled?: boolean;
 }
 
 // One entry in the filter result — schema + permission metadata.
@@ -89,6 +92,8 @@ export interface ToolFilterEntry {
   name: string;
   schema: ToolSchema;
   permissioned: boolean;
+  /** Requires a workspace folder to run; forced off when filtered with hasWorkspace: false. */
+  needsWorkspace: boolean;
   defaultMode: ToolPermission;
   /** Computed effective mode after applying workspace + agent policy (0=off, 1=ask, 2=auto). */
   effectiveMode: ToolPermission;
@@ -102,4 +107,6 @@ export type ToolFilterResult = Record<string, ToolFilterEntry>;
 export interface ToolGateway {
   filter(params?: ToolFilterParams): ToolFilterResult | Promise<ToolFilterResult>;
   run(call: ToolCallRequest): Promise<ToolResult | null>;
+  // A live AbortSignal can't cross the bridge — cancellation travels by call id (registry owns the controller).
+  cancel(callId: string): void;
 }

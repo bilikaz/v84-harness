@@ -20,7 +20,6 @@ import { cn } from "../../lib/cn.ts";
 import { navigate } from "../../lib/router.ts";
 import {
   createSession,
-  deleteSession,
   getSessionsForWorkspace,
   renameSession,
   setActive,
@@ -28,6 +27,7 @@ import {
   useSessions,
   useStreamingIds,
 } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import {
   defaultWorkspace,
   setActiveWorkspace,
@@ -44,6 +44,7 @@ import { WorkspaceSettings } from "./WorkspaceSettings.tsx";
 // Shell sidebar: workspace switcher + workspace-scoped session list + user menu (null workspace = "Chat").
 export function Sidebar() {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const sessions = useSessions();
   const activeId = useActiveId();
   const streamingIds = useStreamingIds();
@@ -201,7 +202,7 @@ export function Sidebar() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteSession(s.id)}
+                    onClick={() => ctx.sessions.deleteSession(s.id)}
                     title={t("sidebar.delete")}
                     className="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-100 hover:text-red-600"
                   >

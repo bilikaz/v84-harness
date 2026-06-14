@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
-import { deleteSession, useSessions, type Session } from "../../core/sessions/index.ts";
+import { useSessions, type Session } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import { useWorkspaces } from "../../core/workspaces.ts";
 import { detectStorage } from "../../lib/storage/index.ts";
 import { fmtBytes } from "../../lib/format.ts";
@@ -61,6 +62,7 @@ export function StorageSection() {
 
 function WorkspaceGroup({ name, sessions }: { name: string; sessions: Session[] }) {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const [confirmAll, setConfirmAll] = useState(false);
   const bytes = sessions.reduce((n, s) => n + sessionBytes(s), 0);
 
@@ -78,7 +80,7 @@ function WorkspaceGroup({ name, sessions }: { name: string; sessions: Session[] 
             onCancel={() => setConfirmAll(false)}
             onConfirm={() => {
               setConfirmAll(false);
-              sessions.forEach((s) => deleteSession(s.id));
+              sessions.forEach((s) => ctx.sessions.deleteSession(s.id));
             }}
           />
         ) : (
@@ -98,7 +100,7 @@ function WorkspaceGroup({ name, sessions }: { name: string; sessions: Session[] 
             <span className="shrink-0 text-xs text-neutral-400">{fmtBytes(sessionBytes(s))}</span>
             <button
               type="button"
-              onClick={() => deleteSession(s.id)}
+              onClick={() => ctx.sessions.deleteSession(s.id)}
               title={t("sidebar.delete")}
               className="shrink-0 rounded-md p-1 text-neutral-300 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
             >

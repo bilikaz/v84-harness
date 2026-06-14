@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ShieldCheck, Unlink } from "lucide-react";
 
-import { sessionToolModes, unlinkAgent, useActiveSession } from "../../core/sessions/index.ts";
+import { unlinkAgent, useActiveSession } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import { useAgents } from "../../core/agents.ts";
 import { useWorkspaces } from "../../core/workspaces.ts";
 import { type ToolPermission } from "../../core/tools/types.ts";
-import { useToolDescriptors } from "../../core/tools/permissions.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { cn } from "../../lib/cn.ts";
 
@@ -14,16 +14,25 @@ const MODE_KEY: Record<ToolPermission, string> = { 0: "workspace.modeOff", 1: "w
 
 export function AgentPermissionsPanel() {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const session = useActiveSession();
   const agents = useAgents();
   useWorkspaces();
-  useToolDescriptors(); // re-render once the gated-tool list arrives from main
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [modes, setModes] = useState<Record<string, ToolPermission>>({});
+
+  // Effective tool modes resolve through the gateway (async in electron) — load them for the active session.
+  useEffect(() => {
+    let alive = true;
+    void ctx.sessions.sessionToolModes(session).then((m) => alive && setModes(m));
+    return () => {
+      alive = false;
+    };
+  }, [ctx, session]);
 
   if (!session.agentId) return null;
   const agent = agents.find((a) => a.id === session.agentId);
-  const modes = sessionToolModes(session);
   const status = !agent
     ? t("agents.permissionsDeleted")
     : agent.workspace
