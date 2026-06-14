@@ -6,7 +6,7 @@ import { setActive, useSessions } from "../../core/sessions/index.ts";
 import { SavableMedia } from "../../components/SavableMedia.tsx";
 import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
-import type { MediaRef, ToolCallRequest } from "../../lib/types.ts";
+import type { Image, Video, ToolCallRequest } from "../../lib/types.ts";
 
 // Tool call card (IN/OUT, collapsed by default); memoized — props must come from reference-stable message objects.
 export const ToolCard = memo(function ToolCard({

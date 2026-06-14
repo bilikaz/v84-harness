@@ -7,7 +7,7 @@ import { effectiveImageMaxDim, getAppConfig } from "../../core/config/index.ts";
 import { readAttachments } from "../../lib/attachments.ts";
 import { navigate } from "../../lib/router.ts";
 import { AttachmentList } from "../../components/AttachmentList.tsx";
-import type { FileAttachment, MediaRef } from "../../lib/types.ts";
+import type { FileAttachment, Image, Video } from "../../lib/types.ts";
 import type { Attachments } from "../../core/sessions/index.ts";
 
 // Message composer shared by chat and agent runs — owns its input state; the parent owns what submit means.
@@ -21,8 +21,8 @@ export function Composer(props: {
   const { t } = useTranslation();
   const provider = useProvider();
   const [input, setInput] = useState(props.seed ?? "");
-  const [images, setImages] = useState<MediaRef[]>([]);
-  const [videos, setVideos] = useState<MediaRef[]>([]);
+  const [images, setImages] = useState<Image[]>([]);
+  const [videos, setVideos] = useState<Video[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [attachNote, setAttachNote] = useState("");
   const [detecting, setDetecting] = useState(false);

@@ -2,7 +2,7 @@
 // persistence layered on top (key shapes + media-blob handling). One injected dependency for everything durable.
 // Throws on storage failure except media blob writes, which degrade per-blob (a quota-dead blob must not lose the text).
 import type { Storage } from "./types.ts";
-import type { MediaRef, Message } from "../sessions/types.ts";
+import type { Image, Video, Message } from "../sessions/types.ts";
 import type { SessionsIndex } from "../sessions/persistence.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { errorMessage } from "../../lib/errors.ts";
@@ -41,7 +41,7 @@ export class StorageEngine {
     const liveIds = new Set<string>();
     let mediaBytes = 0;
 
-    const storeRef = async (ref: MediaRef): Promise<MediaRef> => {
+    const storeRef = async <T extends Image | Video>(ref: T): Promise<T> => {
       if (!ref.url.startsWith("data:")) return ref; // http(s) URL — store as-is
       if (!ref.id) {
         const id = crypto.randomUUID();
@@ -55,7 +55,7 @@ export class StorageEngine {
       }
       liveIds.add(ref.id);
       mediaBytes += ref.url.length;
-      return { ...ref, url: MEDIA_REF + ref.id };
+      return { ...ref, url: MEDIA_REF + ref.id } as T;
     };
 
     const stored: Message[] = [];
@@ -83,12 +83,12 @@ export class StorageEngine {
     if (!raw) return null;
     const messages = (JSON.parse(raw) as Message[]).map((m) => ({ ...m }));
 
-    const inflate = async (ref: MediaRef): Promise<MediaRef> => {
+    const inflate = async <T extends Image | Video>(ref: T): Promise<T> => {
       if (!ref.url.startsWith(MEDIA_REF)) return ref;
       const id = ref.url.slice(MEDIA_REF.length);
       const blob = await this.backend.get(mediaKey(sid, id));
       if (blob === null) log.warn("media_blob_missing", { sid, id });
-      return { ...ref, id, url: blob ?? "" };
+      return { ...ref, id, url: blob ?? "" } as T;
     };
     for (const m of messages) {
       if (m.images) m.images = await Promise.all(m.images.map(inflate));

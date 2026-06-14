@@ -1,5 +1,5 @@
 import { downscaleImage } from "./imageResize.ts";
-import type { FileAttachment, MediaRef } from "./types.ts";
+import type { FileAttachment, Image, Video } from "./types.ts";
 import type { ConfigApp } from "../core/config/defaults.ts";
 
 const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context

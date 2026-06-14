@@ -1,12 +1,12 @@
 import { FileText, X } from "lucide-react";
 
 import { cn } from "../lib/cn.ts";
-import type { FileAttachment, MediaRef } from "../lib/types.ts";
+import type { FileAttachment, Image, Video } from "../lib/types.ts";
 
 // Image/video/file attachment previews with remove buttons.
 export function AttachmentList(props: {
   images?: Image[];
-  videos?: MediaRef[];
+  videos?: Video[];
   files?: FileAttachment[];
   onRemoveImage?: (i: number) => void;
   onRemoveVideo?: (i: number) => void;

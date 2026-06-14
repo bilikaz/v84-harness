@@ -1,6 +1,6 @@
 export type {
   Role,
-  MediaRef,
+  Image, Video,
   FileAttachment,
   Message,
   SessionTool,

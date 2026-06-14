@@ -1,6 +1,6 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import type { ChatModelSettings } from "../settings.ts";
-import type { FileAttachment, MediaRef, Message, Session, ToolCallRequest } from "./types.ts";
+import type { FileAttachment, Image, Video, Message, Session, ToolCallRequest } from "./types.ts";
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
@@ -418,7 +418,7 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
   let newest = true;
   // Prefix take: stop at the first item that doesn't fit, so the kept count
   // maps onto slice(0, n) in toChatMessages — never a gappy selection.
-  const takeWhileFits = (items: MediaRef[] | undefined): number => {
+  const takeWhileFits = (items: (Image | Video)[] | undefined): number => {
     let n = 0;
     for (const item of items ?? []) {
       if (!newest && (count < 1 || item.url.length > bytes)) break;
@@ -442,12 +442,12 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
 
 // The stub that replaces windowed-out media — names what was here and how to
 // get it back, so it degrades to one extra Load call instead of silent amnesia.
-function droppedNote(dropped: MediaRef[]): string {
+function droppedNote(dropped: (Image | Video)[]): string {
   const names = dropped.map((d) => d.name || "unnamed").join(", ");
   return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use ImageLoad/VideoLoad to view one again if needed.]`;
 }
 
-function hiddenNote(hidden: MediaRef[]): string {
+function hiddenNote(hidden: (Image | Video)[]): string {
   const names = hidden.map((d) => d.name || "unnamed").join(", ");
   return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}.]`;
 }

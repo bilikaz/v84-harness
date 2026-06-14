@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
+import { type Image, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { bytesToB64, extToMime } from "../../../lib/dataUrl.ts";
 import { errorMessage } from "../../../lib/errors.ts";
@@ -47,7 +47,7 @@ export class ImageLoad extends BaseWorkspaceTool {
       if (st.size > capBytes) return { ok: false, output: `ImageLoad rejected: "${p}" is ${fmtMB(st.size)} — over the ${fmtMB(capBytes)} limit.` };
       const bytes = await readFile(real);
       const dataUrl = `data:${mime};base64,${bytesToB64(new Uint8Array(bytes))}`;
-      const media: MediaRef = { url: dataUrl, mime, name: path.basename(real) };
+      const media: Image = { url: dataUrl, mime, name: path.basename(real) };
       return { ok: true, output: `Loaded ${p} (${fmtMB(st.size)} ${mime}) — attached above for your review.`, images: [media] };
     } catch (e) {
       return { ok: false, output: `ImageLoad failed for "${p}": ${errorMessage(e)}. Try List or Bash to check the path.` };

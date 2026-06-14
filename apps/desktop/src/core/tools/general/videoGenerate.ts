@@ -1,4 +1,4 @@
-import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
+import { type Video, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
 import { videoHandler } from "../../../llm/index.ts";
@@ -97,7 +97,7 @@ export class VideoGenerate extends BaseGeneralTool {
         },
       });
 
-      const video: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      const video: Video = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
         output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,

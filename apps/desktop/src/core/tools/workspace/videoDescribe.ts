@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
+import { type Video, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { textHandler } from "../../../llm/index.ts";
 import { bytesToB64, extToMime } from "../../../lib/dataUrl.ts";
@@ -80,7 +80,7 @@ export class VideoDescribe extends BaseWorkspaceTool {
         signal,
         messages: [{ role: "user", content: query, video: [fileRef] }],
       });
-      const preview: MediaRef = { url: dataUrl, mime, name: path.basename(real) };
+      const preview: Video = { url: dataUrl, mime, name: path.basename(real) };
       return { ok: true, output: answer || "(the recognition model returned an empty answer)", video: [preview] };
     } catch (e) {
       return { ok: false, output: `VideoDescribe failed for "${p}": ${errorMessage(e)}` };

@@ -25,7 +25,7 @@ import type { Attachments } from "../../core/sessions/index.ts";
 import { Message } from "./Message.tsx";
 import { SystemBanner } from "./SystemBanner.tsx";
 import { cn } from "../../lib/cn.ts";
-import type { MediaRef } from "../../lib/types.ts";
+import type { Image, Video } from "../../lib/types.ts";
 
 // Main center pane: active session transcript + composer.
 export function SessionView() {
@@ -57,8 +57,8 @@ export function SessionView() {
   const childRuns = useChildRuns();
   const { toolResults, toolImages, toolVideo, toolChildren } = useMemo(() => {
     const toolResults = new Map<string, string>();
-    const toolImages = new Map<string, MediaRef[]>();
-    const toolVideo = new Map<string, MediaRef[]>();
+    const toolImages = new Map<string, Image[]>();
+    const toolVideo = new Map<string, Video[]>();
     const toolChildren = new Map<string, string[]>(Object.entries(childRuns));
     for (const m of session.messages) {
       if (m.role === "tool" && m.toolCallId) {

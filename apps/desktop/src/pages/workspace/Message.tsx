@@ -5,7 +5,7 @@ import { Markdown } from "../../components/Markdown.tsx";
 import { SavableMedia } from "../../components/SavableMedia.tsx";
 import { Thinking } from "./Thinking.tsx";
 import { ToolCard } from "./ToolCard.tsx";
-import type { FileAttachment, MediaRef, Role, ToolCallRequest } from "../../lib/types.ts";
+import type { FileAttachment, Image, Video, Role, ToolCallRequest } from "../../lib/types.ts";
 
 // One transcript entry; memoized via sameMessage so only the live streaming message re-renders.
 function MessageImpl({
@@ -30,8 +30,8 @@ function MessageImpl({
   files?: FileAttachment[];
   toolCalls?: ToolCallRequest[];
   results?: Map<string, string>;
-  toolImages?: Map<string, MediaRef[]>;
-  toolVideo?: Map<string, MediaRef[]>;
+  toolImages?: Map<string, Image[]>;
+  toolVideo?: Map<string, Video[]>;
   toolChildren?: Map<string, string[]>; // toolCallId → sub-agent sessions (RunAgent's doors)
   streaming: boolean;
 }) {

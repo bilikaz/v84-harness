@@ -1,7 +1,7 @@
 import type { ToolCallRequest, ToolSpec } from "../../llm/types.ts";
 import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
 import { llmLog } from "../../llm/debug.ts";
-import type { Attachments, MediaRef, Session } from "./types.ts";
+import type { Attachments, Image, Video, Session } from "./types.ts";
 import { resolveMain } from "../settings.ts";
 import type { Ctx } from "../ctx.ts";
 import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
@@ -275,7 +275,7 @@ export class SessionEngine {
             const images = result.images
               ? await Promise.all(
                   result.images.map(async (g) => {
-                    // MediaRef.mime is optional; the resizer treats unknown ("") as "try".
+                    // the item's mime is optional; the resizer treats unknown ("") as "try".
                     const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
                     return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
                   }),

@@ -1,5 +1,5 @@
 // LLM layer vocabulary: services, call contract, StreamEvent. This is the floor — config, core, and tools all
-// import shared shapes (MediaRef, ToolCallRequest, ToolSpec, service unions) from here.
+// import shared shapes (Image, Video, ToolCallRequest, ToolSpec, service unions) from here.
 
 // The call target is config's LLMConfig (config owns it); re-exported here so the llm layer keeps a local name.
 import type { LLMConfig } from "../core/config/llm.ts";

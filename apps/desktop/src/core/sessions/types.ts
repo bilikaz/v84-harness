@@ -3,8 +3,8 @@
 import type { ToolCallRequest } from "../../llm/types.ts";
 export type { ToolCallRequest };
 
-export type { MediaRef } from "../../llm/types.ts";
-import type { MediaRef } from "../../llm/types.ts";
+export type { Image, Video } from "../../llm/types.ts";
+import type { Image, Video } from "../../llm/types.ts";
 
 export type Role = "user" | "assistant" | "tool";
 

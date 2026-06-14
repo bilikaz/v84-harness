@@ -1,7 +1,7 @@
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
+import { type Image, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
 import { textHandler } from "../../../llm/index.ts";
 import { bytesToB64, extToMime } from "../../../lib/dataUrl.ts";
@@ -81,7 +81,7 @@ export class ImageDescribe extends BaseWorkspaceTool {
         signal,
         messages: [{ role: "user", content: query, images: [fileRef] }],
       });
-      const preview: MediaRef = { url: dataUrl, mime, name: path.basename(real) };
+      const preview: Image = { url: dataUrl, mime, name: path.basename(real) };
       return { ok: true, output: answer || "(the recognition model returned an empty answer)", images: [preview] };
     } catch (e) {
       return { ok: false, output: `ImageDescribe failed for "${p}": ${errorMessage(e)}` };

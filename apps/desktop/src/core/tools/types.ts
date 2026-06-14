@@ -1,9 +1,9 @@
 // Tool subsystem vocabulary — bridge and renderer import from here, never the reverse. The model-facing shapes
-// (ToolSpec, ToolCallRequest, MediaRef) are owned by the llm layer and re-exported here.
+// (ToolSpec, ToolCallRequest, Image, Video) are owned by the llm layer and re-exported here.
 
 import type { Config } from "../config/index.ts";
-import type { MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
-export type { MediaRef, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
+import type { Image, Video, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
+export type { Image, Video, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
 
 export interface ToolResult {
   ok: boolean;

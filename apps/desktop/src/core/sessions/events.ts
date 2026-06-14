@@ -1,6 +1,6 @@
 import { scope } from "../../lib/bus.ts";
 import type { StreamUsage, ToolCallRequest } from "../../llm/types.ts";
-import type { FileAttachment, MediaRef } from "./types.ts";
+import type { FileAttachment, Image, Video } from "./types.ts";
 
 // The session domain's events, registered on the bus via declaration merging.
 

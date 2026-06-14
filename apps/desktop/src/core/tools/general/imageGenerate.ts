@@ -1,4 +1,4 @@
-import { type MediaRef, type ToolResult, type ToolSpec } from "../types.ts";
+import { type Image, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
 import { imageHandler } from "../../../llm/index.ts";
@@ -89,7 +89,7 @@ export class ImageGenerate extends BaseGeneralTool {
         },
       });
 
-      const image: MediaRef = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
       return {
         ok: true,
         output: `Generated an image (shown to you above). Inspect it and regenerate with a refined prompt if it doesn't match the request.`,

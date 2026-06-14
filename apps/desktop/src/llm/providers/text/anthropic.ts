@@ -1,6 +1,6 @@
 import type { LLMConfig, ModelInfo } from "../../types.ts";
 import { BaseTextProvider } from "./base.ts";
-import type { MediaRef, ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
+import type { Image, ChatMessage, StreamEvent, ToolSpec } from "../../types.ts";
 import { parseSSE } from "../../sse.ts";
 import { sseRequest } from "../../transport.ts";
 import { baseWithPrefix, expectOk, parseDataUrl, safeJson } from "../../util.ts";
@@ -30,7 +30,7 @@ function reasoningFields(target: LLMConfig): Record<string, unknown> {
   };
 }
 
-function imageBlock(im: MediaRef): unknown {
+function imageBlock(im: Image): unknown {
   const data = parseDataUrl(im.url);
   return data
     ? { type: "image", source: { type: "base64", media_type: data.mime, data: data.b64 } }
