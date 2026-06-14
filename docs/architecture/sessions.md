@@ -7,8 +7,8 @@ The reference module shape for `core/` features:
 | File | Responsibility |
 |------|----------------|
 | `store.ts` | State, selectors, mutations; decides WHEN to persist; the media resend window |
-| `persistence.ts` | Granular durable IO: key scheme, media blob extract/reinflate, legacy migration |
-| `driver.ts` | Orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution, effective tool policy |
+| `persistence.ts` | Pure session-meta shapes: `SessionMeta`/`SessionsIndex` + the `toMeta`/`normalize` coercions (durable IO lives in `StorageEngine`, [architecture/storage.md](storage.md)) |
+| `engine.ts` | The `SessionEngine` class — orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution, effective tool policy, naming/compaction wiring |
 | `agentTools.ts` | The ListAgents/RunAgent pair: stable schemas, catalog text, name resolution (ADR-0022) |
 | `events.ts` | Bus event interfaces + declaration merge + scoped bus |
 | `listeners.ts` | Bus → store reactions (transcript building, streaming flags, persistence) |
@@ -20,30 +20,43 @@ Small single-concern modules (`core/approvals.ts`, `core/workspaces.ts`) may sta
 single-file **until** they gain side-effect services or listeners — then they split
 into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
 
-## Turn loop highlights (`driver.ts`)
+## Turn loop highlights (`engine.ts`)
+
+The `SessionEngine` is constructed in the `Ctx` constructor (`core/ctx.ts`)
+and carried on `ctx.sessions`; the renderer reaches it via `useCtx().sessions`
+(`renderer/ctx.tsx`). Its constructor injects the host's storage into the store
+(`useStorage`) and triggers `hydrate()`, then wires the naming/compaction bus
+subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
+`compact`, `deleteSession`, `sessionToolModes`) are `SessionEngine` methods.
 
 - Turns are addressable: `sendTo(sid, …)` runs a turn in a NAMED session and
   resolves with a `TurnResult { text, errored, aborted }` — the shared entry
   point under the composer (`send` targets the active session), manual agent
   runs (`runAgent`), and the RunAgent tool awaiting a sub-agent's answer.
-  Callers pass no config: the driver resolves `main` itself (`resolveMain`)
+  Callers pass no config: the engine resolves `main` itself (`resolveMain`)
   for capability math, and each step is one
-  `client.call({service: "main", tools, handler: chatStepHandler(…)})` — the
-  handler streams events onto the bus and returns `{text, thinking, calls}`;
+  `this.ctx.llm.call({service: "main", tools, handler: chatStepHandler(…)})` —
+  the handler streams events onto the bus and returns `{text, thinking, calls}`;
   the tool-execution cycle stays here, not in the llm layer
   ([architecture/llm.md](llm.md)).
 - Per-session `AbortController` map for stop; stopping is not an error. Stop
-  also cancels running tools (in-process tools via the call's signal; main tools
-  via the `tools:cancel` IPC channel — handled inside the platform's `ctx.tools`
-  gateway), denies the session's queued approvals, and cascades to sub-agent children —
+  also cancels the running tool via `ctx.tools.cancel(call.id)` — a live signal
+  can't cross the bridge, so in electron this routes through `api.tools.cancel`
+  to the `harness:tools:cancel` IPC channel and the registry (which owns the
+  AbortController) aborts it. Stop also denies the session's queued approvals,
+  and cascades to sub-agent children —
   see [ADR-0014](../adr/0014-stop-semantics-and-tool-cancellation.md),
   [ADR-0013](../adr/0013-approval-promise-bridge.md) and
   [ADR-0022](../adr/0022-subagent-orchestration.md). Exhausting the step budget
   surfaces as a `turn:error`, never a silent stop.
-- Tool loop: advertised tools = always-available renderer tools + the sub-agent
-  pair (top-level sessions with a non-empty catalog only — depth 1) +
-  workspace-gated bridge tools. The effective per-tool mode is
-  `min(workspace policy, agent ceiling)` `0 | 1 | 2` (off / ask / auto)
+- Tool loop: a single
+  `ctx.tools.filter({ checkCanRun, hasWorkspace, workspacePermissions, agentPermissions })`
+  pass returns both the advertised tool schemas AND each tool's effective mode
+  in one shot; the sub-agent pair (`ListAgents`/`RunAgent`) is engine-level
+  (top-level sessions only — depth 1) and joins via `agentToolSchemas(!!ws)`.
+  The per-call mode check reads from that same filter result. The effective
+  per-tool mode is `min(workspace policy, agent ceiling)` `0 | 1 | 2`
+  (off / ask / auto)
   ([ADR-0023](../adr/0023-agent-definition-binding-and-ceiling.md)), with `ask`
   resolved through `core/approvals` (a Promise the ApprovalModal settles). Tools
   whose purpose is putting media in front of the model (LoadImage, LoadVideo) are
@@ -56,8 +69,9 @@ into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
   agent runs always take the launch context's workspace (children: the
   parent's). What the session may touch is resolved per turn by
   `capabilityContext` — the live agent's ceiling, with the workspace masked
-  out entirely for chat-only agents. `sessionToolModes` exposes the same
-  computation to the UI; `unlinkAgent` (store) severs the link one-way,
+  out entirely for chat-only agents. `sessionToolModes` (async — it awaits the
+  same `ctx.tools.filter(…)` pass) exposes the same computation to the UI;
+  `unlinkAgent` (store) severs the link one-way,
   converting the session to plain workspace/chat permissions.
 - Sub-agents: `ListAgents` returns the catalog as data; one
   `RunAgent {runs: […]}` call spawns all its child sessions concurrently and
@@ -75,7 +89,7 @@ into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
 - Tool-produced media (generated or loaded) is fed back as a hidden user turn
   (`mediaFeedback`), filtered to what the model's declared inputs accept.
   Images are downscaled to the model's pixel cap (`imageMaxDim`, default 2048)
-  as the result crosses the driver — UI, persistence, and model all share the
+  as the result crosses the engine — UI, persistence, and model all share the
   fitted copy ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
 - Resubmitted media rides a **resend window** (10 items / 50 MB, newest always
   sent — count is the binding budget now that images are pixel-fitted, bytes a

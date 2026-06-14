@@ -19,11 +19,13 @@ Conventions ([ADR-0004](../adr/0004-store-pattern.md)):
 - Mutations are immutable (spread/copy) and end with `notify()`.
 - `core/sessions/store.ts` is the one sanctioned deviation: it uses
   `createListeners()` directly because its persistence is granular and async
-  (index / per-session messages / media blobs over the storage port —
-  [ADR-0021](../adr/0021-granular-session-persistence.md),
-  [ADR-0017](../adr/0017-storage-port-with-detected-backends.md)). Don't copy that
-  shape for ordinary stores. The full key scheme, shapes, and accessor surface
-  are charted in [storage.md](storage.md).
+  (index / per-session messages / media blobs —
+  [ADR-0021](../adr/0021-granular-session-persistence.md)). It doesn't reach a
+  storage backend itself: a `StorageEngine` is injected via `useStorage(...)` —
+  built per-platform in `init()` and handed to it by the `SessionEngine`
+  constructor (persistence is a no-op until then). Don't copy that shape for
+  ordinary stores. The full key scheme, shapes, and accessor surface are charted
+  in [storage.md](storage.md).
 
 ## Event bus
 
@@ -32,7 +34,7 @@ declaration-merging into `BusEvents` and take a scoped view (`scope("session")`)
 Event names are `<domain>:<topic>[:<subtopic>]`, e.g. `session:turn:start`,
 `session:tool:calls` ([ADR-0005](../adr/0005-event-bus.md)).
 
-The bus decouples the sessions engine from the store: `driver.ts` emits,
+The bus decouples the sessions engine from the store: `engine.ts` emits,
 `listeners.ts` subscribes and mutates the store, and self-contained services
 (`naming.ts`, `compaction.ts`) subscribe independently and run in the background
 (`void`-ed promises). Handlers are isolated — one throwing is logged

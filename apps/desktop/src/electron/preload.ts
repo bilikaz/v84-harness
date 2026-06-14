@@ -27,8 +27,8 @@ const api: ElectronApi = {
     del: (key: string) => ipcRenderer.invoke(IPC.storageDel, key),
     keys: (prefix: string) => ipcRenderer.invoke(IPC.storageKeys, prefix),
   },
-  saveImage: (dataUrl: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl),
-  saveVideo: (dataUrl: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl),
+  saveImage: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl, suggestedName),
+  saveVideo: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl, suggestedName),
 };
 
 contextBridge.exposeInMainWorld("api", api);

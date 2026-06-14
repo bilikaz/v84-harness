@@ -1,6 +1,6 @@
 # ADR-0034: Platform hosts (electron / web) over a host-agnostic core + shared renderer
 
-Status: Proposed
+Status: Accepted
 Date: 2026-06-14
 
 ## Context
@@ -23,25 +23,28 @@ Organise the app as **platform hosts over agnostic layers**:
   (`main.tsx`). Loaded by *both* the browser and the Electron window. Depends only on
   `ctx`. The boot is the one exception (below).
 - **`electron/`** — the Electron platform: the main process (window, IPC handlers,
-  the tool dispatch `tools.ts`) **and** the renderer-side bridge gateway
-  (`gateway.ts`). (Renamed from `main/`.)
-- **`web/`** — the web platform: the in-process tool gateway.
-- **`preload/`** — the Electron bridge (unchanged).
+  the tool dispatch `tools.ts`), the bridge contract (`bridge.ts`), the preload
+  (`preload.ts`), and the renderer-side `init()` that forwards over the bridge
+  (inline in `init.ts` — there is no separate gateway file). (Renamed from `main/`.)
+- **`web/`** — the web platform: the in-process tool gateway, built in its `init()`.
 
 `ctx` is the seam (ADR-0032): each platform builds and installs the parts that differ
-— in practice, the tool gateway. `core` and `renderer` consume `ctx` and stay blind to
-the platform.
+— the tool gateway, storage, and host api. `core` and `renderer` consume `ctx` and stay
+blind to the platform.
 
-**The boot is the single place platform is detected** —
-`renderer/main.tsx` runs one line: `ctx.tools = harness ? electronTools : webTools`.
-Everything downstream is agnostic. (The composition root is allowed to know the host;
-nothing else is.)
+**The boot is the single place platform is detected** — `renderer/main.tsx`
+dynamic-imports the chosen platform's `init()`:
+`const { init } = "api" in window ? await import("../electron/init.ts") : await import("../web/init.ts")`,
+then `await init()`. Each platform's `init()` builds the **whole** ctx — storage, the
+tool gateway, and the host api — over the agnostic `Ctx` core. Everything downstream is
+agnostic. (The composition root is allowed to know the host; nothing else is.)
 
 Naming/build: `main/` → `electron/` (the Electron platform; the main *process* is one
-part of it). `src/main.tsx` → `src/renderer/main.tsx`, ending the clash. electron-vite's
-`main` build points explicitly at `src/electron/index.ts`; the output keys
-(`out/main`, `out/preload`, `out/renderer`) are unchanged, so `package.json` and the
-window's load paths don't move.
+part of it). `src/main.tsx` → `src/renderer/main.tsx`, ending the clash. electron-vite
+points **both** the `main` build at `src/electron/index.ts` and the `preload` build at
+`src/electron/preload.ts` explicitly (the preload moved into `electron/`, so there is no
+`src/preload/`); the output keys (`out/main`, `out/preload`, `out/renderer`) are
+unchanged, so `package.json` and the window's load paths don't move.
 
 This refines ADR-0001 (dual-target) and ADR-0003 (host-agnostic core) — formalising the
 platform hosts and the agnostic boundary between them.
@@ -53,9 +56,9 @@ platform hosts and the agnostic boundary between them.
 - `core` + `renderer` are test-once / run-anywhere; platform code is small and isolated.
 - The web build cannot reach Node-only code: `electron/`'s main process is a separate
   bundle, and the web gateway globs only the `general/` tools.
-- A new platform is a new folder that builds its `ctx` (its gateway) — touching nothing
+- A new platform is a new folder that builds its `ctx` (its `init()`) — touching nothing
   in `core/` or `renderer/`.
-- One soft spot: `renderer/main.tsx` (the boot) imports both platform gateways to pick
-  one. It's the composition root, so that's where platform selection belongs — but it
-  does mean the renderer bundle links both gateways (both are Node-free, so this is
-  bundle-size, not correctness).
+- The boot dynamic-imports only the chosen platform's `init()`, so the renderer bundle
+  doesn't statically link both platforms — the unused platform's code splits into its own
+  chunk that's never fetched. Platform selection lives in the composition root, where it
+  belongs.

@@ -27,10 +27,9 @@ export interface ElectronApi {
     del(key: string): Promise<void>;
     keys(prefix: string): Promise<string[]>;
   };
-  // Resolves to the written path, or null if cancelled.
-  saveImage(dataUrl: string): Promise<string | null>;
-  // Resolves to the written path, or null if cancelled.
-  saveVideo(dataUrl: string): Promise<string | null>;
+  // Resolves to the written path, or null if cancelled. suggestedName pre-fills the dialog.
+  saveImage(dataUrl: string, suggestedName?: string): Promise<string | null>;
+  saveVideo(dataUrl: string, suggestedName?: string): Promise<string | null>;
 }
 
 export const IPC = {

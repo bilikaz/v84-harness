@@ -31,7 +31,7 @@ loading. Its index row below stays.
 | [0014](0014-stop-semantics-and-tool-cancellation.md) | Stop semantics + tool cancellation over IPC | accepted |
 | [0015](0015-prompt-assets.md) | Prompt assets: English-only `pt()` catalog, outside i18n | accepted |
 | [0016](0016-workspace-isolation-field.md) | Workspace isolation field (`worktree` \| `direct`) | **debatable — no concept yet** |
-| [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted (first-paint clause superseded by 0021) |
+| [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted (first-paint clause superseded by 0021; detection + `lib/storage` mechanism superseded by 0035 — the port stands) |
 | [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted (tool names refined by 0033) |
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
@@ -42,13 +42,15 @@ loading. Its index row below stays.
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
 | [0026](0026-agent-session-placement-vs-capability.md) | Agent sessions: placement follows launch context, capability masked separately + unlink | accepted |
 | [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | accepted |
-| [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected ConfigSource; heal cycle; tool calls stay driver-side | accepted |
+| [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected resolver (`LLMConfigResolver`); heal cycle; tool calls stay engine-side | accepted (ConfigSource renamed `LLMConfigResolver`) |
 | [0029](0029-provider-classes-folder-factory.md) | Provider classes resolved by the folder-layout factory; response handlers are response-side only | accepted |
-| [0030](0030-unified-call-target.md) | One model-data format: `CallTarget {provider, model}` held end to end (stores included, no migrations) | accepted (CallTarget → ConfigLLM / ownership moved to config by 0031) |
-| [0031](0031-config-sole-source-of-truth.md) | Config as the sole source of truth — domains under one roof, owners push | proposed |
-| [0032](0032-ctx-main-data-carrier.md) | Ctx — the one data carrier (config + the single LLM client + the platform tool gateway) | proposed |
-| [0033](0033-tools-registry-folder-by-permission.md) | Tools — host-agnostic registry, dynamic permission tiers, per-platform execution | proposed |
-| [0034](0034-platform-hosts-over-agnostic-core.md) | Platform hosts (electron / web) over a host-agnostic core + shared renderer | proposed |
+| [0030](0030-unified-call-target.md) | One model-data format held end to end (stores included, no migrations) | accepted (CallTarget → `LLMConfig` / ownership moved to config by 0031) |
+| [0031](0031-config-sole-source-of-truth.md) | Config as the sole source of truth — domains under one roof, owners push | accepted |
+| [0032](0032-ctx-main-data-carrier.md) | Ctx — the one data carrier (config + llm + storage + tool gateway + host api + sessions) | accepted |
+| [0033](0033-tools-registry-folder-by-permission.md) | Tools — host-agnostic registry, dynamic permission tiers, per-platform execution | accepted |
+| [0034](0034-platform-hosts-over-agnostic-core.md) | Platform hosts (electron / web) over a host-agnostic core + shared renderer | accepted |
+| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned; init picks the backend (supersedes 0017's detection) | proposed |
+| [0036](0036-host-capability-surface.md) | Host capability surface — `ctx.api`, platform-injected, gated on presence | proposed |
 
 ## Needs review / important missing parts
 
@@ -61,7 +63,7 @@ it from this list.
 | Workspace isolation (`worktree`) | [ADR-0016](0016-workspace-isolation-field.md) | The entire concept: worktree lifecycle, merge-back, non-git workspaces. Field is settable but read by nothing. |
 | Storage quota warning | [ADR-0012](0012-sessions-dual-tier-persistence.md) | Manual pruning shipped (Settings → Storage: per-workspace/session usage + delete). Still missing: a user-facing warning when a persist write fails (today it's only a logged `persist_failed`). |
 | Video job orphaning on cancel/quit | [ADR-0014](0014-stop-semantics-and-tool-cancellation.md) | Stop ends polling but the server job keeps running; no job-id persistence for resume or cleanup (endpoint has no cancel API). |
-| Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 15 IPC channels now (was 6 when "revisit if it grows" was written); a missing handler still hangs the invoke silently. A startup ping would catch it. |
+| Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 12 IPC channels now (was 6 when "revisit if it grows" was written); a missing handler still hangs the invoke silently. A startup ping would catch it. |
 | Tests/typecheck not in CI | conventions/testing.md | `.github/workflows/review.yml` runs the reviewer gate only; nothing runs `pnpm typecheck` / `pnpm test` on push. |
 | Account "Connected" mode | AccountSection (`soon` badge) | The company-system link (knowledgebase/sync) is a UI placeholder with no design. |
 

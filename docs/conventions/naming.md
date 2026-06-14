@@ -36,6 +36,12 @@ merging. Both directions count: a name must not raise false expectations either
    existing as a file whose name must be guessed.
 8. **File names match their primary export** where a file has one
    (`model.ts` ↔ `resolveModel`); multi-export files are named for their role.
+9. **Stateful collaborators carry a role suffix that says how you use them.** An
+   `<Area>Engine` is a long-lived object you *call to do work* and that owns a
+   subsystem's behaviour (`SessionEngine`); an `<Area>Registry` is a *lookup* of
+   instances resolved by key; an `<Area>Store` *holds reactive state* you read. The
+   suffix answers, at the use site, whether to invoke it, resolve from it, or read it —
+   so don't name three different roles all `Manager`/`Service`.
 
 ## Why
 

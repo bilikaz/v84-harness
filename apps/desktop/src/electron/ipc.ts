@@ -43,6 +43,6 @@ export function registerIpc(electron: Electron): void {
     }
   });
 
-  ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string) => saveDataUrl(dialog, dataUrl));
-  ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string) => saveDataUrl(dialog, dataUrl));
+  ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
+  ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
 }

@@ -8,31 +8,40 @@ import { LocalStorage } from "./localStorage.ts";
 import { ToolRegistry } from "../core/tools/registry.ts";
 import type { HostApi, MediaModelsResult, MediaEndpoint } from "../core/host.ts";
 import { errorMessage } from "../lib/errors.ts";
+import { rootLog } from "../lib/logger/index.ts";
 
 const MODULES = import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true });
+const log = rootLog.child("storage");
 
-// Best web backend first: IndexedDB (larger quota), falling back to localStorage.
+// Best web backend first: IndexedDB (larger quota), falling back to localStorage. Log why we fell back —
+// otherwise a later quota wall on the ~5 MB localStorage tier has no diagnostic trail.
 async function pickBackend(): Promise<Storage> {
   try {
     return await IdbStorage.create();
-  } catch {
+  } catch (e) {
+    log.warn("idb_unavailable", { hint: "falling back to localStorage (~5 MB quota)", error: errorMessage(e) });
     return LocalStorage.create();
   }
 }
 
 // The browser host api: save = download via an <a>, mediaModels = a direct fetch. No folder picker in the browser.
 function browserHost(): HostApi {
+  // The browser can't observe save vs. cancel — it triggers a download and resolves with the filename it used.
   const download = (dataUrl: string, suggestedName?: string): Promise<string | null> => {
+    const name = suggestedName ?? "download";
     const a = document.createElement("a");
     a.href = dataUrl;
-    a.download = suggestedName ?? "download";
+    a.download = name;
+    document.body.appendChild(a); // some browsers only fire the download when the anchor is in the DOM
     a.click();
-    return Promise.resolve(suggestedName ?? null);
+    a.remove();
+    return Promise.resolve(name);
   };
   return {
     saveImage: download,
     saveVideo: download,
     async mediaModels(ep: MediaEndpoint): Promise<MediaModelsResult> {
+      if (!ep.baseUrl) return { ok: false, models: [], error: "no base URL set" };
       try {
         const res = await fetch(`${ep.baseUrl.replace(/\/$/, "")}/models`, {
           headers: ep.apiKey ? { authorization: `Bearer ${ep.apiKey}` } : {},

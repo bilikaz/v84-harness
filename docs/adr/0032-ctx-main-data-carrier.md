@@ -1,6 +1,6 @@
-# ADR-0032: Ctx — the one data carrier (config + llm client + tool gateway)
+# ADR-0032: Ctx — the one data carrier (config + llm client + tool gateway + storage + host api + sessions)
 
-Status: Proposed
+Status: Accepted
 Date: 2026-06-14
 
 ## Context
@@ -16,14 +16,17 @@ that the platform, not `core`, fills in where it must differ.
 
 ## Decision
 
-`Ctx` is the single data carrier. It holds three things:
+`Ctx` is the single data carrier. It holds:
 
 ```ts
 class Ctx {
-  llm: LLMClient;      // the ONLY createClient() call site
-  config: Config;      // live aggregate (getter) or fixed snapshot (main, from the wire)
-  tools: ToolGateway;  // the platform's tool execution — installed by the boot
-  resolve(service): ConfigLLM | null   // satisfies the llm client's ConfigSource
+  llm: LLMClient;          // the ONLY createClient() call site
+  config: Config;          // live aggregate (getter)
+  tools: ToolGateway;      // the platform's tool execution — installed by the boot
+  storage: StorageEngine;  // the platform's storage backend — given at construction
+  api: HostApi;            // the platform's capability surface — installed by the boot
+  sessions: SessionEngine; // the session store/driver, built over this ctx
+  resolve(service): LLMConfig | null   // satisfies the llm client's LLMConfigResolver
 }
 ```
 
@@ -31,30 +34,38 @@ class Ctx {
   anywhere). `Ctx` is the only birthplace of an `LLMClient`; the chat path, naming,
   compaction, and every tool share `ctx.llm`. The parallel `client.ts` singleton and
   `toolConfigSnapshot()` are deleted.
-- **`tools` is the platform-specific part** — a `ToolGateway` ({ `schemas`, `run`,
-  `descriptors` }) the platform installs (ADR-0034): web runs tools in-process,
+- **`tools` is the platform-specific part** — a `ToolGateway` ({ `filter`, `run`,
+  `cancel` }) the platform installs (ADR-0034): web runs tools in-process,
   electron ships them over the bridge. `core` and the driver only touch `ctx.tools`;
-  they never branch on platform.
+  they never branch on platform. (`storage` and `api` are platform parts too — the
+  same story: built by each platform's `init()`.)
 
-**Built per host.** The renderer builds a singleton over *live* config; the main
-process builds `new Ctx(wire.config)` per call from the JSON that crossed IPC. A live
-object can't cross a process boundary — only data does.
+**Built per host.** The renderer builds a singleton `Ctx` over *live* config (each
+platform's `init()` constructs it and installs the platform parts). The main process
+does **not** build a `Ctx`: `electron/tools.ts` holds a standalone `ToolRegistry` over
+`createClient(resolver)`, whose resolver reads a module-level `config` re-seeded from
+each call's wire. A live object can't cross a process boundary — only data does, so the
+config snapshot rides the wire and main reseeds from it.
 
-**`ToolCtx` is dissolved.** Tools take `(ctx, cwd, signal)` and read `this.ctx.config`
-/ `this.ctx.llm` / `this.cwd` / `this.signal`. The bridge payload is the minimal
-`ToolWire { cwd, config }`; main wraps it back into a `Ctx`. Tool code never knows
-which host it runs in.
+**`ToolCtx` is dissolved — tools depend only on the llm client.** A tool is
+constructed with just the `LLMClient` (`new Ctor(llm)`, `BaseTool(llm)`); it holds no
+ctx. Its `run(args, cwd?, signal?)` takes cwd and signal per call. The client is the
+tool's only host dependency — it exposes `resolve(service)`, so a tool reaches config
+only through the llm client, never a stored ctx. The bridge payload is the minimal
+`WireConfig { config }` (cwd rides on the `ToolCallRequest`); main reseeds the
+registry's resolver from it. Tool code never knows which host it runs in.
 
-This refines ADR-0028 (the client's injected `ConfigSource` is now the ctx),
-ADR-0002 (the tool IPC payload is `ToolWire`), and supersedes the type-name/ownership
-clause of ADR-0030 (`CallTarget` → `ConfigLLM`, owned by config).
+This refines ADR-0028 (the client's injected `LLMConfigResolver` is the ctx in the
+renderer, a module-level seed in main), ADR-0002 (the tool IPC payload is `WireConfig`),
+and supersedes the type-name/ownership clause of ADR-0030 (`CallTarget` → `LLMConfig`,
+owned by config).
 
 ## Consequences
 
 - One `createClient` call site; one resolution path (`ctx.resolve`) in every process.
 - "What does a turn need?" has one answer: `ctx`. New cross-cutting facilities join
   as ctx members (the trajectory — config first, the tool gateway next).
-- Serialization is honest and minimal: only `{ cwd, config }` crosses IPC; the client
-  and signal are re-minted main-side (they were always non-cloneable).
+- Serialization is honest and minimal: only `{ config }` crosses IPC (cwd rides on the
+  call); the client and signal are re-minted main-side (they were always non-cloneable).
 - The driver lost its platform branch entirely — it calls `ctx.tools`, and the boot
   decided which gateway that is.

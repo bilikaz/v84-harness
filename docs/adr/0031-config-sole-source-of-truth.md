@@ -1,6 +1,6 @@
 # ADR-0031: Config as the sole source of truth — domains under one roof, owners push
 
-Status: Proposed
+Status: Accepted
 Date: 2026-06-14
 
 ## Context
@@ -26,8 +26,8 @@ One aggregate, one accessor:
 
 ```ts
 // config/index.ts — the hub
-interface Config { app: ConfigApp; llm: ConfigLLMList }
-function getConfig(): Config            // { app: getAppConfig(), llm: getConfigLLMList() }
+interface Config { app: ConfigApp; llm: LLMConfigList }
+function getConfig(): Config            // { app: getAppConfig(), llm: getLLMConfigList() }
 ```
 
 Config owns its vocabulary and its per-domain types, named for what they are
@@ -36,19 +36,19 @@ Config owns its vocabulary and its per-domain types, named for what they are
 - **`config/app.ts`** — `ConfigApp` (tunables: media caps, gen quality, session
   reserves), `getAppConfig()`, overrides loader. Pure-data defaults stay in
   `config/defaults.ts` so main and renderer read the same values.
-- **`config/llm.ts`** — `ConfigLLM` (one provider+model entry, **the** call
-  target — renamed from `CallTarget`, ADR-0030), `ConfigLLMList`
-  (`Partial<Record<ConfigModelService, ConfigLLM>>`), and the service vocabulary
-  `CONFIG_MODEL_SERVICES` / `ConfigModelService` (was `ModelService`, owned by
-  the llm layer). The llm layer re-exports `ConfigLLM` for ergonomic import; the
-  definition is config's.
+- **`config/llm.ts`** — `LLMConfig` (one provider+model entry, **the** call
+  target — the type is now `LLMConfig`, ADR-0030), and `LLMConfigList`
+  (`Partial<Record<ModelService, LLMConfig>>`). The service vocabulary stays in
+  the llm layer — config imports `ModelService` from `llm/types.ts` (the union,
+  plus `MEDIA_SERVICES` / `MediaService`, is owned there). The llm layer
+  re-exports `LLMConfig` for ergonomic import; the definition is config's.
 
 The owners push, config never pulls:
 
-- `settings.ts` owns the `main` slot → `syncMainToConfigLLM()` (write now +
+- `settings.ts` owns the `main` slot → `syncMainToLLMConfig()` (write now +
   subscribe).
-- `media.ts` owns the media slots → `syncMediaToConfigLLM()`.
-- `config/llm.ts` exposes `writeConfigLLM(patch)` (merge; undefined clears).
+- `media.ts` owns the media slots → `syncMediaToLLMConfig()`.
+- `config/llm.ts` exposes `writeLLMConfig(patch)` (merge; undefined clears).
   `config.llm` is **transient** (in-memory): it is a projection rebuilt from the
   owners' persisted stores at init, never persisted itself — a flat read-model
   can't reconstruct the normalized editable registry, so persisting it would be
@@ -58,7 +58,7 @@ Dependencies point **into** config. It imports leaf vocabulary only; the owning
 stores and consumers import config, never the reverse.
 
 This **supersedes the naming/ownership clause of ADR-0030**: the end-to-end
-single shape stands, but the type is `ConfigLLM` defined in config (not
+single shape stands, but the type is `LLMConfig` defined in config (not
 `CallTarget` in the llm layer), and `config` — not the individual stores — is the
 canonical thing consumers read.
 

@@ -14,12 +14,16 @@ import type { HostApi } from "./host.ts";
 import { SessionEngine } from "./sessions/engine.ts";
 
 export class Ctx {
+  // The foundation: storage is fully ready before construction (init awaits it), so config that derives from it
+  // is available to everything built below.
   readonly storage?: StorageEngine;
-  // Host-agnostic collaborators are built here; the platform-specific gateway + host api are injected by init().
-  tools!: ToolGateway;
-  api!: HostApi;
+  // Host-agnostic collaborators built here, in dependency order: llm (reads config) → sessions (reads storage).
   llm!: LLMClient;
   sessions: SessionEngine;
+  // Platform-specific parts, INSTALLED BY init() right after construction. They load last on purpose — they
+  // don't gate storage/session startup — so nothing in the constructor path (incl. SessionEngine) may read them.
+  tools!: ToolGateway;
+  api!: HostApi;
 
   constructor(storage: StorageEngine) {
     this.storage = storage;

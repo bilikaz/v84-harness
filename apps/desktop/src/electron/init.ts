@@ -17,8 +17,8 @@ export async function init(): Promise<Ctx> {
   // Desktop services come straight off the bridge (present because boot chose electron).
   ctx.api = {
     pickFolder: () => api!.pickFolder(),
-    saveImage: (dataUrl) => api!.saveImage(dataUrl),
-    saveVideo: (dataUrl) => api!.saveVideo(dataUrl),
+    saveImage: (dataUrl, name) => api!.saveImage(dataUrl, name),
+    saveVideo: (dataUrl, name) => api!.saveVideo(dataUrl, name),
     mediaModels: (ep) => api!.media.models(ep),
   };
   return ctx;

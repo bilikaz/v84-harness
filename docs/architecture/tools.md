@@ -7,47 +7,61 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
 ## `core/tools/` — host-agnostic building blocks
 
 - A tool is a **class** extending `BaseTool` (one file, canonical export), constructed
-  per call with `(ctx, cwd, signal)`. `schema` is a getter (advertised shape can depend
-  on the ctx), `run(args)` does the work. Three cheap per-tool checks: `canRun()`
-  (capability), `isPermissioned()` (is it gated? `BaseWorkspaceTool` → `true`), and
-  `defaultPermission()` (default policy mode; `Bash` → ask, rest → allow). `OUTPUT_CAP` /
-  `cap()` live in `tools/base.ts`; the vocabulary in `tools/types.ts`.
-- **`factory.ts`** is the registry engine: a folder of eager-globbed modules → resolve
-  (find → `canRun` → parse → run). It knows nothing of who calls it.
-- **The folder is the permission tier** — no static `ALL_TOOLS`/`DEFAULT_TOOL_POLICY`:
+  **once** with just the LLM client (`new Ctor(llm)`) — its only host dependency. `schema`
+  is a getter, `run(args, cwd?, signal?)` does the work and takes the cwd + signal per call
+  (the tool holds no ctx). Four cheap per-tool checks: `canRun()` (capability),
+  `isPermissioned()` (is it gated? `BaseWorkspaceTool` → `true`), `needsWorkspace()`
+  (requires a workspace folder; `BaseWorkspaceTool` → `true`), and `defaultPermission()`
+  (default policy mode; `Bash` → ask, rest → allow). `OUTPUT_CAP` / `cap()` live in
+  `tools/base.ts`; the vocabulary in `tools/types.ts`.
+- **`registry.ts`** (`ToolRegistry`) is the registry engine: a folder of eager-globbed
+  modules → pre-instantiated tools by name → resolve (find → `canRun` → parse → run). It
+  knows nothing of who calls it.
+- **The folder is the permission tier**:
   - **`general/`** — permissionless (`ImageGenerate`, `VideoGenerate`): no workspace, no
     gate; `canRun()` only. Host-agnostic (provider HTTP + data-URLs).
   - **`workspace/`** — gated by the per-workspace policy (`0|1|2`): `Read`, `List`,
     `Grep`, `Write`, `Edit`, `CreateFolder`, `Bash`, `ImageLoad`, `VideoLoad`,
     `ImageDescribe`, `VideoDescribe`. Need Node (fs/shell).
-- **The gated-tool list is dynamic**: it's the tools that report `isPermissioned()`,
-  surfaced as `ToolDescriptor`s and cached in `permissions.ts`. The settings UIs render
-  that list; the driver's policy math (`effectiveMode`/`sessionToolModes`) reads it.
-  Workspace/agent policies are partial maps — a missing entry falls back to the tool's
-  `defaultPermission()`.
+- **The gated-tool list is dynamic**: it's the tools that report `isPermissioned()`. The
+  renderer reads it through `renderer/gatedTools.ts` (`useGatedTools()`), which calls
+  `ctx.tools.filter({ includeDisabled: true })` and keeps the permissioned `ToolFilterEntry`s
+  (`schema`, `permissioned`, `needsWorkspace`, `defaultMode`, `effectiveMode` — see
+  `tools/types.ts`). `effectiveMode` is computed inside `filter()` (in `registry.ts`):
+  workspace/agent policies are partial maps (stricter of grant and ceiling wins), a missing
+  entry falls back to the tool's `defaultPermission()`, and a `needsWorkspace` tool is forced
+  to mode 0 when no workspace is in context.
 
 ## Execution lives in the platform, via `ctx.tools`
 
 `core` and the driver never run a tool directly or branch on platform — they call the
-gateway on the ctx (`ctx.tools.{schemas,run,descriptors}`, ADR-0032). Each platform
-installs its gateway at boot (ADR-0034):
+gateway on the ctx (`ctx.tools.{filter,run,cancel}`, ADR-0032). Each platform installs
+its gateway at boot (ADR-0034):
 
-- **web** (`web/tools.ts`) — runs `general/` **in-process** through the factory; the
-  Node-only gated tools don't exist in the web bundle.
-- **electron** — the renderer-side gateway (`electron/gateway.ts`) ships the call over
-  the bridge as `ToolWire { cwd, config }`; the main process (`electron/tools.ts`) runs
-  `general/` + `workspace/` through the same factory, rebuilding a `Ctx` from the wire
-  (the client and signal can't cross IPC, so main re-mints them). Cancel is a separate
-  `tools:cancel` IPC ([ADR-0014](../adr/0014-stop-semantics-and-tool-cancellation.md)).
+- **web** — runs `general/` **in-process** in the renderer; the registry is built inline
+  in `web/init.ts` (no separate tools file), and the Node-only gated tools don't exist in
+  the web bundle.
+- **electron** — tools run in MAIN (workspace tools need `node:fs`, unreachable under
+  contextIsolation). The renderer's `ctx.tools` (`electron/init.ts`) forwards
+  `filter`/`run`/`cancel` to `api.tools.*` over the bridge; the wire is `WireConfig { config }`
+  (just the config snapshot — `cwd` rides on the `ToolCallRequest`). The main-side
+  `ToolRegistry` over `general/` + `workspace/`, plus a config-seeded LLM client
+  (`createClient(resolver)`), lives in `electron/tools.ts`, which re-seeds its module-level
+  `config` from the wire on each call; `electron/ipc.ts` wires the handlers. Cancel is a
+  separate `tools:cancel` IPC ([ADR-0014](../adr/0014-stop-semantics-and-tool-cancellation.md)).
 
 So a tool call flows: driver → `ctx.tools.run(...)` → (web) in-process or (electron)
-bridge → main. The driver only knows the gateway.
+bridge → main. The driver only knows the gateway. Cancellation travels by call id
+(`cancel(callId)`) — the registry owns the `AbortController`, since a live `AbortSignal`
+can't cross the bridge.
 
 ## Talking to models
 
-A tool calls `this.llm.call({service: "imageRec", …})` (`this.llm` is `this.ctx.llm`)
-and never sees connection details ([llm.md](llm.md)). Domain params (`promptStyle`,
-size caps) ride the resolved `ConfigLLM.model`.
+A tool calls `this.llm.call({service: "imageRec", …})` — `this.llm` is the injected
+`LLMClient` directly — and never sees connection details ([llm.md](llm.md)). A tool checks
+its slot via `this.llm.resolve(service)`, which returns the resolved model target
+(`LLMConfig`) or `null`; domain params (`promptStyle`, size caps) ride that
+`LLMConfig.model`.
 
 ## Virtual filesystem root
 
@@ -55,7 +69,7 @@ The model sees `/workspace` as the root. `workspace/base.ts` maps virtual ↔ re
 enforces confinement (leading-slash paths outside `/workspace` are refused; symlink-escape
 checks); `expandWorkspace` expands the marker in shell commands and `hideRoot` hides the
 real root in output. `ImageLoad`/`VideoLoad`/`ImageDescribe`/`VideoDescribe` share the
-file guards in `workspace/mediaFile.ts`, capability-gated by the model's declared inputs
+file guards in `workspace/base.ts`, capability-gated by the model's declared inputs
 ([ADR-0018](../adr/0018-capability-gated-media-tools.md)).
 
 ## Contracts & caps
@@ -65,9 +79,11 @@ file guards in `workspace/mediaFile.ts`, capability-gated by the model's declare
   ([ADR-0022](../adr/0022-subagent-orchestration.md)). Same never-throw contract.
 - Tools **never throw**: every path returns `ToolResult { ok, output, … }`.
 - Output is capped before it reaches the model. Media byte caps are **transport sanity
-  bounds, not model limits**, one source shared with composer attachments
-  (`lib/mediaCaps.ts`): resizable images 50 MB, GIF 6 MB, video 50 MB
+  bounds, not model limits**, one source shared with composer attachments — the `media`
+  block in `core/config/defaults.ts`, consumed via config: resizable images 50 MB, GIF
+  6 MB, video 50 MB
   ([ADR-0025](../adr/0025-media-resend-window.md), [ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
 - `ImageLoad` reads at **full resolution**; images are fitted to the model's longest-side
-  cap (`MainSettings.imageMaxDim`, default 2048) by `lib/imageResize.ts` on the driver's
-  tool-result hop in the renderer ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
+  cap (`effectiveImageMaxDim` resolves the model card's value against `config.app.media`,
+  default 2048) by `lib/imageResize.ts` on the driver's tool-result hop in the renderer
+  ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
