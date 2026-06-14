@@ -3,14 +3,13 @@ import { createRoot } from "react-dom/client";
 
 import App from "../App.tsx";
 import { CtxProvider } from "./ctx.tsx";
-import { isElectron } from "../electron/bridge.ts";
 import "../index.css";
 import "../lib/i18n.ts";
 
 import.meta.glob("../pages/**/register.{ts,tsx}", { eager: true });
 
-// The one place platform is chosen: run the harness init, get ctx, then render.
-const { init } = isElectron()
+// The one place platform is chosen — detect the desktop bridge inline so the boot stays bridge-agnostic.
+const { init } = "api" in window
   ? await import("../electron/init.ts")
   : await import("../web/init.ts");
 

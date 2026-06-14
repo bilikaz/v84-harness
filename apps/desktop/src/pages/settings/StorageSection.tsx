@@ -1,5 +1,5 @@
 // Storage settings: backend + per-workspace footprint breakdown.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 
@@ -7,7 +7,6 @@ import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { useSessions, type Session } from "../../core/sessions/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import { useWorkspaces } from "../../core/workspaces.ts";
-import { detectStorage } from "../../lib/storage/index.ts";
 import { fmtBytes } from "../../lib/format.ts";
 
 function sessionBytes(s: Session): number {
@@ -18,15 +17,7 @@ export function StorageSection() {
   const { t } = useTranslation();
   const sessions = useSessions();
   const workspaces = useWorkspaces();
-  const [backend, setBackend] = useState<string>("…");
-
-  useEffect(() => {
-    let on = true;
-    void detectStorage().then((s) => on && setBackend(s.name));
-    return () => {
-      on = false;
-    };
-  }, []);
+  const backend = useCtx().storage?.name ?? "…";
 
   const groups: { key: string; name: string; sessions: Session[] }[] = [
     { key: "none", name: t("storage.noWorkspace"), sessions: sessions.filter((s) => !s.workspaceId) },

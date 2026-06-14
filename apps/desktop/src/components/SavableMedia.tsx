@@ -3,14 +3,16 @@ import { useTranslation } from "react-i18next";
 
 import { openLightbox } from "../lib/ui.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
+import { useCtx } from "../renderer/ctx.tsx";
 
 // A media thumbnail/player with a Save button overlaid in the top corner.
 export function SavableMedia(props: { kind: "image" | "video"; src: string; name?: string; className?: string }) {
   const { kind, src, name, className } = props;
   const { t } = useTranslation();
+  const ctx = useCtx();
   async function save(e: React.MouseEvent) {
     e.stopPropagation();
-    await saveMedia(src, kind, name);
+    await saveMedia(ctx, src, kind, name);
   }
   return (
     <div className="group relative inline-block">

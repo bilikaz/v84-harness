@@ -35,7 +35,6 @@ import {
   useWorkspaces,
   type Workspace,
 } from "../../core/workspaces.ts";
-import { harness } from "../../lib/harness.ts";
 import { useAccount } from "../../lib/account.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { LANGUAGES, setLanguage } from "../../lib/i18n.ts";
@@ -80,8 +79,8 @@ export function Sidebar() {
   }
 
   async function addWorkspace() {
-    const root = harness
-      ? await harness.pickFolder()
+    const root = ctx.api.pickFolder
+      ? await ctx.api.pickFolder()
       : window.prompt("Workspace folder path (the folder picker needs the desktop app):");
     if (!root) return;
     const name = root.split(/[/\\]/).filter(Boolean).pop() ?? "workspace";

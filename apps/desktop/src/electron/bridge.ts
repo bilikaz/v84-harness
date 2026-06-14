@@ -1,14 +1,10 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
 import type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolFilterParams, ToolFilterResult, MediaEndpoint } from "../core/tools/types.ts";
+import type { MediaModelsResult } from "../core/host.ts";
 
 export type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolFilterParams, ToolFilterResult, MediaEndpoint };
-
-export interface MediaModelsResult {
-  ok: boolean;
-  models: string[];
-  error?: string;
-}
+export type { MediaModelsResult };
 
 export interface ElectronApi {
   isElectron: true;

@@ -4,11 +4,11 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type HarnessApi, type ToolCallRequest, type ToolWire, type MediaEndpoint } from "../bridge.ts";
+import { IPC, type ElectronApi, type ToolCallRequest, type ToolWire, type MediaEndpoint } from "../electron/bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
-const api: HarnessApi = {
+const api: ElectronApi = {
   isElectron: true,
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
@@ -31,4 +31,4 @@ const api: HarnessApi = {
   saveVideo: (dataUrl: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl),
 };
 
-contextBridge.exposeInMainWorld("harness", api);
+contextBridge.exposeInMainWorld("api", api);

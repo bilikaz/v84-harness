@@ -1,12 +1,12 @@
-// localStorage adapter — last-resort tier (~5 MB quota) so detectStorage always returns SOMETHING.
-import type { Storage } from "./types.ts";
+// localStorage adapter — last-resort tier (~5 MB quota).
+import type { Storage } from "../core/storage/types.ts";
 
 export class LocalStorage implements Storage {
   readonly name = "local";
 
   private constructor() {}
 
-  static async create(): Promise<LocalStorage> {
+  static create(): LocalStorage {
     if (typeof localStorage === "undefined") throw new Error("localStorage unavailable");
     return new LocalStorage();
   }

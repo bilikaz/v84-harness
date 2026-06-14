@@ -56,7 +56,7 @@ export class ImageGenerate extends BaseGeneralTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, _cwd?: string, signal?: AbortSignal): Promise<ToolResult> {
     const prompt = String(args.prompt ?? "").trim();
     if (!prompt) return { ok: false, output: `ImageGenerate rejected: missing required "prompt".` };
     const media = this.requireSlot("imageGen", "ImageGenerate");
@@ -72,13 +72,13 @@ export class ImageGenerate extends BaseGeneralTool {
     const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, getAppConfig().imageGen.fallbackWidth);
 
     const finalPrompt =
-      media.model.promptStyle === "cosmos-json" ? await cosmosImagePrompt(this.llm, prompt, this.signal) : prompt;
+      media.model.promptStyle === "cosmos-json" ? await cosmosImagePrompt(this.llm, prompt, signal) : prompt;
 
     try {
       const { b64, mime } = await this.llm.call({
         service: "imageGen",
         messages: [{ role: "user", content: finalPrompt }],
-        signal: this.signal,
+        signal: signal,
         handler: imageHandler(),
         params: {
           w,

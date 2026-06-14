@@ -1,6 +1,6 @@
 // Registers the main-side handlers behind the `window.harness` bridge.
 
-import { IPC, type ToolCallRequest, type ToolWire, type MediaEndpoint, type MediaModelsResult, type ToolFilterParams } from "../bridge.ts";
+import { IPC, type MediaEndpoint, type MediaModelsResult } from "./bridge.ts";
 //import { cancelTool, execTool, toolFilter } from "./tools.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
 import { openStorage } from "./storage.ts";

@@ -9,17 +9,19 @@ import { getConfig } from "./config/index.ts";
 import { syncMainToConfigLLM } from "./settings.ts";
 import { syncMediaToConfigLLM } from "./media.ts";
 import type { ToolGateway } from "./tools/types.ts";
-import type { Storage } from "./storage/types.ts";
+import type { StorageEngine } from "./storage/index.ts";
+import type { HostApi } from "./host.ts";
 import { SessionEngine } from "./sessions/engine.ts";
 
 export class Ctx {
-  readonly storage?: Storage;
-  // Host-agnostic collaborators are built here; only the platform-specific tool gateway is injected by init().
+  readonly storage?: StorageEngine;
+  // Host-agnostic collaborators are built here; the platform-specific gateway + host api are injected by init().
   tools!: ToolGateway;
+  api!: HostApi;
   llm!: LLMClient;
   sessions: SessionEngine;
 
-  constructor(storage: Storage) {
+  constructor(storage: StorageEngine) {
     this.storage = storage;
     syncMainToConfigLLM(); //needs refactor
     syncMediaToConfigLLM(); //needs refactor

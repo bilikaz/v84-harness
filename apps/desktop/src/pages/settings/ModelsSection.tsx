@@ -25,6 +25,7 @@ import {
   type MediaUseCase,
 } from "../../core/tools/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 
 const FLAVORS: readonly MediaApiFlavor[] = ["openai", "generate"];
 const FLAVOR_KEY: Record<MediaApiFlavor, string> = { openai: "apiOpenai", generate: "apiGenerate" };
@@ -132,9 +133,10 @@ function ProvidersTab({ reg }: { reg: MediaRegistry }) {
 function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => void }) {
   const { p, open } = props;
   const { t } = useTranslation();
+  const ctx = useCtx();
   const bare = p.api === "generate";
   const { detecting, msg, detect } = useDetection(
-    () => detectProviderModels(p.id),
+    () => detectProviderModels(ctx, p.id),
     (r) => (r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error })),
   );
 

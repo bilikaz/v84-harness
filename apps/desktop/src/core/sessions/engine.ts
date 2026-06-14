@@ -21,8 +21,10 @@ import {
   getSession,
   getSessions,
   getStreamingIds,
+  hydrate,
   isFull,
   toChatMessages,
+  useStorage,
 } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { downscaleImage } from "../../lib/imageResize.ts";
@@ -53,6 +55,11 @@ export class SessionEngine {
   private readonly inflight = new Map<string, AbortController>();
 
   constructor(private readonly ctx: Ctx) {
+    // Inject the host's storage engine into the session store, then hydrate from it (no-op in storage-less hosts).
+    if (ctx.storage) {
+      useStorage(ctx.storage);
+      void hydrate();
+    }
     // Auto-name the session after its first exchange.
     bus.on("message:done", (e) => {
       if (e.firstExchange && e.autoName && !e.errored) void nameSession(this.ctx, e.sessionId);

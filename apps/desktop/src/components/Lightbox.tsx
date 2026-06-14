@@ -4,10 +4,12 @@ import { useTranslation } from "react-i18next";
 import { closeLightbox, useLightbox } from "../lib/ui.ts";
 import { useEscapeKey } from "../lib/hooks.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
+import { useCtx } from "../renderer/ctx.tsx";
 
 // Full-screen image viewer. Dismiss via backdrop, image, close button, or Escape.
 export function Lightbox() {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const url = useLightbox();
   useEscapeKey(!!url, closeLightbox);
 
@@ -15,7 +17,7 @@ export function Lightbox() {
 
   async function save(e: React.MouseEvent) {
     e.stopPropagation();
-    if (url) await saveMedia(url, "image");
+    if (url) await saveMedia(ctx, url, "image");
   }
 
   return (

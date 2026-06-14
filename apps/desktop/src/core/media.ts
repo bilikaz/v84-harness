@@ -1,9 +1,7 @@
 import type { MediaApiFlavor, MediaModel, MediaProvider, MediaUseCase } from "./tools/types.ts";
 import { MEDIA_USE_CASES } from "./tools/types.ts";
-import { trimBase } from "../lib/format.ts";
-import { harness } from "../lib/harness.ts";
+import type { Ctx } from "./ctx.ts";
 import { createStore } from "../lib/store.ts";
-import { errorMessage } from "../lib/errors.ts";
 import { writeConfigLLM, type ConfigLLM, type ConfigLLMList } from "./config/llm.ts";
 
 // The media model registry — providers hosting models, plus a use-case → model assignment map.
@@ -295,27 +293,13 @@ export function syncMediaToConfigLLM(): void {
 
 // ── detection ────────────────────────────────────────────────────────────────
 
-// In Electron this goes through main (no CORS); in the browser it fetches directly.
-export async function detectProviderModels(id: string): Promise<{ ok: boolean; count: number; error?: string }> {
+// The model list comes through the host api (electron fetches in main to dodge CORS; web fetches directly).
+export async function detectProviderModels(ctx: Ctx, id: string): Promise<{ ok: boolean; count: number; error?: string }> {
   const provider = store.get().providers.find((p) => p.id === id);
   if (!provider) return { ok: false, count: 0, error: "provider not found" };
-  try {
-    let models: string[];
-    if (harness) {
-      const r = await harness.media.models(provider);
-      if (!r.ok) return { ok: false, count: 0, error: r.error };
-      models = r.models;
-    } else {
-      const res = await fetch(`${trimBase(provider.baseUrl)}/models`, {
-        headers: provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {},
-      });
-      if (!res.ok) return { ok: false, count: 0, error: `${res.status} ${res.statusText}` };
-      const data = (await res.json()) as { data?: Array<{ id?: string }> };
-      models = (data.data ?? []).map((m) => m.id).filter((mid): mid is string => !!mid);
-    }
-    updateProvider(id, { detected: models });
-    return { ok: true, count: models.length };
-  } catch (e) {
-    return { ok: false, count: 0, error: errorMessage(e) };
-  }
+  const r = await ctx.api.mediaModels?.(provider);
+  if (!r) return { ok: false, count: 0, error: "model listing is not supported here" };
+  if (!r.ok) return { ok: false, count: 0, error: r.error };
+  updateProvider(id, { detected: r.models });
+  return { ok: true, count: r.models.length };
 }

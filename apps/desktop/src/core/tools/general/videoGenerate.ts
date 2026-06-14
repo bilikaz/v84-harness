@@ -48,7 +48,7 @@ export class VideoGenerate extends BaseGeneralTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, _cwd?: string, signal?: AbortSignal): Promise<ToolResult> {
     const prompt = String(args.prompt ?? "").trim();
     if (!prompt) return { ok: false, output: `VideoGenerate rejected: missing required "prompt".` };
     const media = this.requireSlot("videoGen", "VideoGenerate");
@@ -71,7 +71,7 @@ export class VideoGenerate extends BaseGeneralTool {
 
     const finalPrompt =
       media.model.promptStyle === "cosmos-json"
-        ? await cosmosVideoPrompt(this.llm, prompt, this.signal, (obj) => {
+        ? await cosmosVideoPrompt(this.llm, prompt, signal, (obj) => {
             obj.resolution = { H: h, W: w };
             obj.aspect_ratio = `${aw},${ah}`;
             obj.duration = `${duration}s`;
@@ -83,7 +83,7 @@ export class VideoGenerate extends BaseGeneralTool {
       const { b64, mime } = await this.llm.call({
         service: "videoGen",
         messages: [{ role: "user", content: finalPrompt }],
-        signal: this.signal,
+        signal: signal,
         handler: videoHandler(),
         params: {
           w,

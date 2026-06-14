@@ -4,28 +4,23 @@ import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./typ
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
-import { detectStorage } from "../../lib/storage/index.ts";
+import type { StorageEngine } from "../storage/engine.ts";
 import { createListeners } from "../../lib/store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
-import {
-  deleteSessionData,
-  loadIndex,
-  loadMessages,
-  normalize,
-  saveIndex,
-  saveMessages,
-  toMeta,
-  type SessionsIndex,
-} from "./persistence.ts";
+import { normalize, toMeta, type SessionsIndex } from "./persistence.ts";
 
 // Session store — the single source of truth for multi-session state. Plain
 // external store; React binds via ./hooks.ts. Owns STATE + the operations that
 // change it.
 const log = rootLog.child("session.store");
 
-// The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017).
-const storageReady = detectStorage();
+// The durable tier — the StorageEngine the host selected, injected by SessionEngine at construction. Null in
+// non-renderer hosts (and before injection); persistence is a no-op until set, hydrate runs once it is.
+let engine: StorageEngine | null = null;
+export function useStorage(e: StorageEngine): void {
+  engine = e;
+}
 
 // agentId stamps an agent run (the agent's output contract then applies to
 // every turn); parentId marks a sub-agent run spawned by another session's
@@ -71,26 +66,25 @@ function currentIndex(): SessionsIndex {
   return { activeId, sessions: sessions.map(toMeta) };
 }
 
-// Fire-and-forget: persistence failures are warnings, never UI errors.
+// Fire-and-forget: persistence failures are warnings, never UI errors. No-op until the engine is injected.
 export function persistIndex(): void {
-  void storageReady
-    .then((s) => saveIndex(s, currentIndex()))
-    .catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
+  if (!engine) return;
+  void engine.saveIndex(currentIndex()).catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
 }
 
 // Cost is proportional to THAT session's text — never the whole profile
 // (ADR-0021).
 export function persistSession(sid: string): void {
-  void storageReady
-    .then(async (storage) => {
-      const session = getSession(sid);
-      if (!session || session.loaded === false) return; // never clobber rows with an unloaded shell
-      const bytes = await saveMessages(storage, sid, session.messages);
-      sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
-      await saveIndex(storage, currentIndex());
-      notify();
-    })
-    .catch((e) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(e) }));
+  const e = engine;
+  if (!e) return;
+  void (async () => {
+    const session = getSession(sid);
+    if (!session || session.loaded === false) return; // never clobber rows with an unloaded shell
+    const bytes = await e.saveMessages(sid, session.messages);
+    sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
+    await e.saveIndex(currentIndex());
+    notify();
+  })().catch((err) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(err) }));
 }
 
 // In-flight loads are shared so a double-click doesn't read twice.
@@ -98,16 +92,17 @@ const loading = new Map<string, Promise<void>>();
 export function ensureLoaded(sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session || session.loaded !== false) return Promise.resolve();
+  const e = engine;
+  if (!e) return Promise.resolve();
   let p = loading.get(sid);
   if (!p) {
     p = (async () => {
-      const storage = await storageReady;
-      const messages = (await loadMessages(storage, sid)) ?? [];
+      const messages = (await e.loadMessages(sid)) ?? [];
       sessions = sessions.map((s) => (s.id === sid ? { ...s, messages, loaded: true } : s));
       notify();
     })()
-      .catch((e) => {
-        log.warn("load_failed", { sid, error: errorMessage(e) });
+      .catch((err) => {
+        log.warn("load_failed", { sid, error: errorMessage(err) });
         // Mark loaded anyway — an empty transcript beats a load loop.
         sessions = sessions.map((s) => (s.id === sid ? { ...s, loaded: true } : s));
         notify();
@@ -118,29 +113,30 @@ export function ensureLoaded(sid: string): Promise<void> {
   return p;
 }
 
-// Reads the INDEX and the ACTIVE session's messages only; everything else
-// lazy-loads via ensureLoaded.
-void (async () => {
+// Reads the INDEX and the ACTIVE session's messages only; everything else lazy-loads via ensureLoaded.
+// Triggered by SessionEngine once the storage engine is injected.
+export async function hydrate(): Promise<void> {
+  const e = engine;
   try {
-    const storage = await storageReady;
-    const index = await loadIndex(storage);
+    if (!e) return;
+    const index = await e.loadIndex();
     if (index) {
       sessions = index.sessions.map((meta) => ({ ...normalize(meta), loaded: false }));
       activeId = sessions.some((s) => s.id === index.activeId) ? index.activeId : sessions[0].id;
       await ensureLoaded(activeId); // active transcript is part of first paint
     } else {
-      await saveIndex(storage, currentIndex()); // first run — seed the index
+      await e.saveIndex(currentIndex()); // first run — seed the index
     }
-  } catch (e) {
+  } catch (err) {
     log.warn("hydrate_failed", {
       hint: "starting from an empty profile; durable data is intact and retried next launch",
-      error: errorMessage(e),
+      error: errorMessage(err),
     });
   } finally {
     hydrated = true;
     notify();
   }
-})();
+}
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export function getSessions(): Session[] {
@@ -229,9 +225,7 @@ export function unlinkAgent(id: string): void {
 export function deleteSession(id: string): void {
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";
-  void storageReady
-    .then((s) => deleteSessionData(s, id))
-    .catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
+  if (engine) void engine.deleteSessionData(id).catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
   if (sessions.length === 0) {
     createSession(); // never leave the user with zero sessions (persists the index)
     return;

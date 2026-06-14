@@ -1,5 +1,5 @@
 // IndexedDB adapter (web tier).
-import type { Storage } from "./types.ts";
+import type { Storage } from "../core/storage/types.ts";
 
 const DB_NAME = "v84-harness";
 const STORE = "kv";
