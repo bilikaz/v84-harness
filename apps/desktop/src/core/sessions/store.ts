@@ -1,31 +1,26 @@
 import type { ChatMessage } from "../../llm/types.ts";
-import type { MainSettings } from "../settings.ts";
-import type { FileAttachment, MediaRef, Message, Session, ToolCall } from "./types.ts";
+import type { ChatModelSettings } from "../settings.ts";
+import type { FileAttachment, Image, Video, Message, Session, ToolCallRequest } from "./types.ts";
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
-import { detectStorage } from "../../lib/storage/index.ts";
+import type { StorageEngine } from "../storage/engine.ts";
 import { createListeners } from "../../lib/store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
-import {
-  deleteSessionData,
-  loadIndex,
-  loadMessages,
-  normalize,
-  saveIndex,
-  saveMessages,
-  toMeta,
-  type SessionsIndex,
-} from "./persistence.ts";
+import { normalize, toMeta, type SessionsIndex } from "./persistence.ts";
 
 // Session store — the single source of truth for multi-session state. Plain
 // external store; React binds via ./hooks.ts. Owns STATE + the operations that
 // change it.
 const log = rootLog.child("session.store");
 
-// The durable tier — selected once (SQLite > IDB > localStorage, ADR-0017).
-const storageReady = detectStorage();
+// The durable tier — the StorageEngine the host selected, injected by SessionEngine at construction. Null in
+// non-renderer hosts (and before injection); persistence is a no-op until set, hydrate runs once it is.
+let engine: StorageEngine | null = null;
+export function useStorage(e: StorageEngine): void {
+  engine = e;
+}
 
 // agentId stamps an agent run (the agent's output contract then applies to
 // every turn); parentId marks a sub-agent run spawned by another session's
@@ -71,26 +66,25 @@ function currentIndex(): SessionsIndex {
   return { activeId, sessions: sessions.map(toMeta) };
 }
 
-// Fire-and-forget: persistence failures are warnings, never UI errors.
+// Fire-and-forget: persistence failures are warnings, never UI errors. No-op until the engine is injected.
 export function persistIndex(): void {
-  void storageReady
-    .then((s) => saveIndex(s, currentIndex()))
-    .catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
+  if (!engine) return;
+  void engine.saveIndex(currentIndex()).catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
 }
 
 // Cost is proportional to THAT session's text — never the whole profile
 // (ADR-0021).
 export function persistSession(sid: string): void {
-  void storageReady
-    .then(async (storage) => {
-      const session = getSession(sid);
-      if (!session || session.loaded === false) return; // never clobber rows with an unloaded shell
-      const bytes = await saveMessages(storage, sid, session.messages);
-      sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
-      await saveIndex(storage, currentIndex());
-      notify();
-    })
-    .catch((e) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(e) }));
+  const e = engine;
+  if (!e) return;
+  void (async () => {
+    const session = getSession(sid);
+    if (!session || session.loaded === false) return; // never clobber rows with an unloaded shell
+    const bytes = await e.saveMessages(sid, session.messages);
+    sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
+    await e.saveIndex(currentIndex());
+    notify();
+  })().catch((err) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(err) }));
 }
 
 // In-flight loads are shared so a double-click doesn't read twice.
@@ -98,16 +92,17 @@ const loading = new Map<string, Promise<void>>();
 export function ensureLoaded(sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session || session.loaded !== false) return Promise.resolve();
+  const e = engine;
+  if (!e) return Promise.resolve();
   let p = loading.get(sid);
   if (!p) {
     p = (async () => {
-      const storage = await storageReady;
-      const messages = (await loadMessages(storage, sid)) ?? [];
+      const messages = (await e.loadMessages(sid)) ?? [];
       sessions = sessions.map((s) => (s.id === sid ? { ...s, messages, loaded: true } : s));
       notify();
     })()
-      .catch((e) => {
-        log.warn("load_failed", { sid, error: errorMessage(e) });
+      .catch((err) => {
+        log.warn("load_failed", { sid, error: errorMessage(err) });
         // Mark loaded anyway — an empty transcript beats a load loop.
         sessions = sessions.map((s) => (s.id === sid ? { ...s, loaded: true } : s));
         notify();
@@ -118,29 +113,30 @@ export function ensureLoaded(sid: string): Promise<void> {
   return p;
 }
 
-// Reads the INDEX and the ACTIVE session's messages only; everything else
-// lazy-loads via ensureLoaded.
-void (async () => {
+// Reads the INDEX and the ACTIVE session's messages only; everything else lazy-loads via ensureLoaded.
+// Triggered by SessionEngine once the storage engine is injected.
+export async function hydrate(): Promise<void> {
+  const e = engine;
   try {
-    const storage = await storageReady;
-    const index = await loadIndex(storage);
+    if (!e) return;
+    const index = await e.loadIndex();
     if (index) {
       sessions = index.sessions.map((meta) => ({ ...normalize(meta), loaded: false }));
       activeId = sessions.some((s) => s.id === index.activeId) ? index.activeId : sessions[0].id;
       await ensureLoaded(activeId); // active transcript is part of first paint
     } else {
-      await saveIndex(storage, currentIndex()); // first run — seed the index
+      await e.saveIndex(currentIndex()); // first run — seed the index
     }
-  } catch (e) {
+  } catch (err) {
     log.warn("hydrate_failed", {
       hint: "starting from an empty profile; durable data is intact and retried next launch",
-      error: errorMessage(e),
+      error: errorMessage(err),
     });
   } finally {
     hydrated = true;
     notify();
   }
-})();
+}
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export function getSessions(): Session[] {
@@ -229,9 +225,7 @@ export function unlinkAgent(id: string): void {
 export function deleteSession(id: string): void {
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";
-  void storageReady
-    .then((s) => deleteSessionData(s, id))
-    .catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
+  if (engine) void engine.deleteSessionData(id).catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
   if (sessions.length === 0) {
     createSession(); // never leave the user with zero sessions (persists the index)
     return;
@@ -254,7 +248,7 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
-export function pushTurn(sid: string, userText: string, images?: MediaRef[], files?: FileAttachment[], video?: MediaRef[]): void {
+export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], video?: Video[]): void {
   const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
   sessions = sessions.map((s) =>
@@ -274,7 +268,7 @@ export function pushHeal(sid: string, correction: string): void {
   notify();
 }
 
-export function setLastToolCalls(sid: string, calls: ToolCall[]): void {
+export function setLastToolCalls(sid: string, calls: ToolCallRequest[]): void {
   sessions = sessions.map((s) => {
     if (s.id !== sid) return s;
     const messages = s.messages.slice();
@@ -292,8 +286,8 @@ export function pushToolResult(
   sid: string,
   toolCallId: string,
   output: string,
-  images?: MediaRef[],
-  video?: MediaRef[],
+  images?: Image[],
+  video?: Video[],
   childSessionIds?: string[],
 ): void {
   const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video, childSessionIds };
@@ -316,7 +310,7 @@ export function getChildRuns(): Record<string, string[]> {
 
 // Feed tool-produced media back to the model as a hidden user turn (skipped in
 // the UI — it already shows in the tool card; this lets a vision agent see it).
-export function pushMediaFeedback(sid: string, images?: MediaRef[], video?: MediaRef[]): void {
+export function pushMediaFeedback(sid: string, images?: Image[], video?: Video[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
     role: "user",
@@ -372,7 +366,7 @@ export function setTitle(id: string, title: string): void {
 // The usable token budget = context window − the reserve (headroom for the
 // response). 0 when the window is unknown. Tiny windows fall back to the full
 // window so they aren't permanently "full".
-export function contextLimit(cfg: MainSettings): number {
+export function contextLimit(cfg: ChatModelSettings): number {
   if (!cfg.model.contextLength) return 0;
   const { contextReserve, reserveMinFraction } = getAppConfig().session;
   // Reserve at least the configured fraction of the window — never let the
@@ -382,7 +376,7 @@ export function contextLimit(cfg: MainSettings): number {
   return cfg.model.contextLength > reserve ? cfg.model.contextLength - reserve : cfg.model.contextLength;
 }
 
-export function isFull(cfg: MainSettings, session: Session = getActive()): boolean {
+export function isFull(cfg: ChatModelSettings, session: Session = getActive()): boolean {
   const limit = contextLimit(cfg);
   return limit > 0 && (session.usedTokens ?? 0) >= limit;
 }
@@ -424,7 +418,7 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
   let newest = true;
   // Prefix take: stop at the first item that doesn't fit, so the kept count
   // maps onto slice(0, n) in toChatMessages — never a gappy selection.
-  const takeWhileFits = (items: MediaRef[] | undefined): number => {
+  const takeWhileFits = (items: (Image | Video)[] | undefined): number => {
     let n = 0;
     for (const item of items ?? []) {
       if (!newest && (count < 1 || item.url.length > bytes)) break;
@@ -448,12 +442,12 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
 
 // The stub that replaces windowed-out media — names what was here and how to
 // get it back, so it degrades to one extra Load call instead of silent amnesia.
-function droppedNote(dropped: MediaRef[]): string {
+function droppedNote(dropped: (Image | Video)[]): string {
   const names = dropped.map((d) => d.name || "unnamed").join(", ");
-  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use LoadImage/LoadVideo to view one again if needed.]`;
+  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use ImageLoad/VideoLoad to view one again if needed.]`;
 }
 
-function hiddenNote(hidden: MediaRef[]): string {
+function hiddenNote(hidden: (Image | Video)[]): string {
   const names = hidden.map((d) => d.name || "unnamed").join(", ");
   return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}.]`;
 }
@@ -466,7 +460,7 @@ function hiddenNote(hidden: MediaRef[]): string {
 // model can't take is withheld (with a note) instead of letting the endpoint
 // 400 the whole turn. Image assumed on unless declared off, video only when
 // declared on. Callers that omit `input` (tests) get everything.
-export function toChatMessages(messages: Message[], input?: NonNullable<MainSettings["input"]>): ChatMessage[] {
+export function toChatMessages(messages: Message[], input?: NonNullable<ChatModelSettings["input"]>): ChatMessage[] {
   const allowImage = input ? input.image !== false : true;
   const allowVideo = input ? input.video === true : true;
   const window = mediaWindow(messages);

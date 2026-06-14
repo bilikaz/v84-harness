@@ -1,22 +1,19 @@
 import { downscaleImage } from "./imageResize.ts";
-import type { FileAttachment, MediaRef } from "./types.ts";
+import type { FileAttachment, Image, Video } from "./types.ts";
+import type { ConfigApp } from "../core/config/defaults.ts";
 
 const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can't blow the context
 
-export interface AttachmentLimits {
-  imageMaxDim: number; // model pixel cap (already resolved via effectiveImageMaxDim)
-  imageMaxBytes: number; // transport bounds (config media.*Bytes)
-  gifMaxBytes: number;
-  videoMaxBytes: number;
-}
+// The attachment size/dimension bounds ARE the app's media config slice; the caller resolves imageMaxDim per-model.
+export type AttachmentLimits = ConfigApp["media"];
 
 export function readAttachments(
   list: FileList,
   limits: AttachmentLimits,
-): Promise<{ images: MediaRef[]; video: MediaRef[]; files: FileAttachment[]; skipped: string[]; resized: string[] }> {
+): Promise<{ images: Image[]; video: Video[]; files: FileAttachment[]; skipped: string[]; resized: string[] }> {
   const maxDim = limits.imageMaxDim;
-  const images: MediaRef[] = [];
-  const video: MediaRef[] = [];
+  const images: Image[] = [];
+  const video: Video[] = [];
   const files: FileAttachment[] = [];
   const skipped: string[] = [];
   const resized: string[] = [];

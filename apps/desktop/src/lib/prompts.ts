@@ -12,10 +12,10 @@ const PROMPTS: Tree = {
   workspace: {
     system:
       "You have access to the user's workspace folder through your file tools. " +
-      "The workspace root is mounted as `/`: every path is workspace-relative, a leading `/` means the workspace root itself " +
-      "(never the host filesystem), and nothing outside the workspace is reachable. " +
-      "Example paths: `/src/index.ts`, `notes.md`. " +
-      "Bash is the exception — it is a real shell whose working directory is the workspace root; use relative paths there.",
+      "The workspace root is `/workspace`: write paths as `/workspace/…` (or workspace-relative). A path that " +
+      "leaves `/workspace` is refused — nothing outside the workspace is reachable. " +
+      "Example paths: `/workspace/src/index.ts`, `notes.md`. " +
+      "Bash runs in the same root — use relative paths or `/workspace/…`.",
   },
   chatTitle: {
     user:

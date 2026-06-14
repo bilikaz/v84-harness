@@ -1,12 +1,12 @@
 import { agentsForContext, type Agent } from "../agents.ts";
-import type { ToolSchema } from "../tools/types.ts";
+import type { ToolSpec } from "../tools/types.ts";
 
 // Sub-agent tool pair: stable schemas so provider prompt caches hold.
 
 export const LIST_AGENTS = "ListAgents";
 export const RUN_AGENT = "RunAgent";
 
-const LIST_SCHEMA: ToolSchema = {
+const LIST_SCHEMA: ToolSpec = {
   type: "function",
   function: {
     name: LIST_AGENTS,
@@ -16,7 +16,7 @@ const LIST_SCHEMA: ToolSchema = {
   },
 };
 
-const RUN_SCHEMA: ToolSchema = {
+const RUN_SCHEMA: ToolSpec = {
   type: "function",
   function: {
     name: RUN_AGENT,
@@ -56,7 +56,7 @@ export function catalogAgents(hasWorkspace: boolean): Agent[] {
   return agentsForContext(hasWorkspace).filter((a) => a.name.trim());
 }
 
-export function agentToolSchemas(hasWorkspace: boolean): ToolSchema[] {
+export function agentToolSchemas(hasWorkspace: boolean): ToolSpec[] {
   return catalogAgents(hasWorkspace).length ? [LIST_SCHEMA, RUN_SCHEMA] : [];
 }
 

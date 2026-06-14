@@ -20,7 +20,7 @@ export abstract class BaseVideoProvider extends BaseProvider {
   protected abstract content(jobId: string): Promise<MediaOut>;
 
   async call<T>(handler: ResponseHandler<T>): Promise<T> {
-    const p = this.ctx.params ?? {};
+    const p = this.callCtx.params ?? {};
     const pollIntervalMs = p.pollIntervalMs ?? POLL_INTERVAL_MS;
     const timeoutMs = p.timeoutMs ?? TIMEOUT_MS;
 
@@ -35,9 +35,9 @@ export abstract class BaseVideoProvider extends BaseProvider {
       }
       if (Date.now() > deadline) throw new Error(`video generation timed out after ${timeoutMs / 60_000} minutes`);
       // abort stops polling only — the server job keeps running (no cancel API; ADR-0014).
-      if (this.ctx.signal.aborted) throw new Error("cancelled by the user");
+      if (this.callCtx.signal.aborted) throw new Error("cancelled by the user");
       await new Promise((r) => setTimeout(r, pollIntervalMs));
-      if (this.ctx.signal.aborted) throw new Error("cancelled by the user");
+      if (this.callCtx.signal.aborted) throw new Error("cancelled by the user");
       job = await this.poll(jobId);
     }
 

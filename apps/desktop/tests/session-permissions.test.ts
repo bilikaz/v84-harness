@@ -5,11 +5,14 @@ import { createAgent, deleteAgent, getAgents, saveAgent } from "../src/core/agen
 import { addWorkspace, defaultWorkspace, deleteWorkspace, getWorkspaces } from "../src/core/workspaces.ts";
 import { sessionToolModes } from "../src/core/sessions/driver.ts";
 import { createSession, getSession, unlinkAgent } from "../src/core/sessions/store.ts";
-import { ALL_TOOLS } from "../src/core/tools/types.ts";
+import { toolDescriptors } from "../src/electron/tools.ts";
+import { setToolDescriptors } from "../src/core/tools/permissions.ts";
 
 function reset(): void {
   for (const a of getAgents()) deleteAgent(a.id);
   for (const w of getWorkspaces()) deleteWorkspace(w.id);
+  // Seed the gated-tool list the policy math reads (over IPC in the app; from the real registry here).
+  setToolDescriptors(toolDescriptors());
 }
 
 function addAgent(name: string, patch: Parameters<typeof saveAgent>[1]): string {
@@ -27,7 +30,9 @@ describe("sessionToolModes", () => {
     const agentId = addAgent("joker", { workspace: false });
     const sid = createSession({ workspaceId: ws.id, agentId });
     const modes = sessionToolModes(getSession(sid)!);
-    for (const tool of ALL_TOOLS) expect(modes[tool]).toBe(0);
+    const vals = Object.values(modes);
+    expect(vals.length).toBeGreaterThan(0);
+    for (const m of vals) expect(m).toBe(0);
   });
 
   it("applies min(workspace policy, ceiling) for a workspace agent", () => {

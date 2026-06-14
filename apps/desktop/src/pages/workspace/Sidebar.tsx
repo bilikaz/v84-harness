@@ -20,7 +20,6 @@ import { cn } from "../../lib/cn.ts";
 import { navigate } from "../../lib/router.ts";
 import {
   createSession,
-  deleteSession,
   getSessionsForWorkspace,
   renameSession,
   setActive,
@@ -28,6 +27,7 @@ import {
   useSessions,
   useStreamingIds,
 } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import {
   defaultWorkspace,
   setActiveWorkspace,
@@ -35,7 +35,6 @@ import {
   useWorkspaces,
   type Workspace,
 } from "../../core/workspaces.ts";
-import { harness } from "../../lib/harness.ts";
 import { useAccount } from "../../lib/account.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { LANGUAGES, setLanguage } from "../../lib/i18n.ts";
@@ -44,6 +43,7 @@ import { WorkspaceSettings } from "./WorkspaceSettings.tsx";
 // Shell sidebar: workspace switcher + workspace-scoped session list + user menu (null workspace = "Chat").
 export function Sidebar() {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const sessions = useSessions();
   const activeId = useActiveId();
   const streamingIds = useStreamingIds();
@@ -79,8 +79,8 @@ export function Sidebar() {
   }
 
   async function addWorkspace() {
-    const root = harness
-      ? await harness.pickFolder()
+    const root = ctx.api.pickFolder
+      ? await ctx.api.pickFolder()
       : window.prompt("Workspace folder path (the folder picker needs the desktop app):");
     if (!root) return;
     const name = root.split(/[/\\]/).filter(Boolean).pop() ?? "workspace";
@@ -201,7 +201,7 @@ export function Sidebar() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteSession(s.id)}
+                    onClick={() => ctx.sessions.deleteSession(s.id)}
                     title={t("sidebar.delete")}
                     className="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-red-100 hover:text-red-600"
                   >

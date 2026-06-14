@@ -1,9 +1,9 @@
 export type {
   Role,
-  MediaRef,
+  Image, Video,
   FileAttachment,
   Message,
-  Tool,
+  SessionTool,
   Session,
-  ToolCall,
+  ToolCallRequest,
 } from "../core/sessions/types.ts";

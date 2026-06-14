@@ -1,0 +1,50 @@
+import type { LLMClient } from "../../llm/index.ts";
+import { type ToolResult, type ToolSpec, type ToolPermission } from "./types.ts";
+
+// Largest tool output handed back to the model — a runaway command can't blow its context.
+export const OUTPUT_CAP = 64 * 1024;
+
+// Cap tool output before it reaches the model — standalone because the session driver also trims with it.
+export function cap(s: string): string {
+  if (s.length <= OUTPUT_CAP) return s;
+  return s.slice(0, OUTPUT_CAP) + `\n\n[...output truncated; ${s.length - OUTPUT_CAP} more bytes dropped]`;
+}
+
+// Every tool is a class constructed once with the LLM client — its only host dependency (model calls +
+// slot resolution via llm.resolve). `schema` is a getter so a tool's advertised shape can vary if needed.
+export abstract class BaseTool {
+  constructor(protected readonly llm: LLMClient) {}
+
+  abstract get schema(): ToolSpec;
+
+  abstract run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal): Promise<ToolResult>;
+
+  // Whether this tool is available for the current ctx (model capability / configured slot). Overridden by gated tools.
+  canRun(): boolean {
+    return true;
+  }
+
+  // Whether this tool is subject to the workspace permission policy. Permissionless by default;
+  // BaseWorkspaceTool overrides to true. The advertisement filter consults the policy only for these.
+  isPermissioned(): boolean {
+    return false;
+  }
+
+  // Whether this tool requires a workspace folder to run. The filter forces it to mode 0 when no workspace
+  // is in context. Separate axis from isPermissioned() — a tool can need a workspace without being gated.
+  needsWorkspace(): boolean {
+    return false;
+  }
+
+  // Default policy mode when a workspace hasn't set one (only meaningful for permissioned tools).
+  defaultPermission(): ToolPermission {
+    return 2;
+  }
+
+  protected cap(s: string): string {
+    return cap(s);
+  }
+}
+
+// What a tool module exports: a constructor the registry resolves by folder layout.
+export type ToolCtor = new (llm: LLMClient) => BaseTool;

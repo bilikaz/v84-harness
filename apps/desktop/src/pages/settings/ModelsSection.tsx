@@ -16,18 +16,15 @@ import {
   updateProvider,
   useMediaRegistry,
   type MediaRegistry,
-} from "../../core/media.ts";
-import {
-  MEDIA_USE_CASES,
-  type MediaApiFlavor,
   type MediaModel,
   type MediaProvider,
-  type MediaUseCase,
-} from "../../core/tools/types.ts";
+} from "../../core/media.ts";
+import { MEDIA_SERVICES, type MediaApiKind, type MediaService } from "../../llm/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 
-const FLAVORS: readonly MediaApiFlavor[] = ["openai", "generate"];
-const FLAVOR_KEY: Record<MediaApiFlavor, string> = { openai: "apiOpenai", generate: "apiGenerate" };
+const FLAVORS: readonly MediaApiKind[] = ["openai", "generate"];
+const FLAVOR_KEY: Record<MediaApiKind, string> = { openai: "apiOpenai", generate: "apiGenerate" };
 
 const FIELD = "w-80";
 
@@ -67,14 +64,14 @@ function UseCasesTab({ reg }: { reg: MediaRegistry }) {
   return (
     <div>
       <p className="mt-3 text-xs text-neutral-400">{t("media.coverageHint")}</p>
-      {MEDIA_USE_CASES.map((uc) => (
+      {MEDIA_SERVICES.map((uc) => (
         <SlotRow key={uc} uc={uc} reg={reg} />
       ))}
     </div>
   );
 }
 
-function SlotRow({ uc, reg }: { uc: MediaUseCase; reg: MediaRegistry }) {
+function SlotRow({ uc, reg }: { uc: MediaService; reg: MediaRegistry }) {
   const { t } = useTranslation();
   const options = slotOptions(uc, reg);
   const ref = reg.assignments[uc];
@@ -132,9 +129,10 @@ function ProvidersTab({ reg }: { reg: MediaRegistry }) {
 function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => void }) {
   const { p, open } = props;
   const { t } = useTranslation();
+  const ctx = useCtx();
   const bare = p.api === "generate";
   const { detecting, msg, detect } = useDetection(
-    () => detectProviderModels(p.id),
+    () => detectProviderModels(ctx, p.id),
     (r) => (r.ok ? t("media.found", { count: r.count }) : t("media.failed", { error: r.error })),
   );
 
@@ -195,7 +193,7 @@ function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => 
             <div className={FIELD}>
               <select
                 value={p.api}
-                onChange={(e) => updateProvider(p.id, { api: e.target.value as MediaApiFlavor })}
+                onChange={(e) => updateProvider(p.id, { api: e.target.value as MediaApiKind })}
                 className={fieldInputFull}
               >
                 {FLAVORS.map((f) => (

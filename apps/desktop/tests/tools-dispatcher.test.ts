@@ -1,8 +1,8 @@
 // Dispatcher never-throw contract (ADR-0007) and the output cap that protects the model's context.
 import { describe, expect, it } from "vitest";
 
-import { cap, OUTPUT_CAP } from "../src/core/tools/shared.ts";
-import { cancelTool, execTool } from "../src/core/tools/index.ts";
+import { cap, OUTPUT_CAP } from "../src/core/tools/base.ts";
+import { cancelTool, execTool } from "../src/electron/tools.ts";
 
 const CTX = { cwd: "/tmp" };
 
@@ -25,7 +25,8 @@ describe("execTool dispatcher", () => {
     const r = await execTool({ id: "c1", name: "", arguments: "{}" }, CTX);
     expect(r.ok).toBe(false);
     expect(r.output).toMatch(/empty tool name/);
-    expect(r.output).toMatch(/Read.*Bash/);
+    expect(r.output).toMatch(/Read/);
+    expect(r.output).toMatch(/Bash/);
   });
 
   it("rejects an unknown tool by name", async () => {

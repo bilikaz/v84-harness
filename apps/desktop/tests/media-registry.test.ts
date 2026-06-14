@@ -164,13 +164,4 @@ describe("assignment + resolution", () => {
     expect(media.getMediaRegistry().providers).toHaveLength(0);
     expect(media.resolveMediaProvider("imageGen")).toBeNull();
   });
-
-  it("resolveMediaProviders maps only usable slots", async () => {
-    const media = await loadRegistry();
-    const { pid, mid } = await seedProvider(media);
-    media.updateModel(pid, mid, { capabilities: ["imageGen", "videoGen"] });
-    const map = media.resolveMediaProviders();
-    expect(Object.keys(map).sort()).toEqual(["imageGen", "videoGen"]);
-    expect(map.imageGen?.model.id).toBe("m1");
-  });
 });

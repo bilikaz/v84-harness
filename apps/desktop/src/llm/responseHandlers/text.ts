@@ -1,9 +1,9 @@
 // Text handlers — consume a chat interaction's event stream and answer text.
 
-import type { ResponseHandler, Interaction, StreamEvent } from "../types.ts";
+import type { ResponseHandler, CallResult, StreamEvent } from "../types.ts";
 import type { ChatOutcome } from "../client/types.ts";
 
-function chatEvents(interaction: Interaction): AsyncGenerator<StreamEvent> {
+function chatEvents(interaction: CallResult): AsyncGenerator<StreamEvent> {
   if (interaction.kind !== "chat") {
     throw new Error("expected a chat interaction — this service produces media, not text.");
   }

@@ -1,116 +1,62 @@
-// Tool subsystem vocabulary — bridge and renderer import from here, never the reverse.
+// Tool subsystem vocabulary — bridge and renderer import from here, never the reverse. The model-facing shapes
+// (ToolSpec, ToolCallRequest, Image, Video) are owned by the llm layer and re-exported here.
 
-export interface ToolSchema {
-  type: "function";
-  function: { name: string; description: string; parameters: unknown };
-}
-
-export interface ToolCallRequest {
-  id: string;
-  name: string;
-  arguments: string;
-}
+import type { Config } from "../config/index.ts";
+import type { Image, Video, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
+export type { Image, Video, ToolSpec, ToolCallRequest } from "../../llm/types.ts";
 
 export interface ToolResult {
   ok: boolean;
   output: string;
-  images?: MediaRef[];
-  video?: MediaRef[];
+  images?: Image[];
+  video?: Video[];
 }
 
-export interface MediaRef {
-  url: string;
-  mime?: string;
-  name?: string;
-  id?: string;
+// What crosses the bridge to the main runner alongside the call: the config snapshot (functions/clients can't
+// cross IPC, so main seeds its Ctx from this). The cwd rides on the ToolCallRequest itself.
+export interface WireConfig {
+  config: Config;
 }
 
-export type MediaUseCase = MediaService;
-export const MEDIA_USE_CASES: readonly MediaUseCase[] = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"];
+// A tool's model-facing name. Tools are discovered dynamically (no static list); whether a tool is
+// permission-gated is its own isPermissioned() (surfaced in the filter result), not a hard-coded set.
+export type ToolName = string;
+export type ToolPermission = 0 | 1 | 2;
 
-export type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
-import type { MediaApiFlavor, MediaService } from "../../llm/types.ts";
-import type { CallTarget } from "../../llm/types.ts";
-import type { Client } from "../../llm/client/types.ts";
-
-export type MediaPromptStyle = "plain" | "cosmos-json";
-
-export interface MediaModel {
-  id: string;
-  modelId: string;
-  capabilities: MediaUseCase[];
-  promptStyle?: MediaPromptStyle;
-  maxImageSize?: string;
-  maxVideoSize?: string;
+// Filter parameters — all optional; passing null/undefined returns every tool unfiltered.
+export interface ToolFilterParams {
+  /** Exclude tools whose canRun() returns false. */
+  checkCanRun?: boolean;
+  /** Workspace-level policy: tool name → mode. Tools with mode 0 are excluded. */
+  workspacePermissions?: Record<string, ToolPermission>;
+  /** Agent-level ceiling: tool name → mode. Applied on top of workspacePermissions (stricter wins). */
+  agentPermissions?: Record<string, ToolPermission>;
+  /** Whether a workspace is in context. When false, needsWorkspace tools are forced to mode 0. */
+  hasWorkspace?: boolean;
+  /** Keep mode-0 entries in the result instead of dropping them — the permissions UI shows them as "off". */
+  includeDisabled?: boolean;
 }
 
-export interface MediaProvider {
-  id: string;
+// One entry in the filter result — schema + permission metadata.
+export interface ToolFilterEntry {
   name: string;
-  baseUrl: string;
-  apiKey?: string;
-  api: MediaApiFlavor;
-  detected?: string[];
-  models: MediaModel[];
+  schema: ToolSpec;
+  permissioned: boolean;
+  /** Requires a workspace folder to run; forced off when filtered with hasWorkspace: false. */
+  needsWorkspace: boolean;
+  defaultMode: ToolPermission;
+  /** Computed effective mode after applying workspace + agent policy (0=off, 1=ask, 2=auto). */
+  effectiveMode: ToolPermission;
 }
 
-export interface MediaSlotConfig extends CallTarget {
-  model: CallTarget["model"] & {
-    promptStyle?: MediaPromptStyle;
-    maxImageSize?: string;
-    maxVideoSize?: string;
-  };
+// Filter result: tool name → entry. Consumers iterate or look up by name.
+export type ToolFilterResult = Record<string, ToolFilterEntry>;
+
+// The platform's tool execution, carried on ctx (ctx.tools). The web platform runs tools in-process; the
+// electron platform runs them in main over the bridge. core/the driver only touch this — never the platform.
+export interface ToolGateway {
+  filter(params?: ToolFilterParams): ToolFilterResult | Promise<ToolFilterResult>;
+  run(call: ToolCallRequest): Promise<ToolResult | null>;
+  // A live AbortSignal can't cross the bridge — cancellation travels by call id (registry owns the controller).
+  cancel(callId: string): void;
 }
-
-export type MediaProviders = Partial<Record<MediaUseCase, MediaSlotConfig>>;
-
-export interface ToolConfig {
-  main: CallTarget | null;
-  media: MediaProviders;
-}
-
-export interface MediaEndpoint {
-  baseUrl: string;
-  apiKey?: string;
-}
-
-// Paths are virtual-root ("/" = workspace root); escaping is rejected — Bash cannot be virtualized hence its gate.
-export interface ToolCtx {
-  cwd: string;
-  config: ToolConfig;
-  client?: Client;
-  signal?: AbortSignal;
-}
-
-export interface Tool {
-  schema: ToolSchema;
-  execute(args: Record<string, unknown>, ctx: ToolCtx): Promise<ToolResult>;
-}
-
-export type GatedTool =
-  | "Read"
-  | "List"
-  | "Grep"
-  | "Write"
-  | "Edit"
-  | "CreateFolder"
-  | "Bash"
-  | "LoadImage"
-  | "LoadVideo"
-  | "DescribeImage"
-  | "DescribeVideo";
-
-export type ToolName = GatedTool | "GenerateImage" | "GenerateVideo";
-export type ToolMode = 0 | 1 | 2;
-
-export const ALL_TOOLS: readonly GatedTool[] = [
-  "Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash",
-  "LoadImage", "LoadVideo", "DescribeImage", "DescribeVideo",
-];
-
-export const PERMISSIONLESS_TOOLS: readonly ToolName[] = ["GenerateImage", "GenerateVideo"];
-
-export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
-  Read: 2, List: 2, Grep: 2, Write: 2, Edit: 2, CreateFolder: 2, Bash: 1,
-  LoadImage: 2, LoadVideo: 2, DescribeImage: 2, DescribeVideo: 2,
-};

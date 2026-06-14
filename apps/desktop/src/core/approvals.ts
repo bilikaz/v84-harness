@@ -1,4 +1,4 @@
-import type { ToolCall } from "../llm/types.ts";
+import type { ToolCallRequest } from "../llm/types.ts";
 import { createStore } from "../lib/store.ts";
 
 // Tool-approval bridge between the (React-free) driver and the UI.
@@ -6,13 +6,13 @@ import { createStore } from "../lib/store.ts";
 export interface PendingApproval {
   id: string;
   sessionId: string;
-  call: ToolCall;
+  call: ToolCallRequest;
   resolve: (ok: boolean) => void;
 }
 
 const store = createStore<PendingApproval[]>(null, []);
 
-export function requestApproval(sessionId: string, call: ToolCall): Promise<boolean> {
+export function requestApproval(sessionId: string, call: ToolCallRequest): Promise<boolean> {
   return new Promise((resolve) => {
     store.set([...store.get(), { id: crypto.randomUUID(), sessionId, call, resolve }]);
   });

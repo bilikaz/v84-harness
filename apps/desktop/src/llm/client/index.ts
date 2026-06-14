@@ -1,11 +1,11 @@
-import type { CallContext, ResponseHandler, CallTarget, GenParams, ModelInfo, ModelService } from "../types.ts";
+import type { CallContext, ResponseHandler, LLMConfig, GenParams, ModelInfo, ModelService } from "../types.ts";
 import { SERVICE_MODALITY, targetLabel } from "../types.ts";
 import type { BaseProvider } from "../providers/base.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import { HealError, type CallOptions, type Client, type ConfigSource } from "./types.ts";
+import { HealError, type CallOptions, type LLMClient, type LLMConfigResolver } from "./types.ts";
 
 export { HealError } from "./types.ts";
-export type { CallOptions, Client, ConfigSource } from "./types.ts";
+export type { CallOptions, LLMClient, LLMConfigResolver } from "./types.ts";
 
 // Retries after the initial attempt, so up to MAX+1 model calls.
 export const MAX_HEAL_ATTEMPTS = 3;
@@ -19,19 +19,19 @@ export function healCorrection(error: unknown): string {
 }
 
 // Providers must live at ../providers/<modality>/<type>.ts and export their class as `Provider`.
-type ProviderCtor = (new (target: CallTarget, ctx: CallContext) => BaseProvider) & {
+type ProviderCtor = (new (target: LLMConfig, callCtx: CallContext) => BaseProvider) & {
   // present only where the wire has a /models catalog
   listModels?(conn: { baseUrl: string; apiKey?: string }): Promise<ModelInfo[]>;
 };
 const PROVIDER_MODULES = import.meta.glob<{ Provider?: ProviderCtor }>("../providers/*/*.ts", { eager: true });
 
-export async function listProviderModels(provider: CallTarget["provider"]): Promise<ModelInfo[]> {
+export async function listProviderModels(provider: LLMConfig["provider"]): Promise<ModelInfo[]> {
   const ctor = PROVIDER_MODULES[`../providers/text/${provider.type}.ts`]?.Provider;
   return ctor?.listModels ? ctor.listModels(provider) : [];
 }
 
-export function createClient(config: ConfigSource, defaults?: { maxHeals?: number }): Client {
-  function tuned(target: CallTarget, params?: GenParams): CallTarget {
+export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?: number }): LLMClient {
+  function tuned(target: LLMConfig, params?: GenParams): LLMConfig {
     if (!params) return target;
     const { maxTokens, reasoningEffort, thinkingBudget } = params;
     const knobs = {
@@ -42,8 +42,8 @@ export function createClient(config: ConfigSource, defaults?: { maxHeals?: numbe
     return Object.keys(knobs).length ? { ...target, model: { ...target.model, ...knobs } } : target;
   }
 
-  function resolveProvider(service: ModelService, ctx: CallContext): BaseProvider {
-    const target = config.resolve(service);
+  function resolveProvider(service: ModelService, callCtx: CallContext): BaseProvider {
+    const target = resolver.resolve(service);
     if (!target) {
       throw new Error(`no model is assigned to the "${service}" service — assign one in Settings.`);
     }
@@ -52,12 +52,12 @@ export function createClient(config: ConfigSource, defaults?: { maxHeals?: numbe
     if (!ctor) {
       throw new Error(`"${targetLabel(target)}" cannot serve "${service}" — there is no ${SERVICE_MODALITY[service]}/${target.provider.type} provider.`);
     }
-    return new ctor(tuned(target, ctx.params), ctx);
+    return new ctor(tuned(target, callCtx.params), callCtx);
   }
 
   async function call<T = string>(opts: CallOptions<T>): Promise<T> {
     // `messages` is the cycle's live copy: heal turns are appended to it.
-    const ctx: CallContext = {
+    const callCtx: CallContext = {
       system: opts.system,
       messages: opts.messages.slice(),
       tools: opts.tools,
@@ -65,7 +65,7 @@ export function createClient(config: ConfigSource, defaults?: { maxHeals?: numbe
       signal: opts.signal ?? new AbortController().signal,
     };
 
-    const provider = resolveProvider(opts.service, ctx);
+    const provider = resolveProvider(opts.service, callCtx);
     const handler = opts.handler ?? (provider.defaultHandler() as ResponseHandler<T>);
 
     const max = opts.maxHeals ?? defaults?.maxHeals ?? MAX_HEAL_ATTEMPTS;
@@ -78,11 +78,11 @@ export function createClient(config: ConfigSource, defaults?: { maxHeals?: numbe
         heals++;
         // Chat heals become conversation turns; binary heals just re-fire.
         if (e.raw !== undefined) {
-          ctx.messages.push({ role: "assistant", content: e.raw }, { role: "user", content: healCorrection(e.message) });
+          callCtx.messages.push({ role: "assistant", content: e.raw }, { role: "user", content: healCorrection(e.message) });
         }
       }
     }
   }
 
-  return { call };
+  return { call, resolve: (service) => resolver.resolve(service) };
 }

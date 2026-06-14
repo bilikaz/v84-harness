@@ -1,34 +1,47 @@
-import type {
-  MediaApiFlavor,
-  MediaModel,
-  MediaSlotConfig,
-  MediaProvider,
-  MediaProviders,
-  MediaUseCase,
-} from "./tools/types.ts";
-import { MEDIA_USE_CASES } from "./tools/types.ts";
-import { trimBase } from "../lib/format.ts";
-import { harness } from "../lib/harness.ts";
+import type { MediaApiKind, MediaService } from "../llm/types.ts";
+import { MEDIA_SERVICES } from "../llm/types.ts";
+import type { Ctx } from "./ctx.ts";
 import { createStore } from "../lib/store.ts";
-import { errorMessage } from "../lib/errors.ts";
+import { writeLLMConfig, type LLMConfig, type LLMConfigList } from "./config/llm.ts";
 
 // The media model registry — providers hosting models, plus a use-case → model assignment map.
 const KEY = "v84-harness:media";
 
-export interface ModelRef {
+export type MediaPromptStyle = "plain" | "cosmos-json";
+
+export interface MediaModel {
+  id: string;
+  modelId: string;
+  capabilities: MediaService[];
+  promptStyle?: MediaPromptStyle;
+  maxImageSize?: string;
+  maxVideoSize?: string;
+}
+
+export interface MediaProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string;
+  api: MediaApiKind;
+  detected?: string[];
+  models: MediaModel[];
+}
+
+export interface ModelAssignment {
   providerId: string;
   modelId: string; // MediaModel.id (the registry id, not the wire id)
 }
 
 export interface MediaRegistry {
   providers: MediaProvider[];
-  assignments: Partial<Record<MediaUseCase, ModelRef>>;
+  assignments: Partial<Record<MediaService, ModelAssignment>>;
 }
 
 const DEFAULTS: MediaRegistry = { providers: [], assignments: {} };
 
-export function providerCaps(api: MediaApiFlavor): readonly MediaUseCase[] {
-  return api === "generate" ? ["imageGen"] : MEDIA_USE_CASES;
+export function providerCaps(api: MediaApiKind): readonly MediaService[] {
+  return api === "generate" ? ["imageGen"] : MEDIA_SERVICES;
 }
 
 function newId(): string {
@@ -50,8 +63,8 @@ interface LegacyEntry {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
-  api?: MediaApiFlavor | "openai-images" | "plain-generate" | "openai-chat";
-  capabilities?: MediaUseCase[];
+  api?: MediaApiKind | "openai-images" | "plain-generate" | "openai-chat";
+  capabilities?: MediaService[];
   promptStyle?: MediaModel["promptStyle"];
   maxSize?: string;
   maxImageSize?: string;
@@ -59,15 +72,15 @@ interface LegacyEntry {
   models?: string[];
 }
 
-function legacyApi(api: LegacyEntry["api"]): MediaApiFlavor {
+function legacyApi(api: LegacyEntry["api"]): MediaApiKind {
   return api === "plain-generate" || api === "generate" ? "generate" : "openai";
 }
 
-function migrateEntries(entries: LegacyEntry[], oldAssignments: Partial<Record<MediaUseCase, string>>): MediaRegistry {
+function migrateEntries(entries: LegacyEntry[], oldAssignments: Partial<Record<MediaService, string>>): MediaRegistry {
   const providers: MediaProvider[] = [];
   const assignments: MediaRegistry["assignments"] = {};
   for (const e of entries) {
-    const assignedSlots = MEDIA_USE_CASES.filter((uc) => oldAssignments[uc] === e.id);
+    const assignedSlots = MEDIA_SERVICES.filter((uc) => oldAssignments[uc] === e.id);
     const model: MediaModel = {
       id: newId(),
       modelId: e.model ?? "",
@@ -99,7 +112,7 @@ function load(): MediaRegistry | null {
       return { providers: parsed.providers, assignments: parsed.assignments ?? {} };
     }
     if (Array.isArray(parsed.entries)) {
-      return migrateEntries(parsed.entries, (parsed.assignments ?? {}) as Partial<Record<MediaUseCase, string>>);
+      return migrateEntries(parsed.entries, (parsed.assignments ?? {}) as Partial<Record<MediaService, string>>);
     }
     if (typeof parsed.baseUrl === "string" && parsed.baseUrl) {
       const model: MediaModel = {
@@ -234,7 +247,7 @@ function pruneAssignments(
   providers: MediaProvider[],
 ): MediaRegistry["assignments"] {
   const out: MediaRegistry["assignments"] = {};
-  for (const uc of MEDIA_USE_CASES) {
+  for (const uc of MEDIA_SERVICES) {
     const ref = assignments[uc];
     if (!ref) continue;
     const model = providers.find((p) => p.id === ref.providerId)?.models.find((m) => m.id === ref.modelId);
@@ -245,7 +258,7 @@ function pruneAssignments(
 
 // ── assignment + resolution ──────────────────────────────────────────────────
 
-export function assignModel(useCase: MediaUseCase, ref: ModelRef | null): void {
+export function assignModel(useCase: MediaService, ref: ModelAssignment | null): void {
   const cur = store.get();
   const assignments = { ...cur.assignments };
   if (ref) assignments[useCase] = ref;
@@ -253,8 +266,8 @@ export function assignModel(useCase: MediaUseCase, ref: ModelRef | null): void {
   store.set({ ...cur, assignments });
 }
 
-export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ ref: ModelRef; label: string }> {
-  const out: Array<{ ref: ModelRef; label: string }> = [];
+export function slotOptions(useCase: MediaService, reg: MediaRegistry): Array<{ ref: ModelAssignment; label: string }> {
+  const out: Array<{ ref: ModelAssignment; label: string }> = [];
   for (const p of reg.providers) {
     for (const m of p.models) {
       if (!m.capabilities.includes(useCase)) continue;
@@ -265,7 +278,7 @@ export function slotOptions(useCase: MediaUseCase, reg: MediaRegistry): Array<{ 
 }
 
 // Null when the slot is unassigned or the provider has no endpoint; tools stay inert on null.
-export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | null {
+export function resolveMediaProvider(useCase: MediaService): LLMConfig | null {
   const reg = store.get();
   const ref = reg.assignments[useCase];
   if (!ref) return null;
@@ -288,38 +301,26 @@ export function resolveMediaProvider(useCase: MediaUseCase): MediaSlotConfig | n
   };
 }
 
-export function resolveMediaProviders(): MediaProviders {
-  const out: MediaProviders = {};
-  for (const uc of MEDIA_USE_CASES) {
-    const m = resolveMediaProvider(uc);
-    if (m) out[uc] = m;
-  }
-  return out;
+// Owns config.llm's media slots — write them now and on every change. Called once at app init.
+export function syncMediaToLLMConfig(): void {
+  const write = (): void => {
+    const slice: LLMConfigList = {};
+    for (const uc of MEDIA_SERVICES) slice[uc] = resolveMediaProvider(uc) ?? undefined;
+    writeLLMConfig(slice);
+  };
+  store.subscribe(write);
+  write();
 }
 
 // ── detection ────────────────────────────────────────────────────────────────
 
-// In Electron this goes through main (no CORS); in the browser it fetches directly.
-export async function detectProviderModels(id: string): Promise<{ ok: boolean; count: number; error?: string }> {
+// The model list comes through the host api (electron fetches in main to dodge CORS; web fetches directly).
+export async function detectProviderModels(ctx: Ctx, id: string): Promise<{ ok: boolean; count: number; error?: string }> {
   const provider = store.get().providers.find((p) => p.id === id);
   if (!provider) return { ok: false, count: 0, error: "provider not found" };
-  try {
-    let models: string[];
-    if (harness) {
-      const r = await harness.media.models(provider);
-      if (!r.ok) return { ok: false, count: 0, error: r.error };
-      models = r.models;
-    } else {
-      const res = await fetch(`${trimBase(provider.baseUrl)}/models`, {
-        headers: provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {},
-      });
-      if (!res.ok) return { ok: false, count: 0, error: `${res.status} ${res.statusText}` };
-      const data = (await res.json()) as { data?: Array<{ id?: string }> };
-      models = (data.data ?? []).map((m) => m.id).filter((mid): mid is string => !!mid);
-    }
-    updateProvider(id, { detected: models });
-    return { ok: true, count: models.length };
-  } catch (e) {
-    return { ok: false, count: 0, error: errorMessage(e) };
-  }
+  const r = await ctx.api.mediaModels?.(provider);
+  if (!r) return { ok: false, count: 0, error: "model listing is not supported here" };
+  if (!r.ok) return { ok: false, count: 0, error: r.error };
+  updateProvider(id, { detected: r.models });
+  return { ok: true, count: r.models.length };
 }

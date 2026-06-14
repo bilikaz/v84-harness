@@ -5,7 +5,7 @@ import { detectModels, saveModelBlock, saveProvider, saveProviderBlock, useProvi
 import { getAppConfig } from "../../core/config/index.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { useDetection } from "../../lib/hooks.ts";
-import type { ProviderKind, ReasoningEffort } from "../../llm/types.ts";
+import type { TextProviderKind, ReasoningEffort } from "../../llm/types.ts";
 
 export function ProviderSection() {
   const { t } = useTranslation();
@@ -27,7 +27,7 @@ export function ProviderSection() {
       <Row label={t("provider.provider")}>
         <select
           value={cfg.provider.type}
-          onChange={(e) => saveProviderBlock({ type: e.target.value as ProviderKind })}
+          onChange={(e) => saveProviderBlock({ type: e.target.value as TextProviderKind })}
           className={fieldInput}
         >
           <option value="openai">OpenAI-compatible</option>

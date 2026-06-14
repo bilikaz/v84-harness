@@ -4,20 +4,26 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { describeImageTool, describeVideoTool } from "../src/core/tools/describeMedia.ts";
-import { clientFromToolConfig } from "../src/core/tools/client.ts";
-import type { MediaSlotConfig, MediaUseCase, ToolCtx } from "../src/core/tools/types.ts";
+import { ImageDescribe } from "../src/core/tools/workspace/imageDescribe.ts";
+import { VideoDescribe } from "../src/core/tools/workspace/videoDescribe.ts";
+import type { MediaUseCase } from "../src/core/tools/types.ts";
+import type { ConfigLLM } from "../src/core/config/llm.ts";
+import { CONFIG_DEFAULTS } from "../src/core/config/index.ts";
+import { Ctx } from "../src/core/ctx.ts";
 
-// ctx mirrors what execTool builds: the config snapshot + the client minted from it.
-function ctxWith(media: Partial<Record<MediaUseCase, MediaSlotConfig>>): ToolCtx {
-  const config = { main: null, media };
-  return { cwd: root, config, client: clientFromToolConfig(config) };
+// Adapt the new class tools to the execute(args, ctx) call shape used below.
+const describeImageTool = { execute: (args: Record<string, unknown>, ctx: Ctx) => new ImageDescribe(ctx, root).run(args) };
+const describeVideoTool = { execute: (args: Record<string, unknown>, ctx: Ctx) => new VideoDescribe(ctx, root).run(args) };
+
+// ctx mirrors what the main runner builds: the config + the client minted from it.
+function ctxWith(media: Partial<Record<MediaUseCase, ConfigLLM>>): Ctx {
+  return new Ctx({ app: CONFIG_DEFAULTS, llm: { ...media } });
 }
 
 let root: string;
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
-const REC: MediaSlotConfig = {
+const REC: ConfigLLM = {
   provider: { name: "Rec", type: "openai", baseUrl: "http://rec:8000/v1" },
   model: { id: "qwen-vl" },
 };
@@ -40,23 +46,23 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("DescribeImage", () => {
   it("is inert without an assigned imageRec model", async () => {
-    const res = await describeImageTool.execute({ path: "/pic.png" }, ctxWith({}));
+    const res = await describeImageTool.execute({ path: "/workspace/pic.png" }, ctxWith({}));
     expect(res.ok).toBe(false);
     expect(res.output).toContain("not configured");
   });
 
   it("rejects a generate-dialect assignment with ask's typed refusal", async () => {
-    const res = await describeImageTool.execute({ path: "/pic.png" }, ctxWith({ imageRec: { ...REC, provider: { ...REC.provider, type: "generate" } } }));
+    const res = await describeImageTool.execute({ path: "/workspace/pic.png" }, ctxWith({ imageRec: { ...REC, provider: { ...REC.provider, type: "generate" } } }));
     expect(res.ok).toBe(false);
     expect(res.output).toContain("there is no text/generate provider");
   });
 
   it("rejects unsupported extensions and oversized GIFs like LoadImage", async () => {
     const ctx = ctxWith({ imageRec: REC });
-    const txt = await describeImageTool.execute({ path: "/notes.txt" }, ctx);
+    const txt = await describeImageTool.execute({ path: "/workspace/notes.txt" }, ctx);
     expect(txt.ok).toBe(false);
     expect(txt.output).toContain(".png");
-    const gif = await describeImageTool.execute({ path: "/big.gif" }, ctx);
+    const gif = await describeImageTool.execute({ path: "/workspace/big.gif" }, ctx);
     expect(gif.ok).toBe(false);
     expect(gif.output).toContain("limit");
   });
@@ -65,7 +71,7 @@ describe("DescribeImage", () => {
     const fetchMock = vi.fn().mockResolvedValue(sse("A red square on white."));
     vi.stubGlobal("fetch", fetchMock);
 
-    const res = await describeImageTool.execute({ path: "/pic.png", query: "What is it?" }, ctxWith({ imageRec: REC }));
+    const res = await describeImageTool.execute({ path: "/workspace/pic.png", query: "What is it?" }, ctxWith({ imageRec: REC }));
     expect(res.ok).toBe(true);
     expect(res.output).toBe("A red square on white.");
     // The user's preview — same shape LoadImage returns.
@@ -93,7 +99,7 @@ describe("DescribeImage", () => {
   it("surfaces an endpoint error as ok:false with status + body", async () => {
     // 400 — a non-retryable class, so the failure surfaces immediately.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("boom", { status: 400, statusText: "Bad Request" })));
-    const res = await describeImageTool.execute({ path: "/pic.png" }, ctxWith({ imageRec: REC }));
+    const res = await describeImageTool.execute({ path: "/workspace/pic.png" }, ctxWith({ imageRec: REC }));
     expect(res.ok).toBe(false);
     expect(res.output).toContain("400");
     expect(res.output).toContain("boom");
@@ -105,7 +111,7 @@ describe("DescribeVideo", () => {
     const fetchMock = vi.fn().mockResolvedValue(sse("A short clip of nothing much."));
     vi.stubGlobal("fetch", fetchMock);
 
-    const res = await describeVideoTool.execute({ path: "/clip.mp4" }, ctxWith({ videoRec: REC }));
+    const res = await describeVideoTool.execute({ path: "/workspace/clip.mp4" }, ctxWith({ videoRec: REC }));
     expect(res.ok).toBe(true);
     expect(res.output).toBe("A short clip of nothing much.");
     expect(res.video).toHaveLength(1);
@@ -123,7 +129,7 @@ describe("DescribeVideo", () => {
   });
 
   it("is inert without an assigned videoRec model (imageRec alone doesn't count)", async () => {
-    const res = await describeVideoTool.execute({ path: "/clip.mp4" }, ctxWith({ imageRec: REC }));
+    const res = await describeVideoTool.execute({ path: "/workspace/clip.mp4" }, ctxWith({ imageRec: REC }));
     expect(res.ok).toBe(false);
     expect(res.output).toContain("not configured");
   });

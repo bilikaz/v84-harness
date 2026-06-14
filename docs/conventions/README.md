@@ -16,6 +16,7 @@ This repo's instance-specific documentation lives in
 | [canonical-shapes.md](canonical-shapes.md) | One concept, one shape, end to end — stores hold it; shape-sniffing unions mean the canonical shape is missing |
 | [types-placement.md](types-placement.md) | `types.ts` holds vocabulary (promotion test: 2+ importers / boundary / family); `shared.ts` holds cross-cutting helpers; everything else colocates |
 | [consolidation.md](consolidation.md) | Extract only essential duplication or near-universal sharing; 2-of-N look-alikes stay duplicated |
+| [capability-injection.md](capability-injection.md) | Platform parts injected onto a shared context at the composition root; agnostic code reads the carrier, gates optional capabilities on presence |
 | [error-handling.md](error-handling.md) | Normalize unknown throws; context-prefixed messages; per-item catch in batches |
 | [configuration.md](configuration.md) | One env read point; typed config; exported defaults; fail fast with actionable hints |
 | [logging.md](logging.md) | Structured events with dot-scoped children; data objects, never interpolation |

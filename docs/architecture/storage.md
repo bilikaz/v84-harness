@@ -3,24 +3,34 @@
 The "class diagram" of the sessions state: durable key scheme, in-memory state,
 and the accessor surface. Part of the map layer (present tense, updated with the
 code). Decisions behind the shapes:
-[ADR-0017](../adr/0017-storage-port-with-detected-backends.md) (port + detection),
+[ADR-0017](../adr/0017-storage-port-with-detected-backends.md) (the `Storage` port),
 [ADR-0020](../adr/0020-persist-at-turn-completion.md) (when writes happen),
 [ADR-0021](../adr/0021-granular-session-persistence.md) (granular keys).
 
 ## Durable tier — key scheme
 
-One detected backend (SQLite > IndexedDB > localStorage) behind the
-`Storage { get, set, del, keys }` port. Three key prefixes act as the
-"tables" — the value shapes are charted in the Shapes section below:
+Each platform `init()` picks its backend — `electron/init.ts` uses SQLite
+(`electron/sqliteStorage.ts`, a thin client over the bridge's storage IPC,
+`window.api.storage`); `web/init.ts` tries IndexedDB (`web/idbStorage.ts`) and
+falls back to localStorage (`web/localStorage.ts`). All implement the
+`Storage { name, get, set, del, keys }` port (`core/storage/types.ts`). The
+chosen backend is wrapped in a `StorageEngine` (`core/storage/engine.ts`,
+`new StorageEngine(backend)`) and carried on `ctx.storage`; the engine embeds
+the backend AND owns the durable session IO below (key shapes + media blobs).
+Keys are namespaced `v84-harness:` and owned by the engine. Three key prefixes
+act as the "tables" — the value shapes are charted in the Shapes section below:
 
 | Key | Shape | Written when | Read when |
 | --- | --- | --- | --- |
-| `sessions:index` | `SessionsIndex { activeId, sessions: SessionMeta[] }` | meta changes (create/delete/rename/switch/title) + every `persistSession` | boot |
-| `sessions:msgs:<sid>` | `Message[]` (media as `media:<id>` refs) | `turn:end` for the turn's session; compaction replace | boot (active session) + `ensureLoaded` on first open |
-| `media:<sid>:<id>` | one `data:` URL | once, when the ref is first persisted (id stamp = already stored) | `loadMessages` reinflation |
+| `v84-harness:sessions:index` | `SessionsIndex { activeId, sessions: SessionMeta[] }` | meta changes (create/delete/rename/switch/title) + every `persistSession` | boot |
+| `v84-harness:sessions:msgs:<sid>` | `Message[]` (media as `media:<id>` refs) | `turn:end` for the turn's session; compaction replace | boot (active session) + `ensureLoaded` on first open |
+| `v84-harness:media:<sid>:<id>` | one `data:` URL | once, when the ref is first persisted (id stamp = already stored) | `loadMessages` reinflation |
 
-GC: `saveMessages` deletes this session's blobs not referenced by any stored
-message; `deleteSessionData` removes the msgs row + all `media:<sid>:*`.
+The engine's durable methods are `loadIndex`/`saveIndex`,
+`saveMessages`/`loadMessages`, and `deleteSessionData` (plus the media-blob
+stamping/GC). GC: `saveMessages` deletes this session's blobs not referenced by
+any stored message; `deleteSessionData` removes the msgs row + all
+`media:<sid>:*`.
 
 ## Shapes
 
@@ -35,8 +45,7 @@ classDiagram
         title: string
         system: string
         workspaceId: string | null
-        tools: Tool[]
-        steps: Step[]
+        tools: SessionTool[]
         usedTokens?: number  «snapshot - latest request, ADR-0018-meter-note»
         unread?: boolean
         bytes?: number  «persisted footprint, set on persist/load»
@@ -50,32 +59,41 @@ classDiagram
         role: user | assistant | tool
         text: string
         thinking?: string
-        images?: MediaRef[]
-        video?: MediaRef[]
+        images?: Image[]
+        video?: Video[]
         files?: FileAttachment[]
-        toolCalls?: ToolCall[]
+        toolCalls?: ToolCallRequest[]
         toolCallId?: string
+        childSessionIds?: string[]
         summary?: boolean
         hidden?: boolean
     }
-    class MediaRef {
+    class Image {
         url: string  «data: in memory, media:id when stored»
-        mime?: string  «says what the blob is - image/video/audio»
+        mime?: string
+        name?: string
+        id?: string  «stamped at first persist = blob exists»
+    }
+    class Video {
+        url: string  «data: in memory, media:id when stored»
+        mime?: string
         name?: string
         id?: string  «stamped at first persist = blob exists»
     }
     SessionMeta <|-- Session : + messages, loaded
     SessionsIndex o-- SessionMeta
     Session o-- Message
-    Message o-- MediaRef
+    Message o-- Image
+    Message o-- Video
 ```
 
 `SessionMeta` is exactly `Session` minus `messages`/`loaded` (`toMeta()` in
 persistence.ts). `bytes` ≈ stored messages JSON + live media blob lengths.
-A `MediaRef` is kind-agnostic — image and video today, audio when it arrives;
-the `mime` says what the blob holds, the containing field (`images`/`video`)
-says how it's rendered and sent. `media:<sid>:<id>` blobs are likewise just
-data: URLs of any media kind.
+`Image` and `Video` (`llm/types.ts:16-27`) are distinct types — identical fields
+today, but kept apart so the medium lives in the type, not a field convention,
+and is free to diverge (dimensions, duration…). The containing field
+(`images`/`video`) and the type agree on the medium; `media:<sid>:<id>` blobs
+are just the `data:` URLs they carry.
 
 ## In-memory state (`core/sessions/store.ts`, module singletons)
 
@@ -104,10 +122,14 @@ data: URLs of any media kind.
 `renameSession`/`setTitle` (index), `deleteSession` (rows + blobs + index),
 `replaceWithSummary` (session rows, GCs blobs).
 
-**Persistence** (fire-and-forget, failures are logged warnings):
-`persistIndex()` — the small index; `persistSession(sid)` — one session's rows
-+ blobs + index, refuses unloaded shells; `ensureLoaded(sid)` — lazy load,
-shared in-flight.
+**Persistence** (fire-and-forget, failures are logged warnings; the actual
+durable reads/writes are the `StorageEngine` methods): `persistIndex()` — the
+small index; `persistSession(sid)` — one session's rows + blobs + index, refuses
+unloaded shells; `ensureLoaded(sid)` — lazy load, shared in-flight. The engine
+is injected into the store via `useStorage(...)`; the `SessionEngine` constructor
+(`core/sessions/engine.ts`) wires it and triggers `hydrate()` — persistence is a
+no-op until injection. `persistence.ts` now holds only the pure shape logic
+(`SessionMeta`, `SessionsIndex`, `toMeta`, `normalize`).
 
 **Mutators** (called by listeners during a turn; in-memory only — durability
 comes from `persistSession` at `turn:end`): `pushTurn`, `appendToLast`,
@@ -121,25 +143,25 @@ comes from `persistSession` at `turn:end`): `pushTurn`, `appendToLast`,
 sequenceDiagram
     participant UI
     participant Store as store.ts
-    participant P as persistence.ts
-    participant D as durable tier
+    participant E as StorageEngine
+    participant D as backend
 
     Note over Store,D: boot
-    Store->>P: loadIndex
-    P->>D: get index
-    Store->>P: loadMessages(activeId)
-    P->>D: get msgs + media blobs
+    Store->>E: loadIndex
+    E->>D: get index
+    Store->>E: loadMessages(activeId)
+    E->>D: get msgs + media blobs
     Store-->>UI: hydrated=true, notify
 
     Note over UI,D: switch session
     UI->>Store: setActive(sid)
-    Store->>P: loadMessages(sid) «first open only»
-    Store->>P: saveIndex «activeId changed»
+    Store->>E: loadMessages(sid) «first open only»
+    Store->>E: saveIndex «activeId changed»
 
     Note over UI,D: turn completes (turn:end)
-    Store->>P: saveMessages(sid) «new media → one blob write each»
-    P->>D: set msgs row, set new blobs, GC orphans
-    Store->>P: saveIndex «usedTokens, unread, bytes»
+    Store->>E: saveMessages(sid) «new media → one blob write each»
+    E->>D: set msgs row, set new blobs, GC orphans
+    Store->>E: saveIndex «usedTokens, unread, bytes»
 ```
 
 Other config stores (`settings`, `media`, `agents`, `workspaces`, ui state) are

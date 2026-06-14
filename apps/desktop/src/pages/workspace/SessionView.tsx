@@ -4,33 +4,33 @@ import { ChevronDown, PanelRight, Pencil, RefreshCw, Trash2 } from "lucide-react
 
 import {
   contextLimit,
-  deleteSession,
   isFull,
   renameSession,
-  send,
   setActive,
-  stopTurn,
   useActiveSession,
   useChildRuns,
   useCompacting,
   useSessions,
   useStreaming,
 } from "../../core/sessions/index.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import { getAgent } from "../../core/agents.ts";
 import { useProvider } from "../../core/settings.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { fmtTokens } from "../../lib/format.ts";
 import { toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
 import { InlineEdit } from "../../components/InlineEdit.tsx";
-import { Composer, type ComposerAttachments } from "./Composer.tsx";
+import { Composer } from "./Composer.tsx";
+import type { Attachments } from "../../core/sessions/index.ts";
 import { Message } from "./Message.tsx";
 import { SystemBanner } from "./SystemBanner.tsx";
 import { cn } from "../../lib/cn.ts";
-import type { MediaRef } from "../../lib/types.ts";
+import type { Image, Video } from "../../lib/types.ts";
 
 // Main center pane: active session transcript + composer.
 export function SessionView() {
   const { t } = useTranslation();
+  const ctx = useCtx();
   const session = useActiveSession();
   const streaming = useStreaming();
   const compacting = useCompacting();
@@ -57,8 +57,8 @@ export function SessionView() {
   const childRuns = useChildRuns();
   const { toolResults, toolImages, toolVideo, toolChildren } = useMemo(() => {
     const toolResults = new Map<string, string>();
-    const toolImages = new Map<string, MediaRef[]>();
-    const toolVideo = new Map<string, MediaRef[]>();
+    const toolImages = new Map<string, Image[]>();
+    const toolVideo = new Map<string, Video[]>();
     const toolChildren = new Map<string, string[]>(Object.entries(childRuns));
     for (const m of session.messages) {
       if (m.role === "tool" && m.toolCallId) {
@@ -111,8 +111,8 @@ export function SessionView() {
     setRenaming(false);
   }
 
-  function submit(text: string, atts: ComposerAttachments) {
-    void send(text, atts);
+  function submit(text: string, atts: Attachments) {
+    void ctx.sessions.send(text, atts);
   }
 
   return (
@@ -151,7 +151,7 @@ export function SessionView() {
                 type="button"
                 onClick={() => {
                   setMenuOpen(false);
-                  deleteSession(session.id);
+                  ctx.sessions.deleteSession(session.id);
                 }}
                 className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
               >
@@ -224,7 +224,7 @@ export function SessionView() {
               onClick={() => {
                 // Capture parent id before the delete switches the active session.
                 const pid = parent?.id;
-                deleteSession(session.id);
+                ctx.sessions.deleteSession(session.id);
                 if (pid) setActive(pid);
               }}
               className="flex items-center gap-1.5 rounded-2xl border border-red-200 bg-white px-4 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50"
@@ -249,7 +249,7 @@ export function SessionView() {
             <Composer
               disabled={compacting || full}
               streaming={streaming}
-              onStop={() => stopTurn(session.id)}
+              onStop={() => ctx.sessions.stopTurn(session.id)}
               onSubmit={submit}
             />
           </>
