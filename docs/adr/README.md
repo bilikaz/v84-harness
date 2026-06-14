@@ -17,7 +17,7 @@ loading. Its index row below stays.
 | [0000](0000-adr-scope.md) | What lands in this log: architectural decisions only | accepted |
 | [0001](0001-dual-target-build.md) | Dual-target build: pure web Vite + Electron from one renderer | accepted |
 | [0002](0002-typed-ipc-bridge.md) | Typed IPC bridge — `IPC` channel constants + `HarnessApi` | accepted |
-| [0003](0003-host-agnostic-core.md) | Host-agnostic `core/`, migrated from `lib/` feature-by-feature | accepted (migration ongoing) |
+| [0003](0003-host-agnostic-core.md) | Host-agnostic `core/`, migrated from `lib/` feature-by-feature | accepted (migration complete) |
 | [0004](0004-store-pattern.md) | `createStore` factory + `useSyncExternalStore` hooks | accepted |
 | [0005](0005-event-bus.md) | Typed, domain-scoped event bus via declaration merging | accepted |
 | [0006](0006-provider-abstraction.md) | Provider adapters behind a unified `StreamEvent` stream | accepted (registry clause superseded by 0029) |
@@ -31,7 +31,7 @@ loading. Its index row below stays.
 | [0014](0014-stop-semantics-and-tool-cancellation.md) | Stop semantics + tool cancellation over IPC | accepted |
 | [0015](0015-prompt-assets.md) | Prompt assets: English-only `pt()` catalog, outside i18n | accepted |
 | [0016](0016-workspace-isolation-field.md) | Workspace isolation field (`worktree` \| `direct`) | **debatable — no concept yet** |
-| [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted (first-paint clause superseded by 0021; detection + `lib/storage` mechanism superseded by 0035 — the port stands) |
+| [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | superseded by 0035 → archived |
 | [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted (tool names refined by 0033) |
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
@@ -49,8 +49,8 @@ loading. Its index row below stays.
 | [0032](0032-ctx-main-data-carrier.md) | Ctx — the one data carrier (config + llm + storage + tool gateway + host api + sessions) | accepted |
 | [0033](0033-tools-registry-folder-by-permission.md) | Tools — host-agnostic registry, dynamic permission tiers, per-platform execution | accepted |
 | [0034](0034-platform-hosts-over-agnostic-core.md) | Platform hosts (electron / web) over a host-agnostic core + shared renderer | accepted |
-| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned; init picks the backend (supersedes 0017's detection) | proposed |
-| [0036](0036-host-capability-surface.md) | Host capability surface — `ctx.api`, platform-injected, gated on presence | proposed |
+| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned; init picks the backend (supersedes 0017) | accepted |
+| [0036](0036-host-capability-surface.md) | Host capability surface — `ctx.api`, platform-injected, gated on presence | accepted |
 
 ## Needs review / important missing parts
 

@@ -1,6 +1,6 @@
 # ADR-0036: Host capability surface — `ctx.api`, platform-injected, gated on presence
 
-Status: Proposed
+Status: Accepted
 Date: 2026-06-14
 
 ## Context

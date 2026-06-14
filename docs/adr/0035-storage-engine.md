@@ -1,8 +1,8 @@
 # ADR-0035: Storage engine — backend embedded, persistence owned; init picks the backend
 
-Status: Proposed
+Status: Accepted
 Date: 2026-06-14
-Supersedes: the detection mechanism of [ADR-0017](0017-storage-port-with-detected-backends.md) (its `Storage` port survives; `detectStorage`/`lib/storage` are replaced)
+Supersedes: [ADR-0017](0017-storage-port-with-detected-backends.md) in full (archived) — the `Storage` port and SQLite-in-main design are carried forward here; `detectStorage`/`lib/storage` are replaced.
 
 ## Context
 
@@ -50,7 +50,7 @@ class StorageEngine {
   on `ctx.storage`. The best-first probe is gone — selection is per host, inline.
 - **Backends relocate to their platforms.** `SqliteStorage` →
   `electron/sqliteStorage.ts` (a thin client over the bridge `window.api.storage`; the
-  DB itself stays in main — `node:sqlite` `DatabaseSync` under `userData`, ADR-0017);
+  DB itself stays in main — `node:sqlite` `DatabaseSync` under `userData`);
   `IdbStorage` → `web/idbStorage.ts`; `LocalStorage` → `web/localStorage.ts`.
   `lib/storage/` is deleted.
 - **The engine is injected, not reached for.** `core/sessions/store.ts` takes the
@@ -60,10 +60,10 @@ class StorageEngine {
   built with no storage (`new Ctx(wire.config)` in main, ADR-0032) simply doesn't
   persist — no branch, just an absent dependency.
 
-This supersedes ADR-0017's detection mechanism only. The port (`Storage`, now with
-`keys(prefix)` the engine needs for blob GC), the SQLite-in-main design, and the
-tier ordering all stand; `detectStorage`, `lib/storage`, and the in-store tier-upgrade
-migration are what's replaced.
+This **supersedes ADR-0017 in full** (archived). What it carries forward and now owns:
+the `Storage` port (with `keys(prefix)` the engine needs for blob GC), the SQLite-in-main
+design, and the sqlite → idb → local tier ordering. What it replaces: `detectStorage`, the
+`lib/storage` home, and the in-store tier-upgrade migration.
 
 ## Consequences
 
