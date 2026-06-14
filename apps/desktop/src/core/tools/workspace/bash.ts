@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 import { type ToolResult, type ToolSchema, type ToolPermission } from "../types.ts";
-import { BaseWorkspaceTool, expandWorkspace, hideRoot } from "./base.ts";
+import { BaseWorkspaceTool } from "./base.ts";
 
 // Bash (gated — a shell can't be path-confined): expands the /workspace marker to the real root, scrubs the real root back to /workspace in output so no host path leaks.
 export class Bash extends BaseWorkspaceTool {
@@ -32,16 +32,14 @@ export class Bash extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ToolResult> {
     const command = String(args.command ?? "");
     if (!command) return { ok: false, output: `Bash rejected: missing required "command". Example: {"command":"ls -la"}` };
     const timeoutMs = typeof args.timeout_seconds === "number" ? args.timeout_seconds * 1000 : 60_000;
-    const root = this.root;
-    return this.exec(expandWorkspace(command, root), root, timeoutMs);
+    return this.exec(this.expandWorkspace(command, cwd), cwd, timeoutMs, signal);
   }
 
-  private exec(command: string, cwd: string, timeoutMs: number): Promise<ToolResult> {
-    const signal = this.signal;
+  private exec(command: string, cwd: string, timeoutMs: number, signal?: AbortSignal): Promise<ToolResult> {
     if (signal?.aborted) return Promise.resolve({ ok: false, output: "[cancelled before start]" });
     return new Promise((resolve) => {
       const proc = spawn("bash", ["-lc", command], { cwd, stdio: ["ignore", "pipe", "pipe"] });
@@ -67,7 +65,7 @@ export class Bash extends BaseWorkspaceTool {
           : timedOut
             ? `\n[exit: killed after ${timeoutMs}ms timeout]`
             : `\n[exit: ${code}]`;
-        resolve({ ok: !timedOut && !cancelled && code === 0, output: hideRoot(this.cap(out), cwd) + suffix });
+        resolve({ ok: !timedOut && !cancelled && code === 0, output: this.hideRoot(this.cap(out), cwd) + suffix });
       });
       proc.on("error", (e) => {
         clearTimeout(timer);

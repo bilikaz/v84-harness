@@ -1,35 +1,39 @@
-// The app context — config + the LLM client, scoped to one host. Host-agnostic: it holds no store
-// access, so each host builds its own. The renderer builds one over its live config (core/init.ts);
-// the main process builds one from the Config that crossed the bridge (new Ctx(config), the workspace runner).
+// The app context — config + storage + the LLM client, scoped to one host.
+// Created once by the harness init, then passed through the app tree.
+// Constructor takes storage and automatically loads config + creates the LLM client.
+// The main process creates a Ctx from a wire config (no storage).
 
 import { createClient, type LLMClient, type ModelService } from "../llm/index.ts";
-import type { Config } from "./config/index.ts";
-import type { ConfigLLM } from "./config/llm.ts";
+import type { Config, ConfigLLM } from "./config/index.ts";
+import { getConfig } from "./config/index.ts";
+import { syncMainToConfigLLM } from "./settings.ts";
+import { syncMediaToConfigLLM } from "./media.ts";
 import type { ToolGateway } from "./tools/types.ts";
+import type { Storage } from "./storage/types.ts";
 
 export class Ctx {
-  readonly llm: LLMClient;
-
-  // The platform's tool execution — set by the boot (web: in-process, electron: bridge). The main-process
-  // Ctx (built from the wire) never sets this; main runs tools directly through its own registry.
+  readonly storage?: Storage;
   tools!: ToolGateway;
+  llm!: LLMClient;
 
-  // cfg is a live getter (renderer, reads stores) or a fixed Config (main, from the wire).
-  constructor(private readonly cfg: Config | (() => Config)) {
-    const self = this;
+  constructor(storage: Storage) {
+    this.storage = storage;
+    syncMainToConfigLLM();
+    syncMediaToConfigLLM();
     this.llm = createClient(this, {
       get maxHeals() {
-        return self.config.app.llm.maxHealAttempts;
+        return getConfig().app.llm.maxHealAttempts;
       },
     });
   }
 
   get config(): Config {
-    return typeof this.cfg === "function" ? this.cfg() : this.cfg;
+    return getConfig();
   }
 
   // The llm client resolves a service's target from the config.
   resolve(service: ModelService): ConfigLLM | null {
     return this.config.llm[service] ?? null;
   }
+
 }

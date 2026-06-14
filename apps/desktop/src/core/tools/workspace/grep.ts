@@ -29,18 +29,17 @@ export class Grep extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string, signal?: AbortSignal): Promise<ToolResult> {
     const pattern = String(args.pattern ?? "");
     if (!pattern) return { ok: false, output: `Grep rejected: missing required "pattern".` };
-    const root = this.root;
-    const target = args.path ? this.resolve(String(args.path)) : root;
+    const root = this.getRoot(cwd);
+    const target = args.path ? this.resolvePath(String(args.path), cwd) : root;
     const rel = target === root ? "." : target.slice(root.length + 1);
     const flags = ["-rIn", ...(args.ignore_case ? ["-i"] : [])];
-    return this.search(["grep", ...flags, "--", pattern, rel], root);
+    return this.search(["grep", ...flags, "--", pattern, rel], root, signal);
   }
 
-  private search(argv: string[], cwd: string): Promise<ToolResult> {
-    const signal = this.signal;
+  private search(argv: string[], cwd: string, signal?: AbortSignal): Promise<ToolResult> {
     if (signal?.aborted) return Promise.resolve({ ok: false, output: "[cancelled before start]" });
     return new Promise((resolve) => {
       const proc = spawn(argv[0]!, argv.slice(1), { cwd, stdio: ["ignore", "pipe", "pipe"] });
@@ -52,7 +51,6 @@ export class Grep extends BaseWorkspaceTool {
       proc.stderr.on("data", (b: Buffer) => (err += b.toString("utf-8")));
       proc.on("close", (code) => {
         clearTimeout(timer);
-        // grep exits 1 for "no matches" — that's a successful empty result.
         if (code === 1 && !out) return resolve({ ok: true, output: "(no matches)" });
         if (code !== 0 && code !== 1) return resolve({ ok: false, output: err.trim() || `grep exited ${code}` });
         const rewritten = out.replace(/^\.?\/?/gm, (m, off) => (off === 0 || out[off - 1] === "\n" ? `${WORKSPACE_ROOT}/` : m));

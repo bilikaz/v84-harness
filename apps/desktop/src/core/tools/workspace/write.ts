@@ -27,12 +27,12 @@ export class Write extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
     const p = String(args.path ?? "");
     if (!p) return { ok: false, output: `Write rejected: missing required "path".` };
     if (typeof args.content !== "string") return { ok: false, output: `Write rejected: "content" must be a string.` };
     try {
-      const real = this.resolve(p);
+      const real = this.resolvePath(p, cwd);
       await mkdir(path.dirname(real), { recursive: true });
       await writeFile(real, args.content, "utf-8");
       return { ok: true, output: `wrote ${p} (${args.content.length} bytes)` };

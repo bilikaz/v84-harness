@@ -11,18 +11,14 @@ export function cap(s: string): string {
   return s.slice(0, OUTPUT_CAP) + `\n\n[...output truncated; ${s.length - OUTPUT_CAP} more bytes dropped]`;
 }
 
-// Every tool is a class constructed per call with its host ctx + cwd + signal. `schema` is a getter so a
+// Every tool is a class constructed once with its host ctx. `schema` is a getter so a
 // tool's advertised shape can depend on the ctx; the LLM client comes straight off the ctx (this.ctx.llm).
 export abstract class BaseTool {
-  constructor(
-    protected readonly ctx: Ctx,
-    protected readonly cwd: string,
-    protected readonly signal?: AbortSignal,
-  ) {}
+  constructor(protected readonly ctx: Ctx) {}
 
   abstract get schema(): ToolSchema;
 
-  abstract run(args: Record<string, unknown>): Promise<ToolResult>;
+  abstract run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal): Promise<ToolResult>;
 
   // Whether this tool is available for the current ctx (model capability / configured slot). Overridden by gated tools.
   canRun(): boolean {
@@ -50,4 +46,4 @@ export abstract class BaseTool {
 }
 
 // What a tool module exports: a constructor the registry resolves by folder layout.
-export type ToolCtor = new (ctx: Ctx, cwd: string, signal?: AbortSignal) => BaseTool;
+export type ToolCtor = new (ctx: Ctx) => BaseTool;

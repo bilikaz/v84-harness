@@ -26,11 +26,11 @@ export class Read extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
     const p = String(args.path ?? "");
     if (!p) return { ok: false, output: `Read rejected: missing required "path". Example: {"path":"/workspace/src/foo.ts"}` };
     try {
-      const content = await readFile(this.resolve(p), "utf-8");
+      const content = await readFile(this.resolvePath(p, cwd), "utf-8");
       return { ok: true, output: this.cap(format(p, content)) };
     } catch (e) {
       return { ok: false, output: `error reading ${p}: ${errorMessage(e)}. Try List or Bash to check the path.` };

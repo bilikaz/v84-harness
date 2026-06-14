@@ -1,8 +1,8 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
-import type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolDescriptor, MediaEndpoint } from "./core/tools/types.ts";
+import type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolFilterParams, ToolFilterResult, MediaEndpoint } from "../core/tools/types.ts";
 
-export type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolDescriptor, MediaEndpoint };
+export type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolFilterParams, ToolFilterResult, MediaEndpoint };
 
 export interface MediaModelsResult {
   ok: boolean;
@@ -10,13 +10,11 @@ export interface MediaModelsResult {
   error?: string;
 }
 
-export interface HarnessApi {
+export interface ElectronApi {
   isElectron: true;
   pickFolder(): Promise<string | null>;
   tools: {
-    schemas(wire: ToolWire): Promise<ToolSchema[]>;
-    // The gated-tool list (permission metadata) — static per build, fetched once for the settings UIs + policy.
-    descriptors(): Promise<ToolDescriptor[]>;
+    filter(params: ToolFilterParams): Promise<ToolFilterResult>;
     exec(call: ToolCallRequest, wire: ToolWire): Promise<ToolResult>;
     // Resolving says the cancel was DELIVERED, not that the tool has exited.
     cancel(callId: string): Promise<void>;
@@ -40,8 +38,7 @@ export interface HarnessApi {
 
 export const IPC = {
   pickFolder: "harness:pickFolder",
-  toolsSchemas: "harness:tools:schemas",
-  toolsDescriptors: "harness:tools:descriptors",
+  toolsFilter: "harness:tools:filter",
   toolsExec: "harness:tools:exec",
   toolsCancel: "harness:tools:cancel",
   mediaModels: "harness:media:models",
@@ -53,3 +50,26 @@ export const IPC = {
   storageDel: "harness:storage:del",
   storageKeys: "harness:storage:keys",
 } as const;
+
+
+declare global {
+  interface Window {
+    api?: ElectronApi;
+  }
+}
+
+export const api: ElectronApi | undefined =
+  typeof window !== "undefined" ? window.api : undefined;
+
+export function isElectron(): boolean {
+  return api?.isElectron === true;
+}
+
+/*
+export function requireHarness(): ElectronApi {
+  if (!harness) {
+    throw new Error("harness bridge unavailable — this feature requires the Electron app");
+  }
+  return harness;
+}
+  */

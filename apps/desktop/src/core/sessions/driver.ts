@@ -3,7 +3,7 @@ import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
 import { llmLog } from "../../llm/debug.ts";
 import type { FileAttachment, MediaRef, Session } from "./types.ts";
 import { resolveMain } from "../settings.ts";
-import { ctx } from "../init.ts";
+import { ctx } from "../ctx.ts";
 import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";

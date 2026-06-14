@@ -21,11 +21,11 @@ export class CreateFolder extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
     const p = String(args.path ?? "");
     if (!p) return { ok: false, output: `CreateFolder rejected: missing required "path".` };
     try {
-      await mkdir(this.resolve(p), { recursive: true });
+      await mkdir(this.resolvePath(p, cwd), { recursive: true });
       return { ok: true, output: `created ${p}` };
     } catch (e) {
       return { ok: false, output: `error creating ${p}: ${errorMessage(e)}` };

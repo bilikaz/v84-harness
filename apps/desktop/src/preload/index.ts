@@ -12,8 +12,7 @@ const api: HarnessApi = {
   isElectron: true,
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   tools: {
-    schemas: (wire: ToolWire) => ipcRenderer.invoke(IPC.toolsSchemas, wire),
-    descriptors: () => ipcRenderer.invoke(IPC.toolsDescriptors),
+    filter: (params) => ipcRenderer.invoke(IPC.toolsFilter, params),
     // The wire is plain JSON (cwd + config); main wraps it into its own Ctx and mints the signal/client.
     exec: (call: ToolCallRequest, wire: ToolWire) => ipcRenderer.invoke(IPC.toolsExec, call, wire),
     cancel: (callId: string) => ipcRenderer.invoke(IPC.toolsCancel, callId),

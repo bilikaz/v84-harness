@@ -28,13 +28,13 @@ export class Edit extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
     const p = String(args.path ?? "");
     const oldStr = String(args.old_string ?? "");
     const newStr = String(args.new_string ?? "");
     if (!p || !oldStr) return { ok: false, output: `Edit rejected: "path" and "old_string" are required.` };
     try {
-      const real = this.resolve(p);
+      const real = this.resolvePath(p, cwd);
       const content = await readFile(real, "utf-8");
       const count = content.split(oldStr).length - 1;
       if (count === 0) return { ok: false, output: `Edit failed: old_string not found in ${p}.` };

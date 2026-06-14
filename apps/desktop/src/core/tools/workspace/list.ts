@@ -22,10 +22,10 @@ export class List extends BaseWorkspaceTool {
     };
   }
 
-  async run(args: Record<string, unknown>): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
     const p = String(args.path ?? WORKSPACE_ROOT);
     try {
-      const entries = await readdir(this.resolve(p), { withFileTypes: true });
+      const entries = await readdir(this.resolvePath(p, cwd), { withFileTypes: true });
       if (entries.length === 0) return { ok: true, output: `${p} is empty.` };
       const lines = entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort((a, b) => a.localeCompare(b));
       return { ok: true, output: this.cap(`# ${p}\n${lines.join("\n")}`) };

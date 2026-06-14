@@ -9,6 +9,8 @@ export interface ToolCallRequest {
   id: string;
   name: string;
   arguments: string;
+  cwd: string;
+  signal?: AbortSignal;
 }
 
 export interface ToolResult {
@@ -67,23 +69,37 @@ export interface ToolWire {
 }
 
 // A tool's model-facing name. Tools are discovered dynamically (no static list); whether a tool is
-// permission-gated is its own isPermissioned() (surfaced as ToolDescriptor), not a hard-coded set.
+// permission-gated is its own isPermissioned() (surfaced in the filter result), not a hard-coded set.
 export type GatedTool = string;
 export type ToolName = string;
 export type ToolPermission = 0 | 1 | 2;
 
-// Permission metadata read off a tool instance — the dynamic replacement for the old ALL_TOOLS /
-// DEFAULT_TOOL_POLICY static maps. The settings UIs render the permissioned ones; the driver gates on them.
-export interface ToolDescriptor {
+// Filter parameters — all optional; passing null/undefined returns every tool unfiltered.
+export interface ToolFilterParams {
+  /** Exclude tools whose canRun() returns false. */
+  checkCanRun?: boolean;
+  /** Workspace-level policy: tool name → mode. Tools with mode 0 are excluded. */
+  workspacePermissions?: Record<string, ToolPermission>;
+  /** Agent-level ceiling: tool name → mode. Applied on top of workspacePermissions (stricter wins). */
+  agentPermissions?: Record<string, ToolPermission>;
+}
+
+// One entry in the filter result — schema + permission metadata.
+export interface ToolFilterEntry {
   name: string;
+  schema: ToolSchema;
   permissioned: boolean;
   defaultMode: ToolPermission;
+  /** Computed effective mode after applying workspace + agent policy (0=off, 1=ask, 2=auto). */
+  effectiveMode: ToolPermission;
 }
+
+// Filter result: tool name → entry. Consumers iterate or look up by name.
+export type ToolFilterResult = Record<string, ToolFilterEntry>;
 
 // The platform's tool execution, carried on ctx (ctx.tools). The web platform runs tools in-process; the
 // electron platform runs them in main over the bridge. core/the driver only touch this — never the platform.
 export interface ToolGateway {
-  schemas(cwd: string): ToolSchema[] | Promise<ToolSchema[]>;
-  run(call: ToolCallRequest, cwd: string, signal: AbortSignal): Promise<ToolResult | null>;
-  descriptors(): Promise<ToolDescriptor[]>;
+  filter(params?: ToolFilterParams): ToolFilterResult | Promise<ToolFilterResult>;
+  run(call: ToolCallRequest): Promise<ToolResult | null>;
 }

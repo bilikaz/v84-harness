@@ -1,7 +1,7 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import { bufferedTextHandler } from "../../llm/index.ts";
 import { getAppConfig } from "../config/index.ts";
-import { ctx } from "../init.ts";
+import { ctx } from "../ctx.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { pt } from "../../lib/prompts.ts";
