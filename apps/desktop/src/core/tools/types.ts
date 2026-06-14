@@ -66,28 +66,24 @@ export interface ToolWire {
   config: Config;
 }
 
-export type GatedTool =
-  | "Read"
-  | "List"
-  | "Grep"
-  | "Write"
-  | "Edit"
-  | "CreateFolder"
-  | "Bash"
-  | "ImageLoad"
-  | "VideoLoad"
-  | "ImageDescribe"
-  | "VideoDescribe";
+// A tool's model-facing name. Tools are discovered dynamically (no static list); whether a tool is
+// permission-gated is its own isPermissioned() (surfaced as ToolDescriptor), not a hard-coded set.
+export type GatedTool = string;
+export type ToolName = string;
+export type ToolPermission = 0 | 1 | 2;
 
-export type ToolName = GatedTool | "ImageGenerate" | "VideoGenerate";
-export type ToolMode = 0 | 1 | 2;
+// Permission metadata read off a tool instance — the dynamic replacement for the old ALL_TOOLS /
+// DEFAULT_TOOL_POLICY static maps. The settings UIs render the permissioned ones; the driver gates on them.
+export interface ToolDescriptor {
+  name: string;
+  permissioned: boolean;
+  defaultMode: ToolPermission;
+}
 
-export const ALL_TOOLS: readonly GatedTool[] = [
-  "Read", "List", "Grep", "Write", "Edit", "CreateFolder", "Bash",
-  "ImageLoad", "VideoLoad", "ImageDescribe", "VideoDescribe",
-];
-
-export const DEFAULT_TOOL_POLICY: Record<GatedTool, ToolMode> = {
-  Read: 2, List: 2, Grep: 2, Write: 2, Edit: 2, CreateFolder: 2, Bash: 1,
-  ImageLoad: 2, VideoLoad: 2, ImageDescribe: 2, VideoDescribe: 2,
-};
+// The platform's tool execution, carried on ctx (ctx.tools). The web platform runs tools in-process; the
+// electron platform runs them in main over the bridge. core/the driver only touch this — never the platform.
+export interface ToolGateway {
+  schemas(cwd: string): ToolSchema[] | Promise<ToolSchema[]>;
+  run(call: ToolCallRequest, cwd: string, signal: AbortSignal): Promise<ToolResult | null>;
+  descriptors(): Promise<ToolDescriptor[]>;
+}

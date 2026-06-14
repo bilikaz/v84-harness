@@ -1,7 +1,7 @@
 // Registers the main-side handlers behind the `window.harness` bridge.
 
 import { IPC, type ToolCallRequest, type ToolWire, type MediaEndpoint, type MediaModelsResult } from "../bridge.ts";
-import { cancelTool, execTool, toolSchemas } from "../core/tools/index.ts";
+import { cancelTool, execTool, toolDescriptors, toolSchemas } from "./tools.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
 import { openStorage } from "./storage.ts";
 import { errorMessage } from "../lib/errors.ts";
@@ -26,6 +26,8 @@ export function registerIpc(electron: Electron): void {
   });
 
   ipcMain.handle(IPC.toolsSchemas, async (_e: unknown, wire: ToolWire) => toolSchemas(wire));
+
+  ipcMain.handle(IPC.toolsDescriptors, async () => toolDescriptors());
 
   ipcMain.handle(IPC.toolsExec, async (_e: unknown, call: ToolCallRequest, wire: ToolWire) => {
     return execTool(call, wire);

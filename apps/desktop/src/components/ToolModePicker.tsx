@@ -1,16 +1,16 @@
 import { useTranslation } from "react-i18next";
 
 import { cn } from "../lib/cn.ts";
-import type { ToolMode } from "../core/tools/types.ts";
+import type { ToolPermission } from "../core/tools/types.ts";
 
 // i18n keys, translated at render (the module-level constant can't call t()).
-const MODES: { value: ToolMode; labelKey: string; hintKey: string }[] = [
+const MODES: { value: ToolPermission; labelKey: string; hintKey: string }[] = [
   { value: 0, labelKey: "workspace.modeOff", hintKey: "workspace.modeOffHint" },
   { value: 1, labelKey: "workspace.modeAsk", hintKey: "workspace.modeAskHint" },
   { value: 2, labelKey: "workspace.modeAuto", hintKey: "workspace.modeAutoHint" },
 ];
 
-export function ToolModePicker(props: { value: ToolMode; onChange: (m: ToolMode) => void }) {
+export function ToolModePicker(props: { value: ToolPermission; onChange: (m: ToolPermission) => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex overflow-hidden rounded-lg border border-neutral-200">

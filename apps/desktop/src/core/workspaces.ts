@@ -1,10 +1,10 @@
 import { createStore } from "../lib/store.ts";
-import { DEFAULT_TOOL_POLICY, type GatedTool, type ToolMode, type ToolName } from "./tools/types.ts";
+import { type GatedTool, type ToolPermission, type ToolName } from "./tools/types.ts";
 
 // Workspace store — a folder (the agent's root) + name + per-workspace settings.
 const KEY = "v84-harness:workspaces";
 
-export type { GatedTool, ToolMode, ToolName };
+export type { GatedTool, ToolPermission, ToolName };
 
 export type Isolation = "worktree" | "direct";
 
@@ -15,7 +15,7 @@ export interface Workspace {
   defaultModelId?: string;
   isolation: Isolation;
   instructions?: string;
-  tools: Record<GatedTool, ToolMode>; // gated tools only
+  tools: Record<GatedTool, ToolPermission>; // gated tools the user has set a mode for; the rest fall back to each tool's defaultPermission()
 }
 
 interface WsState {
@@ -29,7 +29,7 @@ export function defaultWorkspace(root: string, name: string): Workspace {
     name,
     root,
     isolation: "worktree",
-    tools: { ...DEFAULT_TOOL_POLICY },
+    tools: {},
   };
 }
 
@@ -41,7 +41,7 @@ function normalize(w: Partial<Workspace>): Workspace {
     defaultModelId: w.defaultModelId,
     isolation: w.isolation === "direct" ? "direct" : "worktree",
     instructions: w.instructions,
-    tools: { ...DEFAULT_TOOL_POLICY, ...(w.tools ?? {}) },
+    tools: { ...(w.tools ?? {}) },
   };
 }
 

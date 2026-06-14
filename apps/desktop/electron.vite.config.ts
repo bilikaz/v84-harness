@@ -7,9 +7,12 @@ import rendererConfig from "./vite.config.ts";
 
 const appDir = fileURLToPath(new URL(".", import.meta.url));
 
-// electron-vite config — empty main/preload are intentional ("type":"module" already yields ESM); renderer reuses vite.config.ts verbatim so web and desktop share one renderer config.
+// electron-vite config — preload auto-detects src/preload/; the main process lives in src/electron/ (not the
+// default src/main/), so its entry is pointed at explicitly. Output keys stay main/preload/renderer (→ out/main,
+// etc.), so package.json's "main" is unchanged. Renderer reuses vite.config.ts so web and desktop share one config.
 export default defineConfig({
-  main: {},
+  // @ts-expect-error electron-vite 5 build typings (same Vite 5 mismatch as the renderer note below).
+  main: { build: { rollupOptions: { input: resolve(appDir, "src/electron/index.ts") } } },
   preload: {},
   renderer: {
     root: appDir,

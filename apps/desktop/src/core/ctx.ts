@@ -5,9 +5,14 @@
 import { createClient, type LLMClient, type ModelService } from "../llm/index.ts";
 import type { Config } from "./config/index.ts";
 import type { ConfigLLM } from "./config/llm.ts";
+import type { ToolGateway } from "./tools/types.ts";
 
 export class Ctx {
   readonly llm: LLMClient;
+
+  // The platform's tool execution — set by the boot (web: in-process, electron: bridge). The main-process
+  // Ctx (built from the wire) never sets this; main runs tools directly through its own registry.
+  tools!: ToolGateway;
 
   // cfg is a live getter (renderer, reads stores) or a fixed Config (main, from the wire).
   constructor(private readonly cfg: Config | (() => Config)) {

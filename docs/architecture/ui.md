@@ -5,7 +5,7 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
 - **Contribution registry** ([ADR-0008](../adr/0008-ui-registry-routing.md)):
   `lib/registry.ts` defines named regions (`left-top`, `right-panel`,
   `settings`, `main`). Each `pages/<feature>/register.tsx` calls `register(...)`;
-  `main.tsx` eagerly globs all register files at boot; `<Slot region>` renders
+  `renderer/main.tsx` eagerly globs all register files at boot; `<Slot region>` renders
   contributions. Features plug in without touching `App.tsx`. The `Region` type
   only lists surfaces the shell actually renders — the former `menu` region was
   deleted when it lost its renderer ([ADR-0024](../adr/0024-agent-runs-through-composer.md)).

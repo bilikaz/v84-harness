@@ -1,8 +1,8 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
-import type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, MediaEndpoint } from "./core/tools/types.ts";
+import type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolDescriptor, MediaEndpoint } from "./core/tools/types.ts";
 
-export type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, MediaEndpoint };
+export type { ToolSchema, ToolCallRequest, ToolResult, ToolWire, ToolDescriptor, MediaEndpoint };
 
 export interface MediaModelsResult {
   ok: boolean;
@@ -15,6 +15,8 @@ export interface HarnessApi {
   pickFolder(): Promise<string | null>;
   tools: {
     schemas(wire: ToolWire): Promise<ToolSchema[]>;
+    // The gated-tool list (permission metadata) — static per build, fetched once for the settings UIs + policy.
+    descriptors(): Promise<ToolDescriptor[]>;
     exec(call: ToolCallRequest, wire: ToolWire): Promise<ToolResult>;
     // Resolving says the cancel was DELIVERED, not that the tool has exited.
     cancel(callId: string): Promise<void>;
@@ -39,6 +41,7 @@ export interface HarnessApi {
 export const IPC = {
   pickFolder: "harness:pickFolder",
   toolsSchemas: "harness:tools:schemas",
+  toolsDescriptors: "harness:tools:descriptors",
   toolsExec: "harness:tools:exec",
   toolsCancel: "harness:tools:cancel",
   mediaModels: "harness:media:models",

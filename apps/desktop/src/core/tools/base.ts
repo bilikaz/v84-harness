@@ -1,5 +1,5 @@
 import type { LLMClient } from "../../llm/index.ts";
-import { type ToolResult, type ToolSchema } from "./types.ts";
+import { type ToolResult, type ToolSchema, type ToolPermission } from "./types.ts";
 import type { Ctx } from "../ctx.ts";
 
 // Largest tool output handed back to the model — a runaway command can't blow its context.
@@ -27,6 +27,17 @@ export abstract class BaseTool {
   // Whether this tool is available for the current ctx (model capability / configured slot). Overridden by gated tools.
   canRun(): boolean {
     return true;
+  }
+
+  // Whether this tool is subject to the workspace permission policy. Permissionless by default;
+  // BaseWorkspaceTool overrides to true. The advertisement filter consults the policy only for these.
+  isPermissioned(): boolean {
+    return false;
+  }
+
+  // Default policy mode when a workspace hasn't set one (only meaningful for permissioned tools).
+  defaultPermission(): ToolPermission {
+    return 2;
   }
 
   protected get llm(): LLMClient {

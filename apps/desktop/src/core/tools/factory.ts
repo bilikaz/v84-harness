@@ -2,13 +2,15 @@
 // (a literal path, so its bundle only pulls that folder); the resolution + run sequence shared by both lives here.
 
 import { type BaseTool, type ToolCtor } from "./base.ts";
-import { type ToolCallRequest, type ToolResult, type ToolSchema } from "./types.ts";
+import { type ToolCallRequest, type ToolResult, type ToolSchema, type ToolDescriptor } from "./types.ts";
 import type { Ctx } from "../ctx.ts";
 import { errorMessage } from "../../lib/errors.ts";
 
 export interface ToolRegistry {
   // Advertised schemas for this host ctx — only tools whose canRun() passes.
   schemas(ctx: Ctx, cwd: string): ToolSchema[];
+  // Permission metadata for every tool (not canRun-filtered) — the dynamic gated-tool list.
+  descriptors(ctx: Ctx, cwd: string): ToolDescriptor[];
   // Resolve a tool by its model-facing name (no capability filter).
   find(name: string, ctx: Ctx, cwd: string, signal?: AbortSignal): BaseTool | undefined;
   // Every tool's name, for "unknown tool" errors.
@@ -32,6 +34,11 @@ export function toolRegistry(modules: Record<string, Record<string, unknown>>): 
         .map((T) => new T(ctx, cwd))
         .filter((t) => t.canRun())
         .map((t) => t.schema),
+    descriptors: (ctx, cwd) =>
+      tools.map((T) => {
+        const t = new T(ctx, cwd);
+        return { name: t.schema.function.name, permissioned: t.isPermissioned(), defaultMode: t.defaultPermission() };
+      }),
     find,
     names: (ctx, cwd) => tools.map((T) => new T(ctx, cwd).schema.function.name),
     async run(call, ctx, cwd, signal) {

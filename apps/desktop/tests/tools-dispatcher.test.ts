@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { cap, OUTPUT_CAP } from "../src/core/tools/base.ts";
-import { cancelTool, execTool } from "../src/core/tools/index.ts";
+import { cancelTool, execTool } from "../src/electron/tools.ts";
 
 const CTX = { cwd: "/tmp" };
 

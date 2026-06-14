@@ -33,9 +33,9 @@ into the folder shape above ([ADR-0003](../adr/0003-host-agnostic-core.md)).
   the tool-execution cycle stays here, not in the llm layer
   ([architecture/llm.md](llm.md)).
 - Per-session `AbortController` map for stop; stopping is not an error. Stop
-  also cancels running tools (renderer tools via `ToolCtx.signal`; gated tools
-  via the IPC cancel channel), denies the session's queued approvals, and
-  cascades to sub-agent children —
+  also cancels running tools (in-process tools via the call's signal; main tools
+  via the `tools:cancel` IPC channel — handled inside the platform's `ctx.tools`
+  gateway), denies the session's queued approvals, and cascades to sub-agent children —
   see [ADR-0014](../adr/0014-stop-semantics-and-tool-cancellation.md),
   [ADR-0013](../adr/0013-approval-promise-bridge.md) and
   [ADR-0022](../adr/0022-subagent-orchestration.md). Exhausting the step budget

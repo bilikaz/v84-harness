@@ -5,7 +5,8 @@ import { ArrowLeft, Trash2 } from "lucide-react";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { ToolModePicker } from "../../components/ToolModePicker.tsx";
 import { deleteAgent, saveAgent, useAgents } from "../../core/agents.ts";
-import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/types.ts";
+import { type GatedTool, type ToolPermission } from "../../core/tools/types.ts";
+import { useToolDescriptors } from "../../core/tools/permissions.ts";
 import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 
@@ -17,6 +18,7 @@ const monoCls =
 export function AgentEditView({ id }: { id: string }) {
   const { t } = useTranslation();
   const agents = useAgents();
+  const gatedTools = useToolDescriptors().filter((d) => d.permissioned);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const agent = agents.find((a) => a.id === id);
 
@@ -31,7 +33,7 @@ export function AgentEditView({ id }: { id: string }) {
     navigate("");
   }
 
-  function setTool(tool: GatedTool, mode: ToolMode) {
+  function setTool(tool: GatedTool, mode: ToolPermission) {
     if (!agent) return;
     saveAgent(id, { tools: { ...agent.tools, [tool]: mode } });
   }
@@ -134,12 +136,12 @@ export function AgentEditView({ id }: { id: string }) {
               <>
                 <span className="pt-1 text-xs text-neutral-400">{t("agents.permissionsHelp")}</span>
                 <div className="grid grid-cols-3 gap-x-6 gap-y-1.5 pt-1">
-                  {ALL_TOOLS.map((tool) => (
-                    <div key={tool} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm text-neutral-700">{tool}</span>
+                  {gatedTools.map((d) => (
+                    <div key={d.name} className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm text-neutral-700">{d.name}</span>
                       <ToolModePicker
-                        value={agent.tools[tool]}
-                        onChange={(m: ToolMode) => setTool(tool, m)}
+                        value={agent.tools[d.name] ?? 2}
+                        onChange={(m: ToolPermission) => setTool(d.name, m)}
                       />
                     </div>
                   ))}

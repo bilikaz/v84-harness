@@ -50,8 +50,12 @@ export function hideRoot(out: string, root: string): string {
   return out.split(root + "/").join(`${WORKSPACE_ROOT}/`).split(root).join(WORKSPACE_ROOT);
 }
 
-// Workspace file tools: confined path resolution against the session's cwd.
+// Workspace file tools: confined path resolution against the session's cwd; subject to the workspace policy.
 export abstract class BaseWorkspaceTool extends BaseTool {
+  override isPermissioned(): boolean {
+    return true;
+  }
+
   protected get root(): string {
     return rootReal(this.cwd);
   }

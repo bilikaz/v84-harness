@@ -5,17 +5,19 @@ import { ChevronDown, ShieldCheck, Unlink } from "lucide-react";
 import { sessionToolModes, unlinkAgent, useActiveSession } from "../../core/sessions/index.ts";
 import { useAgents } from "../../core/agents.ts";
 import { useWorkspaces } from "../../core/workspaces.ts";
-import { ALL_TOOLS, type ToolMode } from "../../core/tools/types.ts";
+import { type ToolPermission } from "../../core/tools/types.ts";
+import { useToolDescriptors } from "../../core/tools/permissions.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { cn } from "../../lib/cn.ts";
 
-const MODE_KEY: Record<ToolMode, string> = { 0: "workspace.modeOff", 1: "workspace.modeAsk", 2: "workspace.modeAuto" };
+const MODE_KEY: Record<ToolPermission, string> = { 0: "workspace.modeOff", 1: "workspace.modeAsk", 2: "workspace.modeAuto" };
 
 export function AgentPermissionsPanel() {
   const { t } = useTranslation();
   const session = useActiveSession();
   const agents = useAgents();
   useWorkspaces();
+  useToolDescriptors(); // re-render once the gated-tool list arrives from main
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
 
@@ -43,11 +45,11 @@ export function AgentPermissionsPanel() {
       {open && (
         <>
           <ul className="mt-2 space-y-0.5">
-            {ALL_TOOLS.map((name) => (
+            {Object.entries(modes).map(([name, mode]) => (
               <li key={name} className="flex items-center justify-between text-xs">
                 <span className="text-neutral-600">{name}</span>
-                <span className={cn("font-medium", modes[name] === 0 ? "text-neutral-400" : "text-neutral-700")}>
-                  {t(MODE_KEY[modes[name]])}
+                <span className={cn("font-medium", mode === 0 ? "text-neutral-400" : "text-neutral-700")}>
+                  {t(MODE_KEY[mode])}
                 </span>
               </li>
             ))}

@@ -35,17 +35,23 @@ flowchart TD
         core --> llm
     end
     preload["preload/<br/>thin typed wrappers over ipcRenderer"]
-    main["main/<br/>Electron main process (trust boundary):<br/>window · dialogs · context menus · core/tools execution"]
+    electron["electron/<br/>Electron platform (trust boundary):<br/>main process — window · dialogs · context menus · tool dispatch"]
     renderer -->|"window.harness (typed HarnessApi, contextBridge)"| preload
-    preload -->|"ipcMain.handle(IPC.*)"| main
+    preload -->|"ipcMain.handle(IPC.*)"| electron
 ```
+
+The app is **platform hosts over agnostic layers** (ADR-0034): `core/` + `renderer/`
+are host-agnostic and depend only on `ctx` (ADR-0032 — config + the llm client + the
+platform's tool gateway); each platform (`electron/`, `web/`) builds the `ctx` and
+installs the parts that differ. The boot is the one place platform is chosen.
 
 Layering rules:
 
-- `core/` never imports from `pages/`, `components/`, or Electron. React appears
+- `core/` never imports from `pages/`, `components/`, `renderer/`, `electron/`,
+  `web/`, or Electron. It branches on no platform — it reads `ctx`. React appears
   only in `hooks.ts` files (thin `useSyncExternalStore` wrappers).
-- `main/` uses Node APIs directly and imports from `core/tools` to execute gated
-  tools; it never imports renderer stores.
+- `electron/` (the Electron platform) uses Node directly and imports from `core/tools`
+  to run tools in the main process; it never imports renderer stores.
 - `preload/` only wraps `ipcRenderer.invoke` calls behind the `HarnessApi` type.
 - The renderer reaches the desktop only via `lib/harness.ts` (`harness`,
   `isElectron()`, `requireHarness()`), never `window.harness` directly.
@@ -56,10 +62,12 @@ Layering rules:
 
 | Path | Role |
 |------|------|
-| `src/main/` | Electron main: window, IPC handlers, context menu, save dialogs |
+| `src/electron/` | Electron platform: main process (window, IPC handlers, context menu, save dialogs, tool dispatch) + the renderer-side bridge tool gateway (`gateway.ts`) |
+| `src/web/` | Web platform: the in-process tool gateway installed on `ctx` in the browser |
+| `src/renderer/` | Shared, platform-agnostic UI: the `App` + the boot (`main.tsx`), loaded by both the browser and the Electron window |
 | `src/preload/` | Context-isolated bridge; exposes `window.harness` |
 | `src/bridge.ts` | IPC contract: `IPC` channel constants + `HarnessApi` interface |
-| `src/core/` | Host-agnostic domain logic (sessions engine, tools, workspaces, approvals, settings/media/agents stores) |
+| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + tool gateway), config, sessions engine, tools engine, workspaces, approvals, settings/media/agents stores |
 | `src/llm/` | The model layer: `client.call()` (service-named calls), Provider classes per `<modality>/<type>`, response handlers |
 | `src/lib/` | Renderer utilities: store factory, event bus, i18n, router, registry, errors, ui state |
 | `src/lib/logger/` | `Logger` port (scoped children, structured events) + console / memory sinks |
@@ -85,7 +93,7 @@ Deep dives, one per subsystem — read the one for the area you're touching
 | [architecture/state.md](architecture/state.md) | Store factory + hooks pattern; the typed event bus |
 | [architecture/sessions.md](architecture/sessions.md) | Sessions engine module shape; the turn loop; sub-agents; media resend window |
 | [architecture/tools.md](architecture/tools.md) | Tool system: gated vs permissionless vs driver-level; virtual root; caps |
-| [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, CallTarget, Provider classes, response handlers, heal |
+| [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, ConfigLLM, Provider classes, response handlers, heal |
 | [architecture/ui.md](architecture/ui.md) | Contribution registry/regions, routing, agents UX, UI patterns, i18n |
 | [architecture/storage.md](architecture/storage.md) | Durable persistence: key scheme, shapes, accessor surface |
 
@@ -124,8 +132,8 @@ ADR-0011); they are not restated below.
 - **Storage namespace.** The app prefix is `v84-harness:` (localStorage keys
   `v84-harness:<feature>`); the IndexedDB database is `v84-harness` with a
   `kv` store.
-- **Known seed.** `randomSeed()` in `core/tools/media.ts` is a generation seed,
-  not an id (constants-and-identifiers.md rule 4).
+- **Known seed.** `randomSeed()` in `core/tools/helpers/generation.ts` is a
+  generation seed, not an id (constants-and-identifiers.md rule 4).
 - **Naming (repo-specific).** Files: `camelCase.ts` modules, `PascalCase.tsx`
   components. Tools: `<name>Tool` const in `<name>.ts`. LLM providers: the class
   is always `Provider` in `llm/providers/<modality>/<type>.ts` (the path IS the

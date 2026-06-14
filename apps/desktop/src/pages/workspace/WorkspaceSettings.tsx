@@ -12,18 +12,20 @@ import {
   updateWorkspace,
   type Workspace,
 } from "../../core/workspaces.ts";
-import { ALL_TOOLS, type GatedTool, type ToolMode } from "../../core/tools/types.ts";
+import { type GatedTool, type ToolPermission } from "../../core/tools/types.ts";
+import { useToolDescriptors } from "../../core/tools/permissions.ts";
 
 // Add/edit workspace modal — edits a local draft copy; Save commits to the store.
 export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean; onClose: () => void }) {
   const { workspace, isNew, onClose } = props;
   const { t } = useTranslation();
   const provider = useProvider();
+  const gatedTools = useToolDescriptors().filter((d) => d.permissioned);
   const [draft, setDraft] = useState<Workspace>(workspace);
 
   const set = <K extends keyof Workspace>(key: K, value: Workspace[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
-  const setTool = (tool: GatedTool, mode: ToolMode) =>
+  const setTool = (tool: GatedTool, mode: ToolPermission) =>
     setDraft((d) => ({ ...d, tools: { ...d.tools, [tool]: mode } }));
 
   function save() {
@@ -99,10 +101,10 @@ export function WorkspaceSettings(props: { workspace: Workspace; isNew: boolean;
           <div className="text-sm font-medium text-neutral-700">{t("workspace.tools")}</div>
           <p className="mb-2 text-xs text-neutral-500">{t("workspace.toolsHint")}</p>
           <div className="space-y-1">
-            {ALL_TOOLS.map((tool) => (
-              <div key={tool} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-neutral-50">
-                <span className="text-sm text-neutral-700">{tool}</span>
-                <ToolModePicker value={draft.tools[tool]} onChange={(m) => setTool(tool, m)} />
+            {gatedTools.map((d) => (
+              <div key={d.name} className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-neutral-50">
+                <span className="text-sm text-neutral-700">{d.name}</span>
+                <ToolModePicker value={draft.tools[d.name] ?? d.defaultMode} onChange={(m) => setTool(d.name, m)} />
               </div>
             ))}
           </div>

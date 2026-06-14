@@ -6,6 +6,7 @@ import { getConfig } from "./config/index.ts";
 import { syncMainToConfigLLM } from "./settings.ts";
 import { syncMediaToConfigLLM } from "./media.ts";
 
+// The renderer ctx — config (live) + the llm client. The boot installs its `tools` gateway per platform.
 syncMainToConfigLLM();
 syncMediaToConfigLLM();
 

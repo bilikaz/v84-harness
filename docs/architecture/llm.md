@@ -20,7 +20,7 @@ client.call({ service, messages, system?, tools?, params?, signal?, handler?, ma
 | Term | Meaning |
 |------|---------|
 | **service** | What the caller names: `main` (the chat provider) or a media slot (`imageGen`, `videoGen`, `imageRec`, `videoRec`, `audioGen`, `audioRec`). `SERVICE_MODALITY` maps each to its modality — recognition is a *text* interaction over a vision model; generation is its medium. |
-| **CallTarget** | What a service resolves to — the unified `{provider, model}` shape (ADR-0030): `provider: {name, type, baseUrl, apiKey?}` (the configured block; `type` is the matrix key) and `model: {id?, maxTokens?, reasoningEffort?, thinkingBudget?, contextLength?}`. |
+| **ConfigLLM** | What a service resolves to — the unified `{provider, model}` shape, owned by config (ADR-0031; formerly `CallTarget`, ADR-0030): `provider: {name, type, baseUrl, apiKey?}` (the configured block; `type` is the matrix key) and `model: {id?, maxTokens?, reasoningEffort?, thinkingBudget?, contextLength?}`. |
 | **ProviderType** | The kind of server a configured provider is: `openai \| anthropic \| gemini \| generate`. One axis for the whole layer — a chat config's "openai" and a media endpoint's "openai" are the same type. |
 | **Provider** (runtime) | A class constructed per call with `(target, ctx)`; one `call(handler)` that owns the whole **request side** — wire and time. |
 | **ResponseHandler** | The **response side**: consumes the interaction, validates, may side-effect, returns the caller's shape. Throws `HealError` to make the cycle re-prompt. |
@@ -31,12 +31,12 @@ client.call({ service, messages, system?, tools?, params?, signal?, handler?, ma
 
 ```mermaid
 flowchart LR
-    A["call({service, …})"] --> R["1 resolve\nConfigSource: service → CallTarget"]
+    A["call({service, …})"] --> R["1 resolve\nConfigSource: service → ConfigLLM"]
     R --> L["2 load\nfactory: providers/&lt;modality&gt;/&lt;type&gt;.ts\n→ new Provider(target, ctx)"]
     L --> C["3 cycle\nprovider.call(handler)\nHealError → correction turn → re-run"]
 ```
 
-1. **resolve** — `config.resolve(service)` through the injected `ConfigSource`,
+1. **resolve** — `ctx.resolve(service)` through the injected `ConfigSource`,
    the ONE seam to wherever configuration lives. `null` → a clean "no model is
    assigned" error.
 2. **load** — the registry IS the folder layout: the service's modality + the
@@ -104,21 +104,20 @@ stay driver-side).
 
 ## Where configuration lives
 
-The llm layer never reads stores. Each config home builds a client over its
-own `ConfigSource`, and the stored shapes already ARE the unified format
-(ADR-0030 — no seam translations):
+The llm layer never reads stores or config — it is handed a `ConfigSource`
+(`{ resolve(service) }`) and resolves through it. The app's `ctx` is that source
+(ADR-0032): it carries the config aggregate + the one client, and `ctx.resolve`
+reads `config.llm[service]`. Config is the sole source of truth (ADR-0031); the
+resolved entry is `ConfigLLM` (the former `CallTarget`, now owned by config), and
+the stores already hold that shape (no seam translations):
 
-- **renderer** (`core/client.ts`): the singleton over the live stores —
-  `main` → the settings store (`MainSettings extends CallTarget`), media
-  services → the registry's `resolveMediaProvider()` (`MediaSlotConfig
-  extends CallTarget`, tool-side settings riding on the model half).
-  `maxHeals` defaults come from app config, read per call.
-- **main process** (`core/tools/client.ts`): tools receive a plain-JSON
-  `ToolConfig` snapshot (`{main, media}` — resolved by the renderer at turn
-  start) over the bridge; `clientFromToolConfig()` mints a client whose
-  resolve is a pass-through pick. `ToolCtx.client` is process-local (like
-  `signal`); the dispatcher injects it per call.
-- **tests**: a fixture object inline.
+- **renderer** (`core/init.ts`): the singleton `ctx = new Ctx(getConfig)` over
+  live config; `maxHeals` defaults read app config per call.
+- **main process**: the workspace runner receives a plain-JSON
+  `ToolWire { cwd, config }` over the bridge and builds `new Ctx(wire.config)`,
+  whose resolve is a pass-through pick. The client and signal are process-local —
+  re-minted main-side, neither crosses IPC.
+- **tests**: `new Ctx({ app, llm })` from a fixture config.
 
 ## Heal, in two places by design
 

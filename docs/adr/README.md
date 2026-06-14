@@ -21,7 +21,7 @@ loading. Its index row below stays.
 | [0004](0004-store-pattern.md) | `createStore` factory + `useSyncExternalStore` hooks | accepted |
 | [0005](0005-event-bus.md) | Typed, domain-scoped event bus via declaration merging | accepted |
 | [0006](0006-provider-abstraction.md) | Provider adapters behind a unified `StreamEvent` stream | accepted (registry clause superseded by 0029) |
-| [0007](0007-tool-system.md) | Tool system: gated vs permissionless, virtual root, never-throw | accepted |
+| [0007](0007-tool-system.md) | Tool system: gated vs permissionless, virtual root, never-throw | accepted (virtual-root marker + registration superseded by 0033) |
 | [0008](0008-ui-registry-routing.md) | UI contribution registry (Slot regions) + hash router | accepted |
 | [0009](0009-i18n.md) | i18n via i18next, en/lt key parity | accepted |
 | [0010](0010-adopt-shared-conventions.md) | Adopt the shared conventions set (with recorded deviations) | accepted |
@@ -32,7 +32,7 @@ loading. Its index row below stays.
 | [0015](0015-prompt-assets.md) | Prompt assets: English-only `pt()` catalog, outside i18n | accepted |
 | [0016](0016-workspace-isolation-field.md) | Workspace isolation field (`worktree` \| `direct`) | **debatable — no concept yet** |
 | [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | accepted (first-paint clause superseded by 0021) |
-| [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted |
+| [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted (tool names refined by 0033) |
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
 | [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | accepted |
@@ -44,7 +44,11 @@ loading. Its index row below stays.
 | [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | accepted |
 | [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected ConfigSource; heal cycle; tool calls stay driver-side | accepted |
 | [0029](0029-provider-classes-folder-factory.md) | Provider classes resolved by the folder-layout factory; response handlers are response-side only | accepted |
-| [0030](0030-unified-call-target.md) | One model-data format: `CallTarget {provider, model}` held end to end (stores included, no migrations) | accepted |
+| [0030](0030-unified-call-target.md) | One model-data format: `CallTarget {provider, model}` held end to end (stores included, no migrations) | accepted (CallTarget → ConfigLLM / ownership moved to config by 0031) |
+| [0031](0031-config-sole-source-of-truth.md) | Config as the sole source of truth — domains under one roof, owners push | proposed |
+| [0032](0032-ctx-main-data-carrier.md) | Ctx — the one data carrier (config + the single LLM client + the platform tool gateway) | proposed |
+| [0033](0033-tools-registry-folder-by-permission.md) | Tools — host-agnostic registry, dynamic permission tiers, per-platform execution | proposed |
+| [0034](0034-platform-hosts-over-agnostic-core.md) | Platform hosts (electron / web) over a host-agnostic core + shared renderer | proposed |
 
 ## Needs review / important missing parts
 
