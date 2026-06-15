@@ -30,8 +30,21 @@ const MAX_TRANSPORT_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 15_000;
 
+// Capacity failures are DETERMINISTIC in the payload: the prompt is too big for
+// the context window, or it OOM'd the server (which vLLM may report as a 500, not
+// a 400). Re-sending the identical giant prompt fails the same way and just
+// re-bombards an already-struggling server — so these are terminal, not retryable,
+// whatever the status code. Matched on the error body (there's no structured
+// reason field); the marker list is the tunable part.
+const TERMINAL_CAPACITY = /context[ _]?length|maximum context|too long|max_num_batched_tokens|out of memory|cuda.*memory|kv ?cache|too many tokens|exceeds? the (model|maximum)/i;
+
+function isCapacityError(e: unknown): boolean {
+  return e instanceof HttpError && TERMINAL_CAPACITY.test(e.message);
+}
+
 function isRetryable(e: unknown): boolean {
   if ((e as DOMException)?.name === "AbortError") return false;
+  if (isCapacityError(e)) return false; // re-sending re-fails + re-bombards the server
   if (e instanceof HttpError) return e.status === 408 || e.status === 429 || e.status >= 500;
   return true;
 }
@@ -69,7 +82,12 @@ export async function* withRetry(
       if (signal.aborted) throw e;
       const msg = errorMessage(e);
       if (attempt >= MAX_TRANSPORT_RETRIES || !isRetryable(e)) {
-        yield { type: "error", message: msg };
+        yield {
+          type: "error",
+          message: isCapacityError(e)
+            ? `The conversation is too large for the model — it exceeded the context window or the server ran out of memory. Shorten the message, remove attachments, or start a new chat. (${msg})`
+            : msg,
+        };
         return;
       }
       const delay = retryDelay(e, attempt);

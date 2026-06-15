@@ -7,6 +7,24 @@ import { Thinking } from "./Thinking.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 import type { FileAttachment, Image, Video, Role, ToolCallRequest } from "../../lib/types.ts";
 
+// "14:32" today, else "Jun 11 14:32". Full date-time on hover (the title attr).
+function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function Stamp({ ts }: { ts?: number }) {
+  if (!ts) return null;
+  return (
+    <span className="px-1 text-[10px] text-neutral-400" title={new Date(ts).toLocaleString()}>
+      {fmtTime(ts)}
+    </span>
+  );
+}
+
 // One transcript entry; memoized via sameMessage so only the live streaming message re-renders.
 function MessageImpl({
   role,
@@ -20,6 +38,7 @@ function MessageImpl({
   toolImages,
   toolVideo,
   toolChildren,
+  createdAt,
   streaming,
 }: {
   role: Role;
@@ -33,6 +52,7 @@ function MessageImpl({
   toolImages?: Map<string, Image[]>;
   toolVideo?: Map<string, Video[]>;
   toolChildren?: Map<string, string[]>; // toolCallId → sub-agent sessions (RunAgent's doors)
+  createdAt?: number;
   streaming: boolean;
 }) {
   if (role === "user") {
@@ -69,6 +89,7 @@ function MessageImpl({
           {text && (
             <div className="rounded-2xl bg-neutral-100 px-4 py-2.5 text-sm text-neutral-800">{text}</div>
           )}
+          <Stamp ts={createdAt} />
         </div>
       </div>
     );
@@ -92,6 +113,7 @@ function MessageImpl({
           childSessionIds={toolChildren?.get(c.id)}
         />
       ))}
+      <Stamp ts={createdAt} />
     </div>
   );
 }
@@ -108,6 +130,7 @@ function sameMessage(prev: MessageProps, next: MessageProps): boolean {
     prev.video !== next.video ||
     prev.files !== next.files ||
     prev.toolCalls !== next.toolCalls ||
+    prev.createdAt !== next.createdAt ||
     prev.streaming !== next.streaming
   ) {
     return false;

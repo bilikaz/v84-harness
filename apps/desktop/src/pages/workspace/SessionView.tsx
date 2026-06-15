@@ -18,7 +18,7 @@ import { getAgent } from "../../core/agents.ts";
 import { useProvider } from "../../core/settings.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { fmtTokens } from "../../lib/format.ts";
-import { toggleRightPanel, useRightPanel } from "../../lib/ui.ts";
+import { toggleRightPanel, useRightPanel } from "../../core/ui.ts";
 import { InlineEdit } from "../../components/InlineEdit.tsx";
 import { Composer } from "./Composer.tsx";
 import type { Attachments } from "../../core/sessions/index.ts";
@@ -193,6 +193,7 @@ export function SessionView() {
                 images={m.images}
                 video={m.video}
                 files={m.files}
+                createdAt={m.createdAt}
                 toolCalls={m.toolCalls}
                 results={toolResults}
                 toolImages={toolImages}

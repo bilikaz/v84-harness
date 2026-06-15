@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { openLightbox } from "../lib/ui.ts";
+import { openLightbox } from "../core/ui.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
 import { useCtx } from "../renderer/ctx.tsx";
 

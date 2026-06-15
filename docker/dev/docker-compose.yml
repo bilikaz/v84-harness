@@ -1,0 +1,187 @@
+name: v84
+# Dev compose for the harness knowledge service (apps/knowledge).
+#
+# Services route through Traefik on `*.localhost`:
+#   knowledge.localhost   Hono backend (apps/knowledge) — the harness remote storage
+#   adminer.localhost     MariaDB browser
+#   traefik.localhost     Traefik dashboard
+#
+# Dev only. In prod Traefik/DB run elsewhere; this stack is the local copy.
+
+services:
+  # Reverse proxy
+  traefik:
+    container_name: v84-traefik
+    image: traefik:v3.6.12
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=v84"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - dev
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=web"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+
+  # MariaDB — users, tokens, kv (chats + media)
+  db:
+    container_name: v84-db
+    image: mariadb:11
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DATABASE_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DATABASE_NAME}
+      MYSQL_USER: ${DATABASE_USER}
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - dev
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    env_file:
+      - .env
+
+  # MariaDB admin UI
+  adminer:
+    container_name: v84-adminer
+    image: adminer:latest
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`adminer.localhost`)"
+      - "traefik.http.routers.adminer.entrypoints=web"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+    networks:
+      - dev
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Hono backend — apps/knowledge. Source bind-mounted for hot reload.
+  knowledge:
+    container_name: v84-knowledge
+    build:
+      context: ../../
+      dockerfile: docker/dev/knowledge.Dockerfile
+    volumes:
+      - ../../apps/knowledge:/app/apps/knowledge
+      - /app/node_modules
+      - /app/apps/knowledge/node_modules
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.knowledge.rule=Host(`knowledge.localhost`)"
+      - "traefik.http.routers.knowledge.entrypoints=web"
+      - "traefik.http.services.knowledge.loadbalancer.server.port=${API_PORT:-3000}"
+    networks:
+      - dev
+    depends_on:
+      db:
+        condition: service_healthy
+      opensearch:
+        condition: service_started
+      embeddings:
+        condition: service_started
+      inngest:
+        condition: service_started
+    env_file:
+      - .env
+
+  # OpenSearch — the knowledgebase vector index (k-NN). Single-node, security off (dev only).
+  opensearch:
+    container_name: v84-opensearch
+    image: opensearchproject/opensearch:2.17.1
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - dev
+
+  # OpenSearch Dashboards — the KB viewer: Discover (browse records + chunks) + Dev
+  # Tools console (run k-NN/regex queries). Configured for the security-off cluster.
+  dashboards:
+    container_name: v84-dashboards
+    image: opensearchproject/opensearch-dashboards:2.17.1
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboards.rule=Host(`dashboards.localhost`)"
+      - "traefik.http.routers.dashboards.entrypoints=web"
+      - "traefik.http.services.dashboards.loadbalancer.server.port=5601"
+    networks:
+      - dev
+    depends_on:
+      opensearch:
+        condition: service_started
+
+  # Embedding server (HuggingFace TEI, OpenAI-compatible /v1/embeddings on :80). The
+  # model is docker config; first boot downloads it (slow). Swap EMBEDDING_HF_MODEL +
+  # the api's EMBED_DIM/prefixes together — the index dimension is fixed at create time.
+  embeddings:
+    container_name: v84-embeddings
+    # cpu-1.5's hf-hub 0.3.2 dies on a HF redirect ("relative URL without a base");
+    # the newer build fixes the downloader. Pin to a specific cpu-N.M once confirmed.
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: ["--model-id", "${EMBEDDING_HF_MODEL:-intfloat/multilingual-e5-small}"]
+    volumes:
+      - embeddings-data:/data
+    networks:
+      - dev
+
+  # Inngest — async ingestion orchestration (chunk + embed pipeline). The api's
+  # /inngest webhook is signature-gated by INNGEST_SIGNING_KEY. Dashboard at inngest.localhost.
+  inngest:
+    container_name: v84-inngest
+    image: inngest/inngest:latest
+    command: ["inngest", "start"]
+    environment:
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY}
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY}
+    volumes:
+      - inngest-data:/var/inngest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.inngest.rule=Host(`inngest.localhost`)"
+      - "traefik.http.routers.inngest.entrypoints=web"
+      - "traefik.http.services.inngest.loadbalancer.server.port=8288"
+    networks:
+      - dev
+
+volumes:
+  db-data:
+  opensearch-data:
+  embeddings-data:
+  inngest-data:
+
+networks:
+  dev:
+    driver: bridge
+    name: v84

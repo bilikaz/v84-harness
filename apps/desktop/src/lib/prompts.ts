@@ -17,6 +17,15 @@ const PROMPTS: Tree = {
       "Example paths: `/workspace/src/index.ts`, `notes.md`. " +
       "Bash runs in the same root — use relative paths or `/workspace/…`.",
   },
+  memory: {
+    system:
+      "You have a persistent memory (a shared knowledgebase) through the memory tools. " +
+      "When you learn something worth keeping — facts, decisions, the user's preferences, project details — save it with " +
+      "SaveMemory (scope `private` for just this user, `public` to share with everyone). " +
+      "When you need information that isn't in this conversation, search first with SearchMemory before asking or assuming: " +
+      "pass a regex as `sparse` and/or a natural-language description as `dense`. SearchMemory returns snippets + record ids; " +
+      "read a full record with GetMemory, and use EditMemory / DeleteMemory to keep it current.",
+  },
   chatTitle: {
     user:
       "Generate a concise 3-6 word title for THIS conversation. Do not add conversation word in it" +

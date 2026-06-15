@@ -34,6 +34,7 @@ export interface Message {
   childSessionIds?: string[];
   summary?: boolean;
   hidden?: boolean;
+  createdAt?: number; // epoch ms at creation (optional — pre-existing messages lack it)
 }
 
 export interface SessionTool {

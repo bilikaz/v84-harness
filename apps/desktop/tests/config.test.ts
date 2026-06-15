@@ -1,8 +1,11 @@
 // Config loader — overrides deep-merge over defaults and EVERY value is validated at the read seam (regression net for the imageMaxDim:0 → 1×1 bug class).
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CONFIG_DEFAULTS, effectiveImageMaxDim, getAppConfig, setConfigOverrides } from "../src/core/config/index.ts";
+import { initTestCtx } from "./ctx.ts";
 
+// App config is a ctx-injected consumer now (ADR-0037) — build a fresh one per test.
+beforeEach(() => initTestCtx());
 afterEach(() => setConfigOverrides({}));
 
 describe("getAppConfig", () => {

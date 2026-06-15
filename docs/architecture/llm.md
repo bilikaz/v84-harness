@@ -110,7 +110,11 @@ is handed an `LLMConfigResolver` (`{ resolve(service): LLMConfig | null }`) and
 resolves through it. The app's `ctx` is that resolver (ADR-0032): `ctx.resolve`
 reads `config.llm[service]`. Config is the sole source of truth (ADR-0031); the
 resolved entry is `LLMConfig` (the former `CallTarget`, now owned by config), and
-the stores already hold that shape (no seam translations):
+the stores already hold that shape (no seam translations). `config.llm` itself is
+now **derived** — the unified Settings registry (providers → models → per-service
+assignments) re-resolves every service to an `LLMConfig` and writes the
+`config.llm` slice on each change, so `main` and the media services come from one
+place ([ADR-0042](../adr/0042-unified-settings-registry.md)):
 
 - **renderer** (`web/init.ts` / `electron/init.ts`): the singleton
   `ctx = new Ctx(new StorageEngine(...))`; the `Ctx` constructor (`core/ctx.ts`)

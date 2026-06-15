@@ -1,7 +1,7 @@
 import { Download, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { closeLightbox, useLightbox } from "../lib/ui.ts";
+import { closeLightbox, useLightbox } from "../core/ui.ts";
 import { useEscapeKey } from "../lib/hooks.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
 import { useCtx } from "../renderer/ctx.tsx";
