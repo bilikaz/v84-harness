@@ -21,12 +21,10 @@ describe("cap", () => {
 });
 
 describe("execTool dispatcher", () => {
-  it("rejects an empty tool name with the available list", async () => {
+  it("rejects an empty tool name as an unknown tool", async () => {
     const r = await execTool({ id: "c1", name: "", arguments: "{}" }, CTX);
     expect(r.ok).toBe(false);
-    expect(r.output).toMatch(/empty tool name/);
-    expect(r.output).toMatch(/Read/);
-    expect(r.output).toMatch(/Bash/);
+    expect(r.output).toMatch(/unknown tool ""/);
   });
 
   it("rejects an unknown tool by name", async () => {

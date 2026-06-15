@@ -6,12 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { ImageLoad } from "../src/core/tools/workspace/imageLoad.ts";
 import { VideoLoad } from "../src/core/tools/workspace/videoLoad.ts";
-import type { Ctx } from "../src/core/ctx.ts";
+import { createClient } from "../src/llm/index.ts";
 
-// Loaders only touch cwd; the ctx is unused, so a stub suffices.
-const stubCtx = {} as Ctx;
-const loadImageTool = { execute: (args: Record<string, unknown>, { cwd }: { cwd: string }) => new ImageLoad(stubCtx, cwd).run(args) };
-const loadVideoTool = { execute: (args: Record<string, unknown>, { cwd }: { cwd: string }) => new VideoLoad(stubCtx, cwd).run(args) };
+// Loaders only touch cwd; the llm client is unused, so a null-resolver client suffices.
+const llm = createClient({ resolve: () => null });
+const loadImageTool = { execute: (args: Record<string, unknown>, { cwd }: { cwd: string }) => new ImageLoad(llm).run(args, cwd) };
+const loadVideoTool = { execute: (args: Record<string, unknown>, { cwd }: { cwd: string }) => new VideoLoad(llm).run(args, cwd) };
 
 let root: string;
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
