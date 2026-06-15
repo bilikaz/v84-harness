@@ -74,6 +74,13 @@
     "connected": "Connected",
     "connectedDesc": "Link the company system — shared knowledge & sync.",
     "soon": "soon",
+    "session": "Session",
+    "endpointPlaceholder": "Knowledge API URL",
+    "password": "Password",
+    "login": "Log in",
+    "register": "Register",
+    "logout": "Log out",
+    "loginError": "Could not connect: {{error}}",
     "avatar": "Avatar",
     "username": "Username",
     "usernamePlaceholder": "Shown in the sidebar"

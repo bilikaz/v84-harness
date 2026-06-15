@@ -1,9 +1,10 @@
-import { createStore } from "../lib/store.ts";
+import { Consumer } from "./storage/consumer.ts";
+import type { Ctx } from "./ctx.ts";
 import { type ToolName, type ToolPermission } from "./tools/types.ts";
 
-// Agents store — reusable playbooks (system + user markdown) executed as sessions.
+// Agents consumer — reusable playbooks (system + user markdown) executed as sessions.
+// Persisted through ctx.storage like every other consumer.
 const KEY = "v84-harness:agents";
-const LEGACY_KEY = "v84-harness:procedures"; // pre-rename storage; migrated on first load
 
 // An agent's tool CEILING — the effective per-call permission is the STRICTER of
 // this and the workspace policy (min); an agent can restrict but never extend it.
@@ -64,55 +65,50 @@ function normalize(p: Partial<Agent>): Agent {
   };
 }
 
-function read(key: string): Agent[] | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.filter(Boolean).map(normalize);
-    }
-  } catch {
-    /* ignore */
+class Agents extends Consumer<Agent[]> {
+  constructor(ctx: Ctx) {
+    super(ctx, KEY, SEED);
   }
-  return null;
+
+  protected override parse(raw: string): Agent[] {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map(normalize) : this.defaults;
+  }
+
+  list(): Agent[] {
+    return this.state;
+  }
+  find(id: string): Agent | undefined {
+    return this.state.find((a) => a.id === id);
+  }
+  forContext(hasWorkspace: boolean): Agent[] {
+    return this.state.filter((a) => hasWorkspace || !a.workspace);
+  }
+  create(name: string): string {
+    const a: Agent = { id: crypto.randomUUID(), name, description: "", system: "", user: "", workspace: false, tools: { ...AGENT_TOOLS_DEFAULT } };
+    this.commit([...this.state, a]);
+    return a.id;
+  }
+  save(id: string, patch: Partial<Omit<Agent, "id">>): void {
+    this.commit(this.state.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  }
+  remove(id: string): void {
+    this.commit(this.state.filter((a) => a.id !== id));
+  }
+  useList = (): Agent[] => this.use();
 }
 
-const store = createStore<Agent[]>(KEY, SEED, () => read(KEY) ?? read(LEGACY_KEY));
-
-export function getAgents(): Agent[] {
-  return store.get();
+let inst: Agents;
+export function initAgents(ctx: Ctx): Agents {
+  inst = new Agents(ctx);
+  return inst;
 }
 
-export function createAgent(name: string): string {
-  const a: Agent = {
-    id: crypto.randomUUID(),
-    name,
-    description: "",
-    system: "",
-    user: "",
-    workspace: false,
-    tools: { ...AGENT_TOOLS_DEFAULT },
-  };
-  store.set([...store.get(), a]);
-  return a.id;
-}
-
-export function getAgent(id: string): Agent | undefined {
-  return store.get().find((a) => a.id === id);
-}
-
-export function agentsForContext(hasWorkspace: boolean): Agent[] {
-  return store.get().filter((a) => hasWorkspace || !a.workspace);
-}
-
-export function saveAgent(id: string, patch: Partial<Omit<Agent, "id">>): void {
-  store.set(store.get().map((a) => (a.id === id ? { ...a, ...patch } : a)));
-}
-
-export function deleteAgent(id: string): void {
-  store.set(store.get().filter((a) => a.id !== id));
-}
-
-export function useAgents(): Agent[] {
-  return store.use();
-}
+// Module facades — the public API; thin delegates to the ctx-injected singleton.
+export const getAgents = (): Agent[] => inst.list();
+export const getAgent = (id: string): Agent | undefined => inst.find(id);
+export const agentsForContext = (hasWorkspace: boolean): Agent[] => inst.forContext(hasWorkspace);
+export const createAgent = (name: string): string => inst.create(name);
+export const saveAgent = (id: string, patch: Partial<Omit<Agent, "id">>): void => inst.save(id, patch);
+export const deleteAgent = (id: string): void => inst.remove(id);
+export const useAgents = (): Agent[] => inst.useList();

@@ -1,9 +1,11 @@
-// The LLM config — holds a resolved entry per service. Passive: the parties that own the editable settings
-// write into it; config knows nothing of how the values arrived. The service vocabulary (ModelService) is
-// owned by the llm layer and imported here.
+// The LLM config — holds a resolved entry per service. Passive + transient:
+// Settings derives it and writes it in; the llm client reads it. Never persisted
+// (it's pure derived state), so it's a plain reactive module — not a storage consumer.
+
+import { useSyncExternalStore } from "react";
 
 import type { ProviderKind, ReasoningEffort, ModelService } from "../../llm/types.ts";
-import { createStore } from "../../lib/store.ts";
+import { createListeners } from "../storage/consumer.ts";
 
 export interface LLMConfig {
   provider: {
@@ -27,27 +29,28 @@ export interface LLMConfig {
 
 export type LLMConfigList = Partial<Record<ModelService, LLMConfig>>;
 
-// Transient: rebuilt from the owning stores on load, never persisted itself.
-const store = createStore<LLMConfigList>(null, {});
+let state: LLMConfigList = {};
+const { subscribe, notify } = createListeners();
 
 export function getLLMConfigList(): LLMConfigList {
-  return store.get();
+  return state;
 }
 
 export function getLLMConfig(service: ModelService): LLMConfig | null {
-  return store.get()[service] ?? null;
+  return state[service] ?? null;
 }
 
 export function useLLMConfigList(): LLMConfigList {
-  return store.use();
+  return useSyncExternalStore(subscribe, () => state, () => state);
 }
 
 // Merge a slice; undefined/null value clears that service's slot.
 export function writeLLMConfig(patch: LLMConfigList): void {
-  const next = { ...store.get() };
+  const next = { ...state };
   for (const [service, entry] of Object.entries(patch)) {
     if (entry) next[service as ModelService] = entry;
     else delete next[service as ModelService];
   }
-  store.set(next);
+  state = next;
+  notify();
 }

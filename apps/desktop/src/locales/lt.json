@@ -74,6 +74,13 @@
     "connected": "Prisijungta",
     "connectedDesc": "Prijungti įmonės sistemą — bendros žinios ir sinchronizacija.",
     "soon": "netrukus",
+    "session": "Sesija",
+    "endpointPlaceholder": "Žinių API adresas",
+    "password": "Slaptažodis",
+    "login": "Prisijungti",
+    "register": "Registruotis",
+    "logout": "Atsijungti",
+    "loginError": "Nepavyko prisijungti: {{error}}",
     "avatar": "Avataras",
     "username": "Vartotojo vardas",
     "usernamePlaceholder": "Rodomas šoninėje juostoje"

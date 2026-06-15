@@ -8,6 +8,7 @@ import { SessionEngine } from "../src/core/sessions/engine.ts";
 import { toolFilter } from "../src/electron/tools.ts";
 import { getConfig } from "../src/core/config/index.ts";
 import type { Ctx } from "../src/core/ctx.ts";
+import { initTestCtx } from "./ctx.ts";
 
 // sessionToolModes is an engine method now: it resolves the policy through ctx.tools.filter. Drive the real
 // engine with a gateway backed by the real (electron) tool registry — only .filter is exercised here.
@@ -20,6 +21,7 @@ const engine = new SessionEngine({ tools: gateway } as unknown as Ctx);
 const modesFor = (sid: string) => engine.sessionToolModes(getSession(sid)!);
 
 function reset(): void {
+  initTestCtx(); // agents + workspaces are ctx-injected consumers now (ADR-0037)
   for (const a of getAgents()) deleteAgent(a.id);
   for (const w of getWorkspaces()) deleteWorkspace(w.id);
 }

@@ -35,7 +35,7 @@ import {
   useWorkspaces,
   type Workspace,
 } from "../../core/workspaces.ts";
-import { useAccount } from "../../lib/account.ts";
+import { useAccount } from "../../core/account.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { LANGUAGES, setLanguage } from "../../lib/i18n.ts";
 import { WorkspaceSettings } from "./WorkspaceSettings.tsx";

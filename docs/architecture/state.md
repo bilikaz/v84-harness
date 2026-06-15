@@ -4,28 +4,47 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
 
 ## State management
 
-Two building blocks in `lib/store.ts`:
+The reactivity + persistence layer is `core/storage/consumer.ts`
+([ADR-0037](../adr/0037-reactive-consumer-over-injected-storage.md), which
+supersedes the old `lib/store.ts` `createStore` factory):
 
-- `createListeners()` — bare subscription registry, for stores with irregular needs.
-- `createStore<T>(key, defaults, load?)` — the standard factory: localStorage
-  persistence (a `null` key means transient), defaults merge, optional `load()`
-  shape-migration hook, `subscribe`/`get`/`set`, and React bindings `use()` /
-  `useSelect()` built on `useSyncExternalStore`.
+- `createListeners()` — the bare subscribe/notify primitive. Transient stores
+  that aren't Consumers (config/llm, approvals, the lightbox) import it directly.
+- `Consumer<T>` — in-memory reactive state persisted **through `ctx.storage`**
+  ([ADR-0035](../adr/0035-storage-engine.md)). A subclass gives a key plus its
+  domain methods (and may override `parse` for normalization/migration);
+  `key=null` is transient (reactive, not persisted). `commit(next)` sets state →
+  persists → notifies; `use()` / `useSelect(sel)` are the `useSyncExternalStore`
+  bindings. `Settings`, `Workspaces`, `Agents`, app config, and ui state are
+  subclasses, constructed with `ctx` in each platform `init()`
+  (`initSettings(ctx)` …).
 
-Conventions ([ADR-0004](../adr/0004-store-pattern.md)):
+Every `Consumer` registers itself; `hydrateConsumers()` re-reads them all from the
+*current* backend — called once at init, and again on each connection change.
+Login/logout swaps the backend behind `ctx.storage` and re-hydrates, with no
+reload ([ADR-0038](../adr/0038-storage-backend-swappable-at-runtime.md) /
+[ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md)).
 
-- Every store exposes plain getter/mutator functions plus `use*()` hooks.
-  Components consume hooks only — never the store object directly.
-- Mutations are immutable (spread/copy) and end with `notify()`.
-- `core/sessions/store.ts` is the one sanctioned deviation: it uses
-  `createListeners()` directly because its persistence is granular and async
-  (index / per-session messages / media blobs —
-  [ADR-0021](../adr/0021-granular-session-persistence.md)). It doesn't reach a
-  storage backend itself: a `StorageEngine` is injected via `useStorage(...)` —
-  built per-platform in `init()` and handed to it by the `SessionEngine`
-  constructor (persistence is a no-op until then). Don't copy that shape for
-  ordinary stores. The full key scheme, shapes, and accessor surface are charted
-  in [storage.md](storage.md).
+Conventions:
+
+- Every store exposes plain getter/command facades plus `use*()` hooks. Components
+  consume hooks only — never the consumer object directly. The module facade keeps
+  call sites stable.
+- Mutations go through `commit()` (immutable next-state → persist → notify).
+  `useSelect` selectors must return a **stable reference**; derived views are
+  cached and cleared in `notify()` (Settings does this —
+  [ADR-0042](../adr/0042-unified-settings-registry.md)), because a fresh object
+  per read loops `useSyncExternalStore`.
+- The one local-only store is `core/account.ts` — `localStorage`, synchronous,
+  deliberately NOT a Consumer: it must be readable before the backend is chosen
+  and must survive a logout
+  ([ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md)).
+- `core/sessions/store.ts` is the remaining deviation: still `createListeners()`
+  plus the `StorageEngine`'s session IO (granular index / per-session messages /
+  media blobs — [ADR-0021](../adr/0021-granular-session-persistence.md)), not yet
+  a Consumer. It re-hydrates through the same registry hook, so the connection
+  switch already covers it; the full key scheme, shapes, and accessor surface are
+  charted in [storage.md](storage.md).
 
 ## Event bus
 

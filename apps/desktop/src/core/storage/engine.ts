@@ -1,6 +1,12 @@
-// The storage engine carried on ctx.storage — the selected backend embedded, with the app's durable
-// persistence layered on top (key shapes + media-blob handling). One injected dependency for everything durable.
-// Throws on storage failure except media blob writes, which degrade per-blob (a quota-dead blob must not lose the text).
+// The storage engine carried on ctx.storage — the app's one persistence provider.
+// Generic kv (get/set/del/keys + JSON helpers) over a SWAPPABLE backend: a local
+// baseline that's always present, with a remote backend toggled on by login
+// (connect) and off by logout (disconnect). Consumers (sessions, agents,
+// workspaces, services) read/write through this; on a connection change the host
+// re-hydrates them — no reload.
+//
+// NOTE: the session-specific helpers at the bottom are a temporary tenant; they
+// move into the sessions consumer next (the engine stays domain-agnostic).
 import type { Storage } from "./types.ts";
 import type { Image, Video, Message } from "../sessions/types.ts";
 import type { SessionsIndex } from "../sessions/persistence.ts";
@@ -17,12 +23,62 @@ const mediaKey = (sid: string, id: string): string => mediaPrefix(sid) + id;
 const MEDIA_REF = "media:";
 
 export class StorageEngine {
-  constructor(private readonly backend: Storage) {}
+  private readonly local: Storage;
+  private remote: Storage | null;
+
+  constructor(local: Storage, remote: Storage | null = null) {
+    this.local = local;
+    this.remote = remote;
+  }
+
+  // The active backend: remote when connected, else the local baseline.
+  private get backend(): Storage {
+    return this.remote ?? this.local;
+  }
 
   get name(): string {
     return this.backend.name;
   }
 
+  get connected(): boolean {
+    return this.remote !== null;
+  }
+
+  // login/logout flip the backend here; the host then re-hydrates consumers.
+  connect(remote: Storage): void {
+    this.remote = remote;
+  }
+  disconnect(): void {
+    this.remote = null;
+  }
+
+  // ── Generic kv — what consumers use ──────────────────────────────────────
+  get(key: string): Promise<string | null> {
+    return this.backend.get(key);
+  }
+  set(key: string, value: string): Promise<void> {
+    return this.backend.set(key, value);
+  }
+  del(key: string): Promise<void> {
+    return this.backend.del(key);
+  }
+  keys(prefix: string): Promise<string[]> {
+    return this.backend.keys(prefix);
+  }
+  async getJSON<T>(key: string): Promise<T | null> {
+    const raw = await this.backend.get(key);
+    if (raw == null) return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+  setJSON<T>(key: string, value: T): Promise<void> {
+    return this.backend.set(key, JSON.stringify(value));
+  }
+
+  // ── Sessions (temporary tenant — moving into the sessions consumer) ───────
   async loadIndex(): Promise<SessionsIndex | null> {
     const raw = await this.backend.get(INDEX_KEY);
     if (!raw) return null;
@@ -34,9 +90,6 @@ export class StorageEngine {
     await this.backend.set(INDEX_KEY, JSON.stringify(index));
   }
 
-  // Persist one session's messages. Each media ref gets an `id` stamped IN PLACE on first persist — the stamp
-  // is what marks "blob already written", so refs shared between messages get one blob. Returns the approximate
-  // persisted footprint (messages json + live blobs).
   async saveMessages(sid: string, messages: Message[]): Promise<number> {
     const liveIds = new Set<string>();
     let mediaBytes = 0;
@@ -77,7 +130,6 @@ export class StorageEngine {
     return json.length + mediaBytes;
   }
 
-  // A missing blob (failed write in a past run) degrades to an empty URL — the transcript text always survives.
   async loadMessages(sid: string): Promise<Message[] | null> {
     const raw = await this.backend.get(msgsKey(sid));
     if (!raw) return null;

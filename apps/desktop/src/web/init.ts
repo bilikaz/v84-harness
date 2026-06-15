@@ -2,20 +2,32 @@
 // Called once from renderer/main.tsx. Returns the app context.
 
 import { Ctx } from "../core/ctx.ts";
-import { StorageEngine, type Storage } from "../core/storage/index.ts";
+import { StorageEngine, RemoteStorage, type Storage } from "../core/storage/index.ts";
+import { hydrateConsumers } from "../core/storage/consumer.ts";
 import { IdbStorage } from "./idbStorage.ts";
 import { LocalStorage } from "./localStorage.ts";
 import { ToolRegistry } from "../core/tools/registry.ts";
+import { attachAccount, authedFetch, isConnected } from "../core/account.ts";
+import { initAppConfig } from "../core/config/app.ts";
+import { initSettings } from "../core/settings.ts";
+import { initWorkspaces } from "../core/workspaces.ts";
+import { initAgents } from "../core/agents.ts";
+import { initUi } from "../core/ui.ts";
 import type { HostApi, MediaModelsResult, MediaEndpoint } from "../core/host.ts";
 import { errorMessage } from "../lib/errors.ts";
 import { rootLog } from "../lib/logger/index.ts";
 
-const MODULES = import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true });
+// Web runs all in-process (renderer): general + account tools (no workspace/fs tier).
+const MODULES = {
+  ...import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true }),
+  ...import.meta.glob<Record<string, unknown>>("../core/tools/account/*.ts", { eager: true }),
+};
 const log = rootLog.child("storage");
 
-// Best web backend first: IndexedDB (larger quota), falling back to localStorage. Log why we fell back —
-// otherwise a later quota wall on the ~5 MB localStorage tier has no diagnostic trail.
-async function pickBackend(): Promise<Storage> {
+// The local web backend baseline: IndexedDB (larger quota), falling back to
+// localStorage. Log why we fell back — a later quota wall on the ~5 MB
+// localStorage tier otherwise has no diagnostic trail.
+async function localBackend(): Promise<Storage> {
   try {
     return await IdbStorage.create();
   } catch (e) {
@@ -58,7 +70,19 @@ function browserHost(): HostApi {
 }
 
 export async function init(): Promise<Ctx> {
-  const ctx = new Ctx(new StorageEngine(await pickBackend()));
+  // Engine = local baseline + remote toggled on when the account is connected.
+  const local = await localBackend();
+  const ctx = new Ctx(new StorageEngine(local, isConnected() ? new RemoteStorage(authedFetch) : null));
+
+  // Construct the ctx-injected consumers, then load them all from the backend.
+  initAppConfig(ctx);
+  initSettings(ctx);
+  initWorkspaces(ctx);
+  initAgents(ctx);
+  initUi(ctx);
+  attachAccount(ctx);
+  await hydrateConsumers();
+
   const reg = new ToolRegistry(ctx.llm, MODULES);
   ctx.tools = {
     filter: (params) => reg.filter(params),

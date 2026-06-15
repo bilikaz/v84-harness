@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAgent, deleteAgent, getAgents, saveAgent } from "../src/core/agents.ts";
 import { agentToolSchemas, catalogAgents, listAgentsOutput, resolveAgent } from "../src/core/sessions/agentTools.ts";
+import { initTestCtx } from "./ctx.ts";
 
-// The agents store is a module singleton seeded on first import — reset before each case.
+// The agents store is a ctx-injected consumer (ADR-0037) — build a fresh one and
+// empty it before each case (clears any default seed too).
 function resetLibrary(): void {
+  initTestCtx();
   for (const a of getAgents()) deleteAgent(a.id);
 }
 

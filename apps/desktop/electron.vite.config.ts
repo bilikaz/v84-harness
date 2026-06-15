@@ -14,8 +14,10 @@ const appDir = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
   // @ts-expect-error electron-vite 5 build typings (same Vite 5 mismatch as the renderer note below).
   main: { build: { rollupOptions: { input: resolve(appDir, "src/electron/index.ts") } } },
+  // Object input names the entry "index" → out/preload/index.mjs in BOTH dev and build
+  // (the bare `output.entryFileNames` override isn't honored in dev, yielding preload.mjs).
   // @ts-expect-error electron-vite 5 build typings (same Vite 5 mismatch as the renderer note below).
-  preload: { build: { rollupOptions: { input: resolve(appDir, "src/electron/preload.ts"), output: { entryFileNames: "index.mjs" } } } },
+  preload: { build: { rollupOptions: { input: { index: resolve(appDir, "src/electron/preload.ts") } } } },
   renderer: {
     root: appDir,
     plugins: rendererConfig.plugins,

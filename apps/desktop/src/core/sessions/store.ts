@@ -5,7 +5,7 @@ import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
 import type { StorageEngine } from "../storage/engine.ts";
-import { createListeners } from "../../lib/store.ts";
+import { createListeners } from "../storage/consumer.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
 import { normalize, toMeta, type SessionsIndex } from "./persistence.ts";
@@ -249,8 +249,9 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
 }
 
 export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], video?: Video[]): void {
-  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files };
-  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
+  const at = Date.now();
+  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files, createdAt: at };
+  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: at };
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
   );
@@ -260,8 +261,9 @@ export function pushTurn(sid: string, userText: string, images?: Image[], files?
 // A hidden user message (skipped in the UI, sent to the model) carrying the
 // validation error, then a fresh assistant placeholder for the retry.
 export function pushHeal(sid: string, correction: string): void {
-  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: correction, hidden: true };
-  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
+  const at = Date.now();
+  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: correction, hidden: true, createdAt: at };
+  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: at };
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
   );
@@ -290,7 +292,7 @@ export function pushToolResult(
   video?: Video[],
   childSessionIds?: string[],
 ): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video, childSessionIds };
+  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video, childSessionIds, createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
@@ -318,6 +320,7 @@ export function pushMediaFeedback(sid: string, images?: Image[], video?: Video[]
     images,
     video,
     hidden: true,
+    createdAt: Date.now(),
   };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
@@ -337,7 +340,7 @@ export function resetLast(sid: string): void {
 }
 
 export function pushAssistant(sid: string): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "assistant", text: "" };
+  const msg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }

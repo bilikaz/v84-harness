@@ -3,20 +3,36 @@
 The "class diagram" of the sessions state: durable key scheme, in-memory state,
 and the accessor surface. Part of the map layer (present tense, updated with the
 code). Decisions behind the shapes:
-[ADR-0017](../adr/0017-storage-port-with-detected-backends.md) (the `Storage` port),
-[ADR-0020](../adr/0020-persist-at-turn-completion.md) (when writes happen),
-[ADR-0021](../adr/0021-granular-session-persistence.md) (granular keys).
+[ADR-0035](../adr/0035-storage-engine.md) (the `StorageEngine` + `Storage` port),
+[ADR-0038](../adr/0038-storage-backend-swappable-at-runtime.md) (local baseline +
+remote, swapped at runtime), [ADR-0020](../adr/0020-persist-at-turn-completion.md)
+(when writes happen), [ADR-0021](../adr/0021-granular-session-persistence.md)
+(granular keys).
+
+## Backends — local baseline + remote, swappable
+
+The `StorageEngine` (`core/storage/engine.ts`) holds a **local baseline** and an
+**optional remote** backend; the active one is `remote ?? local`. Each platform
+`init()` builds the engine with its local backend — `electron/init.ts` uses SQLite
+(`electron/sqliteStorage.ts`, a thin client over the bridge's storage IPC,
+`window.api.storage`); `web/init.ts` tries IndexedDB (`web/idbStorage.ts`) and
+falls back to localStorage (`web/localStorage.ts`). When the account is connected,
+the engine also gets a `RemoteStorage` (`core/storage/remoteStorage.ts`) — the
+same port over HTTP to the knowledge API's `/data` ([knowledge.md](knowledge.md)).
+All implement the `Storage { name, get, set, del, keys }` port
+(`core/storage/types.ts`).
+
+`ctx.storage.connect(remote)` / `disconnect()` flip the active backend at runtime;
+`core/account.ts` calls them on login/logout/toggle and then re-hydrates every
+consumer — so the *same* keys below resolve to local or to the server with no
+reload ([ADR-0038](../adr/0038-storage-backend-swappable-at-runtime.md) /
+[ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md)). The
+engine embeds the backend AND owns the durable session IO below (key shapes +
+media blobs); generic kv (`get/set/del/keys/getJSON/setJSON`) is what the
+consumers use.
 
 ## Durable tier — key scheme
 
-Each platform `init()` picks its backend — `electron/init.ts` uses SQLite
-(`electron/sqliteStorage.ts`, a thin client over the bridge's storage IPC,
-`window.api.storage`); `web/init.ts` tries IndexedDB (`web/idbStorage.ts`) and
-falls back to localStorage (`web/localStorage.ts`). All implement the
-`Storage { name, get, set, del, keys }` port (`core/storage/types.ts`). The
-chosen backend is wrapped in a `StorageEngine` (`core/storage/engine.ts`,
-`new StorageEngine(backend)`) and carried on `ctx.storage`; the engine embeds
-the backend AND owns the durable session IO below (key shapes + media blobs).
 Keys are namespaced `v84-harness:` and owned by the engine. Three key prefixes
 act as the "tables" — the value shapes are charted in the Shapes section below:
 
@@ -164,6 +180,12 @@ sequenceDiagram
     Store->>E: saveIndex «usedTokens, unread, bytes»
 ```
 
-Other config stores (`settings`, `media`, `agents`, `workspaces`, ui state) are
-small `createStore` instances persisting whole-value to localStorage — they are
-NOT part of this scheme and don't need to be (each is a few KB).
+The other domains (`settings`, `agents`, `workspaces`, app config, ui state) are
+`Consumer`s ([state.md](state.md), [ADR-0037](../adr/0037-reactive-consumer-over-injected-storage.md)):
+each persists its whole value under one `v84-harness:<domain>` key **through the
+same `ctx.storage`** (no longer straight to localStorage). They don't use the
+granular session IO above — they're a few KB each — but they DO share the backend,
+so they travel to the server when connected and re-hydrate on a connection change,
+exactly like the session keys. The one store that stays purely local is
+`core/account.ts` ([ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md))
+— `v84-harness:account` in localStorage, read before the backend is even chosen.

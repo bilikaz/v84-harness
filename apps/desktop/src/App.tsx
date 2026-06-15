@@ -6,7 +6,7 @@ import { SessionView } from "./pages/workspace/SessionView.tsx";
 import { SettingsModal } from "./pages/settings/SettingsModal.tsx";
 import { contributionsFor } from "./lib/registry.ts";
 import { useRoute } from "./lib/router.ts";
-import { useRightPanel } from "./lib/ui.ts";
+import { useRightPanel } from "./core/ui.ts";
 
 function MainView() {
   const route = useRoute();

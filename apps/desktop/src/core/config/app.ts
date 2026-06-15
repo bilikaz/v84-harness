@@ -1,7 +1,9 @@
 // The app-tunables config — the ONLY place overrides meet defaults.
+// A ctx-injected consumer: overrides persist through ctx.storage.
 
+import { Consumer } from "../storage/consumer.ts";
+import type { Ctx } from "../ctx.ts";
 import { CONFIG_DEFAULTS, type ConfigApp, type Quality, type QualityPreset } from "./defaults.ts";
-import { createStore } from "../../lib/store.ts";
 
 export type { ConfigApp, Quality, QualityPreset };
 export { CONFIG_DEFAULTS };
@@ -10,8 +12,6 @@ type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]>
 export type ConfigOverrides = DeepPartial<ConfigApp>;
 
 const KEY = "v84-harness:config";
-
-const store = createStore<ConfigOverrides>(KEY, {});
 
 export function posInt(v: unknown, fallback: number): number {
   return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : fallback;
@@ -88,24 +88,44 @@ function validate(c: ConfigApp): ConfigApp {
   };
 }
 
-let cached: ConfigApp | null = null;
-store.subscribe(() => {
-  cached = null;
-});
+class AppConfig extends Consumer<ConfigOverrides> {
+  private cached: ConfigApp | null = null;
 
-// Cached reference stays stable until overrides change (safe for useSyncExternalStore).
-export function getAppConfig(): ConfigApp {
-  cached ??= validate(deepMerge(CONFIG_DEFAULTS as unknown as Record<string, unknown>, store.get()) as unknown as ConfigApp);
-  return cached;
+  constructor(ctx: Ctx) {
+    super(ctx, KEY, {});
+  }
+
+  // Cache invalidates whenever state changes (hydrate or commit both notify).
+  protected override notify(): void {
+    this.cached = null;
+    super.notify();
+  }
+
+  // Cached reference stays stable until overrides change (safe for useSyncExternalStore).
+  effective(): ConfigApp {
+    this.cached ??= validate(deepMerge(CONFIG_DEFAULTS as unknown as Record<string, unknown>, this.state) as unknown as ConfigApp);
+    return this.cached;
+  }
+  overrides(): ConfigOverrides {
+    return this.state;
+  }
+  setOverrides(o: ConfigOverrides): void {
+    this.commit(o);
+  }
 }
 
-export function getConfigOverrides(): ConfigOverrides {
-  return store.get();
+let inst: AppConfig | null = null;
+export function initAppConfig(ctx: Ctx): AppConfig {
+  inst = new AppConfig(ctx);
+  return inst;
 }
 
-export function setConfigOverrides(overrides: ConfigOverrides): void {
-  store.set(overrides);
-}
+// Resilient to a missing consumer: the electron MAIN process reads getConfig() at
+// module load (before any ctx) and re-seeds from the wire per call — it just needs
+// valid defaults, not a persisted instance.
+export const getAppConfig = (): ConfigApp => (inst ? inst.effective() : CONFIG_DEFAULTS);
+export const getConfigOverrides = (): ConfigOverrides => (inst ? inst.overrides() : {});
+export const setConfigOverrides = (overrides: ConfigOverrides): void => inst?.setOverrides(overrides);
 
 export function effectiveImageMaxDim(cardValue: number | undefined): number {
   return posInt(cardValue, getAppConfig().media.imageMaxDim);

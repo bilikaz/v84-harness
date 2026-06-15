@@ -23,6 +23,13 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   - **`workspace/`** — gated by the per-workspace policy (`0|1|2`): `Read`, `List`,
     `Grep`, `Write`, `Edit`, `CreateFolder`, `Bash`, `ImageLoad`, `VideoLoad`,
     `ImageDescribe`, `VideoDescribe`. Need Node (fs/shell).
+  - **`account/`** — the memory tools (`SaveMemory`, `SearchMemory`, `GetMemory`,
+    `EditMemory`, `DeleteMemory`): permissionless, but `canRun()` gates them on a
+    **connected account** (`BaseAccountTool` → `isConnected()`). They call the
+    knowledge API via `authedFetch`, so they must run where the token lives — the
+    **renderer**, never main (see the execution note below;
+    [ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md),
+    [knowledge.md](knowledge.md)).
 - **The gated-tool list is dynamic**: it's the tools that report `isPermissioned()`. The
   renderer reads it through `renderer/gatedTools.ts` (`useGatedTools()`), which calls
   `ctx.tools.filter({ includeDisabled: true })` and keeps the permissioned `ToolFilterEntry`s
@@ -38,10 +45,10 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
 gateway on the ctx (`ctx.tools.{filter,run,cancel}`, ADR-0032). Each platform installs
 its gateway at boot (ADR-0034):
 
-- **web** — runs `general/` **in-process** in the renderer; the registry is built inline
-  in `web/init.ts` (no separate tools file), and the Node-only gated tools don't exist in
-  the web bundle.
-- **electron** — tools run in MAIN (workspace tools need `node:fs`, unreachable under
+- **web** — runs `general/` + `account/` **in-process** in the renderer; the registry is
+  built inline in `web/init.ts` (no separate tools file), and the Node-only gated tools
+  don't exist in the web bundle.
+- **electron** — workspace/fs tools run in MAIN (they need `node:fs`, unreachable under
   contextIsolation). The renderer's `ctx.tools` (`electron/init.ts`) forwards
   `filter`/`run`/`cancel` to `api.tools.*` over the bridge; the wire is `WireConfig { config }`
   (just the config snapshot — `cwd` rides on the `ToolCallRequest`). The main-side
@@ -49,11 +56,17 @@ its gateway at boot (ADR-0034):
   (`createClient(resolver)`), lives in `electron/tools.ts`, which re-seeds its module-level
   `config` from the wire on each call; `electron/ipc.ts` wires the handlers. Cancel is a
   separate `tools:cancel` IPC ([ADR-0014](../adr/0014-stop-semantics-and-tool-cancellation.md)).
+- **`account/` is the exception that stays in the renderer on BOTH platforms.** Electron
+  builds a second in-process `ToolRegistry` over `account/*` and MERGES it with the bridge:
+  `filter` spreads `{ ...(await mainFilter), ...accountReg.filter }`, and `run` routes by
+  `accountReg.byName.has(call.name)` (renderer) vs. the bridge (main). This keeps
+  `authedFetch` — the account token + refresh — in the renderer, so it never crosses IPC
+  ([ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md)).
 
-So a tool call flows: driver → `ctx.tools.run(...)` → (web) in-process or (electron)
-bridge → main. The driver only knows the gateway. Cancellation travels by call id
-(`cancel(callId)`) — the registry owns the `AbortController`, since a live `AbortSignal`
-can't cross the bridge.
+So a tool call flows: driver → `ctx.tools.run(...)` → in-process (web, or electron's
+`account/` tier) or over the bridge → main (electron `general/`+`workspace/`). The driver
+only knows the gateway. Cancellation travels by call id (`cancel(callId)`) — the registry
+owns the `AbortController`, since a live `AbortSignal` can't cross the bridge.
 
 ## Talking to models
 

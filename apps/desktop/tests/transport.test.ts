@@ -40,6 +40,16 @@ describe("withRetry", () => {
     expect(got).toEqual([{ type: "error", message: "401 Unauthorized bad key" }]);
   });
 
+  it("does NOT retry a capacity failure even as a 500 (context/OOM is deterministic in the payload) — terminal, clear message", async () => {
+    // A CUDA OOM comes back as a 500, which would normally retry; re-sending the
+    // same giant prompt just re-fails + re-bombards the server, so it's terminal.
+    const make = makeOnce([], new HttpError(500, "500 Internal Server Error: CUDA out of memory"));
+    const got = await drain(withRetry(make, new AbortController().signal));
+    expect(got).toHaveLength(1); // no retry events — single attempt
+    expect(got[0].type).toBe("error");
+    expect((got[0] as { message: string }).message).toContain("too large");
+  });
+
   it("a user abort propagates as a throw (clean stop), not an error event", async () => {
     const controller = new AbortController();
     controller.abort();

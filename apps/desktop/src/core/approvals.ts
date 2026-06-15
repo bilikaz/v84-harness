@@ -1,7 +1,11 @@
-import type { ToolCallRequest } from "../llm/types.ts";
-import { createStore } from "../lib/store.ts";
+import { useSyncExternalStore } from "react";
 
-// Tool-approval bridge between the (React-free) driver and the UI.
+import type { ToolCallRequest } from "../llm/types.ts";
+import { createListeners } from "./storage/consumer.ts";
+
+// Tool-approval bridge between the (React-free) driver and the UI. Transient
+// runtime state (never persisted), so it's a plain reactive module.
+// (Folds into the session engine next — it's per-session-turn runtime.)
 
 export interface PendingApproval {
   id: string;
@@ -10,42 +14,47 @@ export interface PendingApproval {
   resolve: (ok: boolean) => void;
 }
 
-const store = createStore<PendingApproval[]>(null, []);
+let state: PendingApproval[] = [];
+const { subscribe, notify } = createListeners();
+
+function set(next: PendingApproval[]): void {
+  state = next;
+  notify();
+}
 
 export function requestApproval(sessionId: string, call: ToolCallRequest): Promise<boolean> {
   return new Promise((resolve) => {
-    store.set([...store.get(), { id: crypto.randomUUID(), sessionId, call, resolve }]);
+    set([...state, { id: crypto.randomUUID(), sessionId, call, resolve }]);
   });
 }
 
 export function resolveApproval(id: string, ok: boolean): void {
-  const a = store.get().find((p) => p.id === id);
+  const a = state.find((p) => p.id === id);
   if (!a) return;
   a.resolve(ok);
-  store.set(store.get().filter((p) => p.id !== id));
+  set(state.filter((p) => p.id !== id));
 }
 
 // A queued Promise nobody can answer anymore must settle, or the driver's await hangs forever.
 export function denyApprovalsForSession(sessionId: string): void {
-  const pending = store.get();
-  const mine = pending.filter((p) => p.sessionId === sessionId);
+  const mine = state.filter((p) => p.sessionId === sessionId);
   if (!mine.length) return;
   mine.forEach((p) => p.resolve(false));
-  store.set(pending.filter((p) => p.sessionId !== sessionId));
+  set(state.filter((p) => p.sessionId !== sessionId));
 }
 
 export function getPendingApprovals(): PendingApproval[] {
-  return store.get();
+  return state;
 }
 
 export function usePendingApprovals(): PendingApproval[] {
-  return store.use();
+  return useSyncExternalStore(subscribe, () => state, () => state);
 }
 
 // HMR: resolvers belong to the old module instance and would otherwise leak as forever-pending Promises.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    store.get().forEach((p) => p.resolve(false));
-    store.set([]);
+    state.forEach((p) => p.resolve(false));
+    state = [];
   });
 }

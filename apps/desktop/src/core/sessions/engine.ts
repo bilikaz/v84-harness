@@ -8,6 +8,7 @@ import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";
 import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
+import { isConnected } from "../account.ts";
 import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
 import { pt } from "../../lib/prompts.ts";
 import { cap } from "../tools/base.ts";
@@ -190,7 +191,12 @@ export class SessionEngine {
         // History is re-filtered against the CURRENT model's inputs each step — the model can change mid-session, and yesterday's images must not 400 today's text-only endpoint.
         const history = toChatMessages(getSession(sid)?.messages ?? [], cfg.input ?? {});
         const baseSystem = getSession(sid)?.system || ws?.instructions || undefined;
-        const system = fsAccess ? [baseSystem, pt("workspace.system")].filter(Boolean).join("\n\n") : baseSystem;
+        // Append the workspace prompt when file tools are advertised, and the memory
+        // prompt when the account is connected (same gate that advertises the memory tools).
+        const system =
+          [baseSystem, fsAccess ? pt("workspace.system") : undefined, isConnected() ? pt("memory.system") : undefined]
+            .filter(Boolean)
+            .join("\n\n") || undefined;
 
         // Heal stays driver-driven (the correction is a SESSION turn via the store), so the handler never throws HealError.
         const { text, thinking, calls } = await this.ctx.llm.call({

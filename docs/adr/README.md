@@ -18,7 +18,7 @@ loading. Its index row below stays.
 | [0001](0001-dual-target-build.md) | Dual-target build: pure web Vite + Electron from one renderer | accepted |
 | [0002](0002-typed-ipc-bridge.md) | Typed IPC bridge — `IPC` channel constants + `HarnessApi` | accepted |
 | [0003](0003-host-agnostic-core.md) | Host-agnostic `core/`, migrated from `lib/` feature-by-feature | accepted (migration complete) |
-| [0004](0004-store-pattern.md) | `createStore` factory + `useSyncExternalStore` hooks | accepted |
+| [0004](0004-store-pattern.md) | `createStore` factory + `useSyncExternalStore` hooks | superseded by 0037 → archived |
 | [0005](0005-event-bus.md) | Typed, domain-scoped event bus via declaration merging | accepted |
 | [0006](0006-provider-abstraction.md) | Provider adapters behind a unified `StreamEvent` stream | accepted (registry clause superseded by 0029) |
 | [0007](0007-tool-system.md) | Tool system: gated vs permissionless, virtual root, never-throw | accepted (virtual-root marker + registration superseded by 0033) |
@@ -49,8 +49,14 @@ loading. Its index row below stays.
 | [0032](0032-ctx-main-data-carrier.md) | Ctx — the one data carrier (config + llm + storage + tool gateway + host api + sessions) | accepted |
 | [0033](0033-tools-registry-folder-by-permission.md) | Tools — host-agnostic registry, dynamic permission tiers, per-platform execution | accepted |
 | [0034](0034-platform-hosts-over-agnostic-core.md) | Platform hosts (electron / web) over a host-agnostic core + shared renderer | accepted |
-| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned; init picks the backend (supersedes 0017) | accepted |
+| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned; init picks the backend (supersedes 0017) | accepted (runtime backend swap added by 0038) |
 | [0036](0036-host-capability-surface.md) | Host capability surface — `ctx.api`, platform-injected, gated on presence | accepted |
+| [0037](0037-reactive-consumer-over-injected-storage.md) | Reactive `Consumer` over injected storage (supersedes 0004; `createStore`/`lib/store.ts` deleted) | accepted |
+| [0038](0038-storage-backend-swappable-at-runtime.md) | Storage backend swappable at runtime — local baseline + remote, connection swaps it, re-hydrate (no reload) | accepted |
+| [0039](0039-account-local-store-and-connection-lifecycle.md) | `account` — the lone local store, connection lifecycle, renderer-side memory tool tier | accepted |
+| [0040](0040-knowledge-remote-service.md) | `apps/knowledge` — the remote service (Hono + MariaDB + OpenSearch + Inngest; auth; `/data` + `/kb` + `/inngest`) | accepted |
+| [0041](0041-knowledgebase-plane.md) | Knowledgebase — all-OpenSearch, nested chunks, hybrid sparse+dense, fire-and-forget ingest | accepted |
+| [0042](0042-unified-settings-registry.md) | Unified Settings registry — providers/models/services, `config.llm` derived, media subsumed (refines 0018) | accepted |
 
 ## Needs review / important missing parts
 
@@ -65,7 +71,6 @@ it from this list.
 | Video job orphaning on cancel/quit | [ADR-0014](0014-stop-semantics-and-tool-cancellation.md) | Stop ends polling but the server job keeps running; no job-id persistence for resume or cleanup (endpoint has no cancel API). |
 | Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 12 IPC channels now (was 6 when "revisit if it grows" was written); a missing handler still hangs the invoke silently. A startup ping would catch it. |
 | Tests/typecheck not in CI | conventions/testing.md | `.github/workflows/review.yml` runs the reviewer gate only; nothing runs `pnpm typecheck` / `pnpm test` on push. |
-| Account "Connected" mode | AccountSection (`soon` badge) | The company-system link (knowledgebase/sync) is a UI placeholder with no design. |
 
 Resolved since first written: reasoning config beyond OpenAI-compatible
 (ADR-0006 — effort now maps to all three providers), the `lib/` → `core/`
@@ -74,4 +79,6 @@ sync (copied to the reviewer repo), desktop storage quota ceiling (ADR-0017),
 storage growth pruning (manual, Settings → Storage), and the `Session.steps`
 progress DAG (removed — ToolCard links + live child sessions are the progress
 view, ADR-0022), and client-side media downscaling (per-model pixel cap,
-stored copy is the downscaled one — ADR-0027).
+stored copy is the downscaled one — ADR-0027), and the account "Connected" mode
+(now designed and built — the `account` store + connection lifecycle in
+ADR-0039, with `apps/knowledge` as the backend in ADR-0040).

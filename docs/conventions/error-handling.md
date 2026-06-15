@@ -33,3 +33,25 @@
 6. **Error classes are named `<X>Error`** and reserved for failures a caller might
    meaningfully catch by type; everything else throws plain `Error` with a good
    message.
+
+7. **Surface dependency outages; don't bury them.** When a backing dependency (a
+   downstream service, an encoder, a database) is unreachable, that is categorically
+   different from a bad request — and the distinction must survive to whoever can
+   act on it. Throw a typed error at the point of contact (rule 6), map it at the
+   boundary to a *distinct* status the caller can branch on (e.g. 503, not a generic
+   500), and carry a message plain enough to relay verbatim. Where the operation can
+   still partially succeed, **degrade and annotate** rather than fail wholesale —
+   return what you have plus a note saying what was skipped and why. The failure mode
+   this prevents: a generic 500 (or a silent success on a fire-and-forget write)
+   leaves the consumer unable to tell "the service is down" from "your input was
+   wrong," so it can neither retry sensibly nor tell the user what happened.
+
+   ```ts
+   // boundary maps the typed outage to a relayable status
+   router.onError((err, c) =>
+     err instanceof ServiceDownError ? c.json({ error: err.message }, 503) : c.json({ error: errorMessage(err) }, 500));
+
+   // partial success degrades instead of throwing
+   try { hits.push(await semanticLeg(q)); }
+   catch (e) { if (!lexicalQuery) throw e; note = "semantic search unavailable — service down; lexical matches only"; }
+   ```

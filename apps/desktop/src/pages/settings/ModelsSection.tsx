@@ -18,7 +18,7 @@ import {
   type MediaRegistry,
   type MediaModel,
   type MediaProvider,
-} from "../../core/media.ts";
+} from "../../core/settings.ts";
 import { MEDIA_SERVICES, type MediaApiKind, type MediaService } from "../../llm/types.ts";
 import { useDetection } from "../../lib/hooks.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
@@ -144,7 +144,7 @@ function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => 
           {p.name || "—"}
         </span>
         <span className="text-xs text-neutral-400">
-          {t(`media.${FLAVOR_KEY[p.api]}`)} · {t("media.modelCount", { count: p.models.length })}
+          {t(`media.${FLAVOR_KEY[p.api as MediaApiKind]}`)} · {t("media.modelCount", { count: p.models.length })}
         </span>
       </button>
 
@@ -192,7 +192,7 @@ function ProviderCard(props: { p: MediaProvider; open: boolean; onToggle: () => 
           <Row label={t("media.api")}>
             <div className={FIELD}>
               <select
-                value={p.api}
+                value={p.api as MediaApiKind}
                 onChange={(e) => updateProvider(p.id, { api: e.target.value as MediaApiKind })}
                 className={fieldInputFull}
               >
