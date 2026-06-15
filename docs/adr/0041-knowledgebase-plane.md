@@ -19,18 +19,27 @@ nested inside it**.
 
 - **Shape.** Record fields: `user_id`, `scope` (`shared | private`), `category`
   (a tag on the shared corpus; permission-gating by category is later), `content`
-  (typed `wildcard` — the sparse / regex side), `status`
-  (`ingesting | ready | failed`), `created_at`, and `chunks` (nested: `idx`,
-  `content` text, `embedding` `knn_vector` of the configured dim,
-  hnsw / lucene / cosinesimil). Deleting the record drops its chunks; a hit
-  returns the record plus the matched chunk via `inner_hits`.
-- **Hybrid search, both legs AI-supplied.** The agent provides a regex (`sparse`)
-  and/or a natural-language string (`dense`). Sparse → `regexp` on `content`;
-  dense → embed the query → nested `knn` over `chunks.embedding`. Both ride one
-  `bool.should` (`minimum_should_match: 1`) under a **visibility filter**
-  (`shared ∪ own-private`, optionally narrowed by scope / category). Scores are
-  not normalized across the two signals — a hybrid-search pipeline can layer on
-  later.
+  (stored for GET + re-ingest, `index: false` — search runs on the chunks, not the
+  whole record), `status` (`ingesting | ready | failed`), `created_at`, and `chunks`
+  (nested: `idx`, `content` `text` analyzed by a **`folding` analyzer** — `standard`
+  tokenizer + `lowercase` + `asciifolding`, so matching is case- and
+  accent-insensitive: `ąčęėįšųūž → aceeisuuz` on both index and query — and
+  `embedding` `knn_vector` of the configured dim, hnsw / lucene / cosinesimil).
+  Deleting the record drops its chunks; a hit returns the record plus the matched
+  chunk via `inner_hits`.
+- **Hybrid search, both legs AI-supplied, both over the chunks.** The agent
+  provides a keyword list (`keywords`) and/or a natural-language related phrase
+  (`phrase`). `keywords` → nested full-text **`match`** on the folding-analyzed
+  `chunks.content` (tokenized → multi-word works, BM25-ranked, accent-insensitive);
+  `phrase` → embed → nested `knn` over `chunks.embedding`. Both are nested queries
+  on `chunks` with NAMED `inner_hits` (distinct names — two nested queries on one
+  path collide otherwise), so each leg returns the matching chunk as a snippet. They
+  ride one `bool.should` (`minimum_should_match: 1`) under a **visibility filter**
+  (`shared ∪ own-private`, optionally narrowed by scope / category). Scores aren't
+  normalized across the two signals — a hybrid-search pipeline can layer on later.
+  (Regexp was tried first and rejected: on tokenized chunk text it can't match
+  across token boundaries — a multi-word pattern never matches — and OpenSearch
+  `regexp` is whole-field anchored, so a bare keyword matches nothing.)
 - **Fire-and-forget ingest.** `POST /kb` indexes the record immediately
   (`status: ingesting`, no chunks) and emits `kb/record.created`; an Inngest
   function (`retries: 3`) chunks (≈2000 chars, 10% overlap, both configurable),
@@ -43,8 +52,8 @@ nested inside it**.
 - **A downed dependency is a typed 503, and search degrades.** The encoder /
   OpenSearch being unreachable throws `ServiceDownError`; the kb router maps it to
   503 with a clear message the agent relays. Search degrades: if the encoder is
-  down but a regex leg exists, it runs the regex alone and returns a `note`; only
-  a dense-only query with the encoder down errors out. A save never needs the
+  down but a `keywords` leg exists, it runs that alone and returns a `note`; only a
+  phrase-only query with the encoder down errors out. A save never needs the
   encoder — the record persists and Inngest retries the embed.
 
 ## Consequences

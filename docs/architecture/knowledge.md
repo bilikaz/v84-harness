@@ -71,16 +71,26 @@ its **chunks nested inside it** ([ADR-0041](../adr/0041-knowledgebase-plane.md))
 ```
 memories (doc = record)
   user_id, scope (shared|private), category, status (ingesting|ready|failed), created_at
-  content        — type: wildcard            (the SPARSE / regex side)
+  content        — type: text, index:false   (stored for GET/re-ingest, not searched)
   chunks []      — type: nested
-    idx, content (text), embedding (knn_vector, dim from config, hnsw/lucene/cosinesimil)
+    idx, content (text, analyzer: folding), embedding (knn_vector, dim from config, hnsw/lucene/cosinesimil)
 ```
 
-**Hybrid search**, both legs supplied by the agent. `sparse` (a regex) →
-`regexp` on `content`; `dense` (natural language) → embed → nested `knn` over
-`chunks.embedding`. Both ride one `bool.should` (`minimum_should_match: 1`) under a
-**visibility filter** (`shared ∪ own-private`, optionally narrowed by
-scope/category). A hit returns the record + its matched chunk via `inner_hits`.
+The `folding` analyzer (`standard` tokenizer + `lowercase` + `asciifolding`) is
+applied to `chunks.content`, so search is case- and accent-insensitive on both
+sides (`ąčęėįšųūž → aceeisuuz`) — a plain `toksinu` finds `toksinų`.
+
+**Hybrid search**, both legs supplied by the agent, **both over the nested chunks**
+(so each returns the matching chunk as a snippet, and lexical matches per-part not
+the whole record). `keywords` (a keyword list) → nested full-text **`match`** on the
+folding-analyzed `chunks.content` (tokenized → multi-word works, BM25-ranked,
+accent-insensitive); `phrase` (natural language) → embed → nested `knn` over
+`chunks.embedding`. Each is a nested query on `chunks` with NAMED `inner_hits`
+(distinct names, or two nested queries on one path collide). Both ride one
+`bool.should` (`minimum_should_match: 1`) under a **visibility filter**
+(`shared ∪ own-private`, optionally narrowed by scope/category). (Regexp was tried
+and dropped — on tokenized chunk text it can't match across token boundaries, so
+multi-word patterns never match.)
 
 **Ingestion is fire-and-forget.** `POST /kb` indexes the record immediately
 (`status: ingesting`, no chunks) and emits `kb/record.created`; the Inngest
@@ -96,9 +106,9 @@ the full record; `PUT /kb/:id` → edit + reset to `ingesting` + re-emit;
 **A downed dependency is a typed 503, and search degrades**
 ([conventions/error-handling](../conventions/error-handling.md) rule 7). The
 encoder/OpenSearch being unreachable throws `ServiceDownError` → `kbRouter.onError`
-maps it to 503 with a relayable message. Search degrades: encoder down but a regex
-leg present → run the regex alone + return a `note`; dense-only with the encoder
-down → 503. A save never needs the encoder (the record persists; the embed
+maps it to 503 with a relayable message. Search degrades: encoder down but a
+`keywords` leg present → run that alone + return a `note`; phrase-only with the
+encoder down → 503. A save never needs the encoder (the record persists; the embed
 retries). Gap: a record whose retries are exhausted stays `ingesting` — no
 `failed` flip yet (an Inngest `onFailure` is the follow-up).
 
@@ -114,10 +124,17 @@ A compose project named `v84`, routed through Traefik on `*.localhost`:
 |---------|------|
 | `traefik` | Reverse proxy — `knowledge.localhost`, `adminer.localhost`, `dashboards.localhost`, `inngest.localhost`, `traefik.localhost` |
 | `db` (MariaDB 11) + `adminer` | Relational data + browser |
-| `knowledge` | This service (source bind-mounted, hot reload) |
+| `knowledge` | This service (source bind-mounted; runs `node --watch`) |
 | `opensearch` + `dashboards` | The knowledgebase index + its Discover/Dev-Tools viewer |
 | `embeddings` (TEI) | OpenAI-compatible `/v1/embeddings`; the model is config (first boot downloads it) |
 | `inngest` | Async ingest orchestration; the `/inngest` webhook is signature-gated |
+
+**Code changes need a restart, not a hot-reload.** `node --watch` relies on
+inotify, which doesn't fire across the WSL bind mount — so editing `apps/knowledge`
+source does NOT reload the running container; it keeps serving the boot-time code.
+Run `docker compose restart knowledge` after any change (verify with a quick probe
+through Traefik — `curl` with `Host: knowledge.localhost`). This bites silently:
+the service looks up while serving stale routes.
 
 Anonymous `node_modules` volumes shadow a rebuilt image — refresh with
 `docker compose up -d --build --renew-anon-volumes` after a dependency change.

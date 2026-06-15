@@ -62,20 +62,26 @@ export function ensureIndex(): Promise<void> {
   ensured ??= (async () => {
     if ((await os("HEAD", `/${INDEX}`)).status === 200) return;
     const res = await os("PUT", `/${INDEX}`, {
-      settings: { index: { knn: true } },
+      settings: {
+        index: { knn: true },
+        // `folding` lowercases + strips diacritics (ąčęėįšųūž → aceeisuuz) at BOTH
+        // index and query time, so a plain keyword matches accented text. Applied to
+        // the searchable chunk text (the lexical leg is full-text `match`, not regexp).
+        analysis: { analyzer: { folding: { type: "custom", tokenizer: "standard", filter: ["lowercase", "asciifolding"] } } },
+      },
       mappings: {
         properties: {
           user_id: { type: "long" },
           scope: { type: "keyword" },
           category: { type: "keyword" },
-          content: { type: "wildcard" }, // sparse side = AI-supplied regex; wildcard supports efficient regexp on long strings
+          content: { type: "text", index: false }, // stored for GET/re-ingest; search is on the chunks
           status: { type: "keyword" },
           created_at: { type: "date" },
           chunks: {
             type: "nested",
             properties: {
               idx: { type: "integer" },
-              content: { type: "text" },
+              content: { type: "text", analyzer: "folding" },
               embedding: {
                 type: "knn_vector",
                 dimension: config.embedding.dim,
@@ -172,11 +178,11 @@ export async function ingestRecord(id: string): Promise<void> {
   log.info({ id, chunks: chunks.length }, "kb.ingested");
 }
 
-// The AI supplies both legs: `sparse` is a regex (lexical), `dense` is natural
-// language (embedded → semantic). Either or both.
+// The AI supplies both legs: `keywords` is a keyword list (lexical full-text),
+// `phrase` is a natural-language related phrase (embedded → semantic). Either or both.
 export interface SearchInput {
-  sparse?: string;
-  dense?: string;
+  keywords?: string;
+  phrase?: string;
 }
 
 export interface SearchOpts {
@@ -195,14 +201,25 @@ function visibility(userId: number, opts: SearchOpts): unknown {
   return { bool: { should: [shared, own], minimum_should_match: 1 } };
 }
 
-// Hybrid: regex (sparse, on content) + dense k-NN over nested chunks, both
-// visibility-filtered. The AI sends a regex and/or a natural-language string.
-// (Scores aren't normalized across the two signals — a hybrid search pipeline can
-// be layered on later; bool/should gives both signals for v1.)
+// Collect chunk snippets from whatever named inner_hits came back (keywords / phrase),
+// de-duplicated — both legs match chunks, and a chunk hit by both shouldn't repeat.
+function snippetsFrom(inner?: { [name: string]: { hits?: { hits?: Array<{ _source: { content: string } }> } } }): string[] {
+  if (!inner) return [];
+  const out: string[] = [];
+  for (const group of Object.values(inner)) for (const c of group.hits?.hits ?? []) out.push(c._source.content);
+  return [...new Set(out)];
+}
+
+// Hybrid, both legs over the nested chunks (so each returns the matching chunk as a
+// snippet, and lexical works on parts not the whole record): keywords = full-text
+// `match` on the folding-analyzed chunk text (tokenized, multi-word, accent-insensitive,
+// BM25); phrase = dense k-NN over the chunk vectors. The AI sends comma/space-separated
+// keywords and/or a natural-language phrase. (Scores aren't normalized across the two
+// signals — a hybrid-search pipeline can be layered on later.)
 export interface SearchResult {
   results: SearchHit[];
-  // Set when the dense (semantic) leg was skipped because the encoder is down but
-  // a regex leg still ran — partial results, surfaced so the agent can tell the user.
+  // Set when the dense (phrase/semantic) leg was skipped because the encoder is down
+  // but the keyword leg still ran — partial results, surfaced so the agent can say so.
   note?: string;
 }
 
@@ -210,24 +227,34 @@ export async function searchRecords(userId: number, input: SearchInput, opts: Se
   await ensureIndex();
   const k = opts.k ?? 10;
   const should: unknown[] = [];
-  if (input.sparse) should.push({ regexp: { content: { value: input.sparse, case_insensitive: true } } });
+  // Two nested queries on the same path need distinct inner_hits names or they collide.
+  const innerHits = (name: string): unknown => ({ name, _source: ["chunks.idx", "chunks.content"], size: 3 });
+  if (input.keywords?.trim()) {
+    should.push({
+      nested: {
+        path: "chunks",
+        query: { match: { "chunks.content": input.keywords } }, // analyzer tokenizes commas/spaces; ORs the terms
+        inner_hits: innerHits("keywords"),
+      },
+    });
+  }
   let note: string | undefined;
-  if (input.dense) {
+  if (input.phrase) {
     try {
-      const vector = await embed(input.dense, "query");
+      const vector = await embed(input.phrase, "query");
       should.push({
         nested: {
           path: "chunks",
           query: { knn: { "chunks.embedding": { vector, k } } },
           score_mode: "max",
-          inner_hits: { _source: ["chunks.idx", "chunks.content"], size: 3 },
+          inner_hits: innerHits("dense"),
         },
       });
     } catch (e) {
-      // Encoder down: degrade to the regex leg if we have one, else surface the outage.
-      if (!input.sparse) throw e;
-      note = "Semantic (dense) search was unavailable — the embedding service is down; these are keyword (regex) matches only.";
-      log.warn({ err: errorMessage(e) }, "kb.search.dense_skipped");
+      // Encoder down: degrade to the keyword leg if we have one, else surface the outage.
+      if (!input.keywords?.trim()) throw e;
+      note = "Semantic (phrase) search was unavailable — the embedding service is down; these are keyword matches only.";
+      log.warn({ err: errorMessage(e) }, "kb.search.phrase_skipped");
     }
   }
   if (should.length === 0) return { results: [] };
@@ -244,7 +271,9 @@ export async function searchRecords(userId: number, input: SearchInput, opts: Se
         _id: string;
         _score: number;
         _source: { scope: Scope; category: string | null };
-        inner_hits?: { chunks?: { hits?: { hits?: Array<{ _source: { idx: number; content: string } }> } } };
+        // named inner_hits (sparse / dense) — each a group of matched chunks.
+        // (Index signature, not Record<>: this module's local `Record` type shadows it.)
+        inner_hits?: { [name: string]: { hits?: { hits?: Array<{ _source: { idx: number; content: string } }> } } };
       }>;
     };
   };
@@ -253,7 +282,7 @@ export async function searchRecords(userId: number, input: SearchInput, opts: Se
     score: h._score,
     scope: h._source.scope,
     category: h._source.category,
-    snippets: (h.inner_hits?.chunks?.hits?.hits ?? []).map((c) => c._source.content),
+    snippets: snippetsFrom(h.inner_hits),
   }));
   return { results, note };
 }

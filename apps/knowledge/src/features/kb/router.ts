@@ -4,7 +4,7 @@
 // leg, delete own. Scoped by the access JWT's user_id.
 //
 //   POST   /kb            { content, scope: shared|private, category? } → 202 { id, status }
-//   POST   /kb/search     { sparse?, dense?, scope?, category?, k? }    → { results: snippets + id }
+//   POST   /kb/search     { keywords?, phrase?, scope?, category?, k? } → { results: snippets + id }
 //   GET    /kb/:id                                                       → full record | 404
 //   PUT    /kb/:id        { content }                                    → 202 { id, status } (re-ingest) | 404
 //   DELETE /kb/:id                                                       → 204 | 404
@@ -41,17 +41,17 @@ kbRouter.post("/", async (c) => {
 });
 
 kbRouter.post("/search", async (c) => {
-  const { sparse, dense, scope, category, k } = await c.req.json<{
-    sparse?: string;
-    dense?: string;
+  const { keywords, phrase, scope, category, k } = await c.req.json<{
+    keywords?: string;
+    phrase?: string;
     scope?: string;
     category?: string;
     k?: number;
   }>();
-  if (!sparse && !dense) return c.json({ error: "sparse (regex) and/or dense (text) required" }, 400);
+  if (!keywords?.trim() && !phrase?.trim()) return c.json({ error: "keywords and/or phrase required" }, 400);
   const { results, note } = await searchRecords(
     c.get("userId"),
-    { sparse, dense },
+    { keywords, phrase },
     { scope: isScope(scope) ? scope : undefined, category, k: typeof k === "number" ? k : undefined },
   );
   return c.json({ results, note });
