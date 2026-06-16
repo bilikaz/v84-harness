@@ -4,7 +4,7 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type ElectronApi, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint } from "./bridge.ts";
+import { IPC, type ElectronApi, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type ViewBounds } from "./bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
@@ -22,10 +22,16 @@ const api: ElectronApi = {
   },
   storage: {
     available: () => ipcRenderer.invoke(IPC.storageAvailable),
-    get: (key: string) => ipcRenderer.invoke(IPC.storageGet, key),
-    set: (key: string, value: string) => ipcRenderer.invoke(IPC.storageSet, key, value),
-    del: (key: string) => ipcRenderer.invoke(IPC.storageDel, key),
-    keys: (prefix: string) => ipcRenderer.invoke(IPC.storageKeys, prefix),
+    exec: (repo: string, method: string, args: unknown[]) => ipcRenderer.invoke(IPC.storageExec, repo, method, args),
+  },
+  browser: {
+    open: (url: string) => ipcRenderer.invoke(IPC.browserOpen, url),
+    navigate: (id: string, url: string) => ipcRenderer.invoke(IPC.browserNavigate, id, url),
+    get: (id: string) => ipcRenderer.invoke(IPC.browserGet, id),
+    active: () => ipcRenderer.invoke(IPC.browserActive),
+    show: (id: string, bounds: ViewBounds) => ipcRenderer.invoke(IPC.browserShow, id, bounds),
+    hide: () => ipcRenderer.invoke(IPC.browserHide),
+    close: (id: string) => ipcRenderer.invoke(IPC.browserClose, id),
   },
   saveImage: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl, suggestedName),
   saveVideo: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl, suggestedName),

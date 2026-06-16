@@ -8,7 +8,7 @@ export interface TurnStart {
   sessionId: string;
   text: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   files?: FileAttachment[];
 }
 export interface TextDelta {
@@ -53,7 +53,7 @@ export interface ToolResultEvent {
   toolCallId: string;
   output: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   childSessionIds?: string[];
 }
 // One event per child; a multi-run call emits several with the same toolCallId.
@@ -65,7 +65,7 @@ export interface ToolChild {
 export interface MediaFeedback {
   sessionId: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
 }
 export interface AssistantOpen {
   sessionId: string;
@@ -73,6 +73,10 @@ export interface AssistantOpen {
 export interface Heal {
   sessionId: string;
   correction: string;
+}
+export interface ForwardContext {
+  sessionId: string;
+  text: string;
 }
 // The step is being re-sent from scratch — wipe the partial output off the streaming placeholder.
 export interface StreamRetry {
@@ -95,6 +99,7 @@ declare module "../../lib/bus.ts" {
     "session:tool:child": ToolChild;
     "session:assistant:open": AssistantOpen;
     "session:heal": Heal;
+    "session:context": ForwardContext;
     "session:stream:retry": StreamRetry;
     "session:mediaFeedback": MediaFeedback;
   }

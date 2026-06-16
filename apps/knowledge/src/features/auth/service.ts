@@ -62,7 +62,7 @@ function signAccess(userId: number, sessionId: string): Promise<string> {
 export async function issueTokens(userId: number, device: DeviceInfo): Promise<AuthTokens> {
   const sessionId = randomUUID();
   const { token: refreshToken, hash } = newRefreshToken(sessionId);
-  await openRepos().sessions.create({
+  await openRepos().authSessions.create({
     id: sessionId,
     user_id: userId,
     refresh_token_hash: hash,
@@ -80,15 +80,15 @@ export async function rotateTokens(refreshToken: string): Promise<AuthTokens | n
   if (!sessionId || !secret) return null;
 
   const repos = openRepos();
-  const session = await repos.sessions.findById(sessionId);
+  const session = await repos.authSessions.findById(sessionId);
   if (!session) return null;
   if (session.expires_at.getTime() < Date.now()) {
-    await repos.sessions.revokeById(sessionId);
+    await repos.authSessions.revokeById(sessionId);
     return null;
   }
   if (!equalHex(sha256(secret), session.refresh_token_hash)) return null;
 
   const { token: refreshTokenNew, hash } = newRefreshToken(sessionId);
-  await repos.sessions.rotate(sessionId, hash, new Date(Date.now() + config.auth.refreshTtl * 1000));
+  await repos.authSessions.rotate(sessionId, hash, new Date(Date.now() + config.auth.refreshTtl * 1000));
   return { accessToken: await signAccess(session.user_id, sessionId), refreshToken: refreshTokenNew, expiresIn: config.auth.accessTtl, tokenType: "Bearer" };
 }

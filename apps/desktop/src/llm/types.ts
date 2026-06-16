@@ -39,7 +39,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   toolCalls?: ToolCallRequest[];
   toolCallId?: string;
 }

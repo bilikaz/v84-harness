@@ -1,10 +1,10 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
 import type { ToolSpec, ToolCallRequest, ToolResult, WireConfig, ToolFilterParams, ToolFilterResult } from "../core/tools/types.ts";
-import type { MediaModelsResult, MediaEndpoint } from "../core/host.ts";
+import type { MediaModelsResult, MediaEndpoint, BrowserWindowInfo, BrowserWindowContent, ViewBounds } from "../core/host.ts";
 
 export type { ToolSpec, ToolCallRequest, ToolResult, WireConfig, ToolFilterParams, ToolFilterResult };
-export type { MediaModelsResult, MediaEndpoint };
+export type { MediaModelsResult, MediaEndpoint, BrowserWindowInfo, BrowserWindowContent, ViewBounds };
 
 export interface ElectronApi {
   isElectron: true;
@@ -20,12 +20,21 @@ export interface ElectronApi {
     // Runs in main (no CORS).
     models(cfg: MediaEndpoint): Promise<MediaModelsResult>;
   };
+  // Local per-entity SQLite store (main process). The renderer's sqliteRepos proxies StorageRepos
+  // calls through exec(); available() is false if node:sqlite couldn't open (→ IndexedDB fallback).
   storage: {
     available(): Promise<boolean>;
-    get(key: string): Promise<string | null>;
-    set(key: string, value: string): Promise<void>;
-    del(key: string): Promise<void>;
-    keys(prefix: string): Promise<string[]>;
+    exec(repo: string, method: string, args: unknown[]): Promise<unknown>;
+  };
+  // The managed browser-window fleet (the fetch feature) — WebContentsViews owned in main.
+  browser: {
+    open(url: string): Promise<string>;
+    navigate(id: string, url: string): Promise<void>;
+    get(id: string): Promise<BrowserWindowContent | null>;
+    active(): Promise<BrowserWindowInfo[]>;
+    show(id: string, bounds: ViewBounds): Promise<void>;
+    hide(): Promise<void>;
+    close(id: string): Promise<void>;
   };
   // Resolves to the written path, or null if cancelled. suggestedName pre-fills the dialog.
   saveImage(dataUrl: string, suggestedName?: string): Promise<string | null>;
@@ -38,13 +47,17 @@ export const IPC = {
   toolsExec: "harness:tools:exec",
   toolsCancel: "harness:tools:cancel",
   mediaModels: "harness:media:models",
+  browserOpen: "harness:browser:open",
+  browserNavigate: "harness:browser:navigate",
+  browserGet: "harness:browser:get",
+  browserActive: "harness:browser:active",
+  browserShow: "harness:browser:show",
+  browserHide: "harness:browser:hide",
+  browserClose: "harness:browser:close",
   saveImage: "harness:saveImage",
   saveVideo: "harness:saveVideo",
   storageAvailable: "harness:storage:available",
-  storageGet: "harness:storage:get",
-  storageSet: "harness:storage:set",
-  storageDel: "harness:storage:del",
-  storageKeys: "harness:storage:keys",
+  storageExec: "harness:storage:exec",
 } as const;
 
 

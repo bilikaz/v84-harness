@@ -3,7 +3,7 @@ import { Bot, Pencil, Play, Plus } from "lucide-react";
 
 import { createAgent, useAgents, type Agent } from "../../core/agents.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
-import { useActiveWorkspaceId } from "../../core/workspaces.ts";
+import { getContainer, useActiveContainerId } from "../../core/containers.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
 
@@ -11,9 +11,11 @@ export function AgentsPanel() {
   const { t } = useTranslation();
   const ctx = useCtx();
   const agents = useAgents();
-  const workspaceId = useActiveWorkspaceId();
+  const activeContainerId = useActiveContainerId();
   const route = useRoute();
-  const visible = agents.filter((a) => workspaceId !== null || !a.workspace);
+  const activeType = getContainer(activeContainerId)?.type;
+  const inWorkspace = activeType === "local" || activeType === "remote";
+  const visible = agents.filter((a) => inWorkspace || !a.workspace);
 
   function addNew() {
     const id = createAgent(t("agents.untitled"));

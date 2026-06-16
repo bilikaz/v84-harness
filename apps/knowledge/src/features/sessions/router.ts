@@ -15,7 +15,7 @@ sessionsRouter.use("*", requireAuth);
 
 sessionsRouter.get("/", async (c) => {
   const current = c.get("sessionId");
-  const rows = await openRepos().sessions.listByUser(c.get("userId"));
+  const rows = await openRepos().authSessions.listByUser(c.get("userId"));
   return c.json({
     sessions: rows.map((s) => ({
       id: s.id,
@@ -29,11 +29,11 @@ sessionsRouter.get("/", async (c) => {
 });
 
 sessionsRouter.delete("/:id", async (c) => {
-  await openRepos().sessions.revoke(c.req.param("id"), c.get("userId"));
+  await openRepos().authSessions.revoke(c.req.param("id"), c.get("userId"));
   return c.body(null, 204);
 });
 
 sessionsRouter.delete("/", async (c) => {
-  await openRepos().sessions.revokeAll(c.get("userId"));
+  await openRepos().authSessions.revokeAll(c.get("userId"));
   return c.body(null, 204);
 });

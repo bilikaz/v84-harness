@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { ImageLoad } from "../src/core/tools/workspace/imageLoad.ts";
-import { VideoLoad } from "../src/core/tools/workspace/videoLoad.ts";
+import { ImageLoad } from "../src/core/tools/local/imageLoad.ts";
+import { VideoLoad } from "../src/core/tools/local/videoLoad.ts";
 import { createClient } from "../src/llm/index.ts";
 
 // Loaders only touch cwd; the llm client is unused, so a null-resolver client suffices.
@@ -36,7 +36,7 @@ describe("LoadImage", () => {
     expect(res.images![0].mime).toBe("image/png");
     expect(res.images![0].name).toBe("pic.png");
     expect(res.images![0].url).toBe(`data:image/png;base64,${PNG_BYTES.toString("base64")}`);
-    expect(res.video).toBeUndefined();
+    expect(res.videos).toBeUndefined();
   });
 
   it("rejects unsupported extensions with the allowed list", async () => {
@@ -78,8 +78,8 @@ describe("LoadVideo", () => {
   it("returns the file as a data URL on video (not images)", async () => {
     const res = await loadVideoTool.execute({ path: "/workspace/assets/clip.mp4" }, { cwd: root });
     expect(res.ok).toBe(true);
-    expect(res.video).toHaveLength(1);
-    expect(res.video![0].mime).toBe("video/mp4");
+    expect(res.videos).toHaveLength(1);
+    expect(res.videos![0].mime).toBe("video/mp4");
     expect(res.images).toBeUndefined();
   });
 

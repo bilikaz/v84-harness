@@ -17,7 +17,7 @@ export interface FileAttachment {
 // A turn's attachment bundle — what the composer collects and the engine sends.
 export interface Attachments {
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   files?: FileAttachment[];
 }
 
@@ -27,7 +27,7 @@ export interface Message {
   text: string;
   thinking?: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   files?: FileAttachment[];
   toolCalls?: ToolCallRequest[];
   toolCallId?: string;
@@ -47,7 +47,7 @@ export interface Session {
   id: string;
   title: string;
   system: string;
-  workspaceId?: string | null;
+  containerId: string; // the container (chat/local/remote) this session lives in — never null
   agentId?: string;
   parentId?: string;
   tools: SessionTool[];

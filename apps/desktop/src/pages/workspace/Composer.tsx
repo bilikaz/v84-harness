@@ -100,7 +100,7 @@ export function Composer(props: {
     const text = input.trim();
     const atts: Attachments = {
       images: images.length ? images : undefined,
-      video: videos.length ? videos : undefined,
+      videos: videos.length ? videos : undefined,
       files: files.length ? files : undefined,
     };
     setInput("");

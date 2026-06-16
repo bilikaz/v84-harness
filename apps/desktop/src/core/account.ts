@@ -1,14 +1,16 @@
 import { useSyncExternalStore } from "react";
 
 import { createListeners, hydrateConsumers } from "./storage/consumer.ts";
-import { RemoteStorage } from "./storage/index.ts";
 import { hydrate as hydrateSessions } from "./sessions/store.ts";
+import { hydrateContainers } from "./containers.ts";
+import { hydrateAgents } from "./agents.ts";
+import { remoteRepos } from "./storage/remote.ts";
 import type { Ctx } from "./ctx.ts";
 
 // Account — identity, the connection mode, and (when connected) the knowledge-API
-// endpoint + tokens. The ONE store that stays local + synchronous (localStorage):
-// it must be readable before the storage backend is chosen, and login/logout flip
-// ctx.storage between local and remote, then re-hydrate every consumer (no reload).
+// endpoint + tokens. The ONE store that stays in localStorage + synchronous: it must be readable
+// before ctx.storage exists, and login/logout swap ctx.storage's provider (local ⟷ remote), then
+// re-hydrate every store (no reload).
 const KEY = "v84-harness:account";
 
 export type Connection = "offline" | "connected";
@@ -73,18 +75,23 @@ export function attachAccount(ctx: Ctx): void {
   ctxRef = ctx;
 }
 
-// Flip ctx.storage to match the connection state, then re-hydrate every consumer
-// + the sessions store from the new backend. The whole "switch" is right here.
+// Swap ctx.storage's provider to match the connection state, then re-hydrate every store from it.
+// The whole "switch" is right here.
 async function applyConnection(): Promise<void> {
   const ctx = ctxRef;
   if (!ctx) return;
-  if (isConnected()) ctx.storage.connect(new RemoteStorage(authedFetch));
+  if (isConnected()) ctx.storage.connect(remoteRepos(authedFetch));
   else ctx.storage.disconnect();
-  await Promise.all([hydrateConsumers(), hydrateSessions()]);
+  // Re-hydrate every store from the now-active provider (the swap). Containers before sessions
+  // (a session needs its container present). Nothing migrates — each realm is independent.
+  await hydrateConsumers();
+  await hydrateContainers();
+  await hydrateAgents();
+  await hydrateSessions();
 }
 
 // Toggle online/offline live (no restart) — keeps tokens so reconnect needs no
-// re-login. Swaps ctx.storage + re-hydrates every consumer + sessions.
+// re-login. Swaps ctx.storage's provider + re-hydrates every store.
 export async function setConnection(mode: Connection): Promise<void> {
   saveAccount({ connection: mode });
   await applyConnection();
@@ -184,7 +191,7 @@ async function doRefresh(): Promise<boolean> {
 }
 
 // Authenticated fetch against the knowledge API: injects the Bearer token and
-// transparently refreshes once on a 401, then retries. RemoteStorage calls this.
+// transparently refreshes once on a 401, then retries. The remote repos (data/remote.ts) call this.
 export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const { endpoint } = state;
   if (!endpoint) throw new Error("account not connected");

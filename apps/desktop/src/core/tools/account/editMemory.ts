@@ -1,4 +1,4 @@
-import { type ToolResult, type ToolSpec } from "../types.ts";
+import { type ToolResult, type ToolSpec, type ToolPermission } from "../types.ts";
 import { BaseAccountTool } from "./base.ts";
 import { authedFetch } from "../../account.ts";
 import { errorMessage } from "../../../lib/errors.ts";
@@ -39,5 +39,13 @@ export class EditMemory extends BaseAccountTool {
     } catch (e) {
       return { ok: false, output: `EditMemory failed: ${errorMessage(e)}` };
     }
+  }
+
+  isPermissioned(): boolean {
+    return true;
+  }
+
+  defaultPermission(): ToolPermission {
+    return 1;
   }
 }

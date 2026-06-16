@@ -6,8 +6,9 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- sessions: one row per device login; refresh token sha256-hashed, expires_at = revocation
-CREATE TABLE IF NOT EXISTS sessions (
+-- auth_sessions: one row per device login; refresh token sha256-hashed, expires_at = revocation.
+-- (Renamed from `sessions` — that name now belongs to chat sessions below.)
+CREATE TABLE IF NOT EXISTS auth_sessions (
   id                 CHAR(36)        NOT NULL PRIMARY KEY,
   user_id            BIGINT UNSIGNED NOT NULL,
   refresh_token_hash CHAR(64)        NOT NULL,
@@ -16,16 +17,148 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at         DATETIME(3)     NOT NULL,
   last_seen_at       DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   created_at         DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  INDEX idx_sessions_user (user_id),
+  INDEX idx_auth_sessions_user (user_id),
+  CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- The harness data model, real tables (NOT a kv blob), per user. Same column shape as the
+-- client; the difference is delete semantics: the client/local backend DELETEs the row, the
+-- remote API stamps deleted_at (soft delete) and filters it from reads — the client called
+-- delete, so it considers the row gone and never sees the retained copy. deleted_at = restore window.
+
+-- containers: chat / local / remote (replaces workspaces + the magic null "Chat" group)
+CREATE TABLE IF NOT EXISTS containers (
+  id          VARCHAR(36)     NOT NULL,
+  user_id     BIGINT UNSIGNED NOT NULL,
+  type        VARCHAR(16)     NOT NULL, -- chat | local | remote
+  name        VARCHAR(255)    NOT NULL,
+  permissions JSON            NOT NULL,
+  config      JSON            NOT NULL,
+  placement   VARCHAR(16)     NOT NULL, -- local | remote
+  created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at  DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, id),
+  INDEX idx_containers_user (user_id, deleted_at),
+  CONSTRAINT fk_containers_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- sessions: a conversation thread inside a container (the chat domain's Session)
+CREATE TABLE IF NOT EXISTS sessions (
+  id           VARCHAR(36)     NOT NULL,
+  user_id      BIGINT UNSIGNED NOT NULL,
+  container_id VARCHAR(36)     NOT NULL,
+  parent_id    VARCHAR(36)         NULL, -- sub-agent run's parent session
+  agent_id     VARCHAR(36)         NULL,
+  title        VARCHAR(512)    NOT NULL,
+  system       MEDIUMTEXT          NULL,
+  tools        JSON            NOT NULL, -- SessionTool[]
+  used_tokens  INT                 NULL,
+  unread       TINYINT(1)      NOT NULL DEFAULT 0,
+  created_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at   DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, id),
+  INDEX idx_sessions_container (user_id, container_id, deleted_at),
   CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- data: the harness Storage port, scoped per user (chats + media; settings stay local)
-CREATE TABLE IF NOT EXISTS data (
+-- messages: rows per session
+CREATE TABLE IF NOT EXISTS messages (
+  id                VARCHAR(36)     NOT NULL,
+  user_id           BIGINT UNSIGNED NOT NULL,
+  session_id        VARCHAR(36)     NOT NULL,
+  role              VARCHAR(16)     NOT NULL, -- user | assistant | tool
+  text              LONGTEXT            NULL,
+  thinking          LONGTEXT            NULL,
+  tool_calls        JSON                NULL,
+  tool_call_id      VARCHAR(64)         NULL,
+  child_session_ids JSON                NULL,
+  images            JSON                NULL, -- media:<id> refs (blobs live in the media table)
+  videos            JSON                NULL,
+  summary           TINYINT(1)          NULL,
+  hidden            TINYINT(1)          NULL,
+  created_at        DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  deleted_at        DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, id),
+  INDEX idx_messages_session (user_id, session_id, deleted_at),
+  CONSTRAINT fk_messages_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- media: blobs referenced by messages (data URLs), own rows so messages stay light
+CREATE TABLE IF NOT EXISTS media (
+  id         VARCHAR(36)     NOT NULL,
   user_id    BIGINT UNSIGNED NOT NULL,
-  `key`      VARCHAR(512)    NOT NULL,
-  `value`    LONGTEXT        NOT NULL,
+  session_id VARCHAR(36)     NOT NULL,
+  message_id VARCHAR(36)     NOT NULL,
+  kind       VARCHAR(16)     NOT NULL, -- image | video | file
+  mime       VARCHAR(128)    NOT NULL,
+  name       VARCHAR(255)        NULL,
+  data       LONGTEXT        NOT NULL,
+  created_at DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, id),
+  INDEX idx_media_session (user_id, session_id, deleted_at),
+  CONSTRAINT fk_media_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- agents: stored agent definitions
+CREATE TABLE IF NOT EXISTS agents (
+  id                 VARCHAR(36)     NOT NULL,
+  user_id            BIGINT UNSIGNED NOT NULL,
+  name               VARCHAR(255)    NOT NULL,
+  description        TEXT                NULL,
+  system             MEDIUMTEXT          NULL,
+  `user`             MEDIUMTEXT          NULL, -- the run template
+  requires_workspace VARCHAR(16)         NULL, -- local | remote | null (chat-only)
+  permissions        JSON            NOT NULL,
+  placement          VARCHAR(16)     NOT NULL,
+  created_at         DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at         DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at         DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, id),
+  INDEX idx_agents_user (user_id, deleted_at),
+  CONSTRAINT fk_agents_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- settings: key/value scoped per user (the synced/account scope; machine-local scope stays on the device)
+CREATE TABLE IF NOT EXISTS settings (
+  user_id    BIGINT UNSIGNED NOT NULL,
+  `key`      VARCHAR(255)    NOT NULL,
+  scope      VARCHAR(16)     NOT NULL, -- local | account
+  value      JSON            NOT NULL,
   updated_at DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3)         NULL,
   PRIMARY KEY (user_id, `key`),
-  CONSTRAINT fk_data_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- plugins: installed plugin registrations
+CREATE TABLE IF NOT EXISTS plugins (
+  id          VARCHAR(36)     NOT NULL,
+  user_id     BIGINT UNSIGNED NOT NULL,
+  name        VARCHAR(255)    NOT NULL,
+  version     VARCHAR(64)         NULL,
+  enabled     TINYINT(1)      NOT NULL DEFAULT 1,
+  config      JSON            NOT NULL,
+  permissions JSON            NOT NULL,
+  placement   VARCHAR(16)     NOT NULL,
+  created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at  DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, id),
+  CONSTRAINT fk_plugins_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- plugin_data: a plugin's own namespaced rows (its "tables")
+CREATE TABLE IF NOT EXISTS plugin_data (
+  user_id    BIGINT UNSIGNED NOT NULL,
+  plugin_id  VARCHAR(36)     NOT NULL,
+  collection VARCHAR(128)    NOT NULL,
+  `key`      VARCHAR(255)    NOT NULL,
+  value      JSON            NOT NULL,
+  updated_at DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3)         NULL,
+  PRIMARY KEY (user_id, plugin_id, collection, `key`),
+  CONSTRAINT fk_plugin_data_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -64,7 +64,7 @@ export function SessionView() {
       if (m.role === "tool" && m.toolCallId) {
         toolResults.set(m.toolCallId, m.text);
         if (m.images?.length) toolImages.set(m.toolCallId, m.images);
-        if (m.video?.length) toolVideo.set(m.toolCallId, m.video);
+        if (m.videos?.length) toolVideo.set(m.toolCallId, m.videos);
         if (m.childSessionIds?.length) toolChildren.set(m.toolCallId, m.childSessionIds);
       }
     }
@@ -191,7 +191,7 @@ export function SessionView() {
                 text={m.text}
                 thinking={m.thinking}
                 images={m.images}
-                video={m.video}
+                videos={m.videos}
                 files={m.files}
                 createdAt={m.createdAt}
                 toolCalls={m.toolCalls}

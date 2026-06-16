@@ -10,7 +10,7 @@ export {
   newSession,
   renameSession,
   unlinkAgent,
-  getSessionsForWorkspace,
+  getSessionsForContainer,
 } from "./store.ts";
 export { SessionEngine } from "./engine.ts";
 export type { TurnResult, SendOptions, OutputValidator } from "./engine.ts";

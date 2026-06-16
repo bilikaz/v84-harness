@@ -4,7 +4,20 @@
     "newSession": "New session",
     "manage": "Manage sessions",
     "rename": "Rename",
-    "delete": "Delete"
+    "delete": "Delete",
+    "chats": "Chats",
+    "local": "Local",
+    "remote": "Remote",
+    "add": "Add",
+    "newChat": "New chat"
+  },
+  "container": {
+    "title": "Workspace settings",
+    "name": "Name",
+    "root": "Folder",
+    "delete": "Delete",
+    "tools": "Tool permissions",
+    "toolsHint": "The ceiling for tools in this workspace; an agent can restrict further, never extend."
   },
   "agents": {
     "title": "Agents",
@@ -50,6 +63,15 @@
     "deleteRun": "Delete run log",
     "deletedRun": "Run log deleted",
     "deletedRunHint": "This sub-agent run log was deleted. Its answer stays in the tool result."
+  },
+  "browser": {
+    "title": "Browser windows",
+    "empty": "No browser windows open.",
+    "urlPlaceholder": "Open a URL…",
+    "open": "Open",
+    "minimize": "Minimize",
+    "close": "Close window",
+    "closed": "window closed"
   },
   "menu": {
     "settings": "Settings",

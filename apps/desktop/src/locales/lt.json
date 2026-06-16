@@ -4,7 +4,20 @@
     "newSession": "Nauja sesija",
     "manage": "Tvarkyti sesijas",
     "rename": "Pervadinti",
-    "delete": "Ištrinti"
+    "delete": "Ištrinti",
+    "chats": "Pokalbiai",
+    "local": "Vietiniai",
+    "remote": "Nuotoliniai",
+    "add": "Pridėti",
+    "newChat": "Naujas pokalbis"
+  },
+  "container": {
+    "title": "Darbo srities nustatymai",
+    "name": "Pavadinimas",
+    "root": "Aplankas",
+    "delete": "Ištrinti",
+    "tools": "Įrankių leidimai",
+    "toolsHint": "Šios darbo srities įrankių riba; agentas gali ją susiaurinti, bet ne išplėsti."
   },
   "agents": {
     "title": "Agentai",
@@ -50,6 +63,15 @@
     "deleteRun": "Ištrinti vykdymo įrašą",
     "deletedRun": "Įrašas ištrintas",
     "deletedRunHint": "Šio sub-agento vykdymo įrašas ištrintas. Jo atsakymas lieka įrankio rezultate."
+  },
+  "browser": {
+    "title": "Naršyklės langai",
+    "empty": "Nėra atidarytų naršyklės langų.",
+    "urlPlaceholder": "Atverti URL…",
+    "open": "Atverti",
+    "minimize": "Suskleisti",
+    "close": "Uždaryti langą",
+    "closed": "langas uždarytas"
   },
   "menu": {
     "settings": "Nustatymai",

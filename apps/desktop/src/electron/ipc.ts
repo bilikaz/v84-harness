@@ -1,9 +1,10 @@
 // Registers the main-side handlers behind the `window.harness` bridge.
 
-import { IPC, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type MediaModelsResult } from "./bridge.ts";
+import { IPC, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type MediaModelsResult, type ViewBounds } from "./bridge.ts";
 import { cancelTool, execTool, toolFilter } from "./tools.ts";
+import { getBrowserFleet } from "./browserFleet.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
-import { openStorage } from "./storage.ts";
+import { openSqliteStore, execData } from "./sqliteStore.ts";
 import { errorMessage } from "../lib/errors.ts";
 
 type Electron = typeof import("electron");
@@ -11,12 +12,10 @@ type Electron = typeof import("electron");
 export function registerIpc(electron: Electron): void {
   const { ipcMain, dialog, app } = electron;
 
-  const storage = openStorage(app.getPath("userData"));
-  ipcMain.handle(IPC.storageAvailable, () => storage.available);
-  ipcMain.handle(IPC.storageGet, (_e: unknown, key: string) => storage.get(key));
-  ipcMain.handle(IPC.storageSet, (_e: unknown, key: string, value: string) => storage.set(key, value));
-  ipcMain.handle(IPC.storageDel, (_e: unknown, key: string) => storage.del(key));
-  ipcMain.handle(IPC.storageKeys, (_e: unknown, prefix: string) => storage.keys(prefix));
+  // Local per-entity SQLite store (the electron LOCAL StorageRepos backing).
+  const sqliteOk = openSqliteStore(app.getPath("userData"));
+  ipcMain.handle(IPC.storageAvailable, () => sqliteOk);
+  ipcMain.handle(IPC.storageExec, (_e: unknown, repo: string, method: string, args: unknown[]) => execData(repo, method, args));
 
   ipcMain.handle(IPC.pickFolder, async () => {
     const res = await dialog.showOpenDialog({
@@ -42,6 +41,16 @@ export function registerIpc(electron: Electron): void {
       return { ok: false, models: [], error: errorMessage(e) };
     }
   });
+
+  // Browser fleet — the WebContentsView manager is created with the host window (initBrowserFleet),
+  // so resolve it lazily: these handlers register before the window exists, but only fire after.
+  ipcMain.handle(IPC.browserOpen, (_e: unknown, url: string) => getBrowserFleet()?.open(url) ?? "");
+  ipcMain.handle(IPC.browserNavigate, (_e: unknown, id: string, url: string) => void getBrowserFleet()?.navigate(id, url));
+  ipcMain.handle(IPC.browserGet, (_e: unknown, id: string) => getBrowserFleet()?.get(id) ?? null);
+  ipcMain.handle(IPC.browserActive, () => getBrowserFleet()?.active() ?? []);
+  ipcMain.handle(IPC.browserShow, (_e: unknown, id: string, bounds: ViewBounds) => void getBrowserFleet()?.show(id, bounds));
+  ipcMain.handle(IPC.browserHide, () => void getBrowserFleet()?.hide());
+  ipcMain.handle(IPC.browserClose, (_e: unknown, id: string) => void getBrowserFleet()?.close(id));
 
   ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
   ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));

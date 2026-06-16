@@ -101,7 +101,7 @@ export class VideoGenerate extends BaseGeneralTool {
       return {
         ok: true,
         output: `Generated a ${duration}s video; it is displayed to the user. If it is attached in the next message, review it; otherwise you cannot see it — don't describe its visual quality, just confirm it was generated.`,
-        video: [video],
+        videos: [video],
       };
     } catch (e) {
       return { ok: false, output: `VideoGenerate failed: ${errorMessage(e)}` };

@@ -5,7 +5,7 @@ import { ChevronDown, ShieldCheck, Unlink } from "lucide-react";
 import { unlinkAgent, useActiveSession } from "../../core/sessions/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import { useAgents } from "../../core/agents.ts";
-import { useWorkspaces } from "../../core/workspaces.ts";
+import { useContainers } from "../../core/containers.ts";
 import { type ToolPermission } from "../../core/tools/types.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { cn } from "../../lib/cn.ts";
@@ -17,7 +17,7 @@ export function AgentPermissionsPanel() {
   const ctx = useCtx();
   const session = useActiveSession();
   const agents = useAgents();
-  useWorkspaces();
+  useContainers();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [modes, setModes] = useState<Record<string, ToolPermission>>({});

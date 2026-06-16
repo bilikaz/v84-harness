@@ -1,15 +1,19 @@
-import { Consumer } from "./storage/consumer.ts";
+import { useSyncExternalStore } from "react";
+
+import { createListeners } from "./storage/consumer.ts";
+import { newId } from "./ids.ts";
+import type { StorageEngine } from "./storage/engine.ts";
 import type { Ctx } from "./ctx.ts";
 import { type ToolName, type ToolPermission } from "./tools/types.ts";
+import { rootLog } from "../lib/logger/index.ts";
+import { errorMessage } from "../lib/errors.ts";
 
-// Agents consumer — reusable playbooks (system + user markdown) executed as sessions.
-// Persisted through ctx.storage like every other consumer.
-const KEY = "v84-harness:agents";
+// Agents — reusable playbooks (system + user markdown) run as sessions. Rows in the `agents` store
+// of the active provider (ctx.storage — cloud when connected, local offline); in-memory + sync
+// selectors (the engine reads getAgent() during a turn), async persist/hydrate that re-runs on swap.
+const log = rootLog.child("agents");
 
-// An agent's tool CEILING — the effective per-call permission is the STRICTER of
-// this and the workspace policy (min); an agent can restrict but never extend it.
 export type AgentTools = Record<ToolName, ToolPermission>;
-// Empty default = no ceiling set; effectiveMode treats a missing entry as 2 (allow), so an agent only ever restricts.
 export const AGENT_TOOLS_DEFAULT: AgentTools = {};
 
 export interface Agent {
@@ -55,7 +59,7 @@ const SEED: Agent[] = [
 
 function normalize(p: Partial<Agent>): Agent {
   return {
-    id: p.id ?? crypto.randomUUID(),
+    id: p.id ?? newId(),
     name: p.name ?? "",
     description: p.description ?? "",
     system: p.system ?? "",
@@ -65,50 +69,74 @@ function normalize(p: Partial<Agent>): Agent {
   };
 }
 
-class Agents extends Consumer<Agent[]> {
-  constructor(ctx: Ctx) {
-    super(ctx, KEY, SEED);
-  }
+let data: StorageEngine | null = null;
+let agents: Agent[] = [];
+const reg = createListeners();
 
-  protected override parse(raw: string): Agent[] {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(Boolean).map(normalize) : this.defaults;
-  }
+// Agents are playbooks that follow the connection — they live in the ACTIVE provider (the cloud
+// when connected, local offline), and re-hydrate on each swap. Seed-on-empty fills a fresh realm.
+const repo = () => data?.repos().agents ?? null;
 
-  list(): Agent[] {
-    return this.state;
-  }
-  find(id: string): Agent | undefined {
-    return this.state.find((a) => a.id === id);
-  }
-  forContext(hasWorkspace: boolean): Agent[] {
-    return this.state.filter((a) => hasWorkspace || !a.workspace);
-  }
-  create(name: string): string {
-    const a: Agent = { id: crypto.randomUUID(), name, description: "", system: "", user: "", workspace: false, tools: { ...AGENT_TOOLS_DEFAULT } };
-    this.commit([...this.state, a]);
-    return a.id;
-  }
-  save(id: string, patch: Partial<Omit<Agent, "id">>): void {
-    this.commit(this.state.map((a) => (a.id === id ? { ...a, ...patch } : a)));
-  }
-  remove(id: string): void {
-    this.commit(this.state.filter((a) => a.id !== id));
-  }
-  useList = (): Agent[] => this.use();
+export function useAgentData(e: StorageEngine): void {
+  data = e;
 }
 
-let inst: Agents;
-export function initAgents(ctx: Ctx): Agents {
-  inst = new Agents(ctx);
-  return inst;
+// Load rows; seed the defaults on a fresh store.
+export async function hydrateAgents(): Promise<void> {
+  const r = repo();
+  try {
+    if (!r) return;
+    const rows = (await r.list()).map(normalize);
+    if (rows.length === 0) {
+      for (const a of SEED) await r.put(a);
+      agents = SEED.map((a) => ({ ...a }));
+    } else {
+      agents = rows;
+    }
+  } catch (err) {
+    log.warn("hydrate_failed", { error: errorMessage(err) });
+    agents = SEED.map((a) => ({ ...a }));
+  } finally {
+    reg.notify();
+  }
 }
 
-// Module facades — the public API; thin delegates to the ctx-injected singleton.
-export const getAgents = (): Agent[] => inst.list();
-export const getAgent = (id: string): Agent | undefined => inst.find(id);
-export const agentsForContext = (hasWorkspace: boolean): Agent[] => inst.forContext(hasWorkspace);
-export const createAgent = (name: string): string => inst.create(name);
-export const saveAgent = (id: string, patch: Partial<Omit<Agent, "id">>): void => inst.save(id, patch);
-export const deleteAgent = (id: string): void => inst.remove(id);
-export const useAgents = (): Agent[] => inst.useList();
+function persist(id: string): void {
+  const a = agents.find((x) => x.id === id);
+  const r = repo();
+  if (a && r) void r.put(a).catch((e: unknown) => log.warn("persist_failed", { id, error: errorMessage(e) }));
+}
+
+// ── Selectors (sync) ─────────────────────────────────────────────────────────
+export const getAgents = (): Agent[] => agents;
+export const getAgent = (id: string): Agent | undefined => agents.find((a) => a.id === id);
+export const agentsForContext = (hasWorkspace: boolean): Agent[] => agents.filter((a) => hasWorkspace || !a.workspace);
+
+// ── Commands ───────────────────────────────────────────────────────────────
+export function createAgent(name: string): string {
+  const a: Agent = { id: newId(), name, description: "", system: "", user: "", workspace: false, tools: { ...AGENT_TOOLS_DEFAULT } };
+  agents = [...agents, a];
+  reg.notify();
+  persist(a.id);
+  return a.id;
+}
+
+export function saveAgent(id: string, patch: Partial<Omit<Agent, "id">>): void {
+  agents = agents.map((a) => (a.id === id ? { ...a, ...patch } : a));
+  reg.notify();
+  persist(id);
+}
+
+export function deleteAgent(id: string): void {
+  agents = agents.filter((a) => a.id !== id);
+  reg.notify();
+  const r = repo();
+  if (r) void r.remove(id).catch((e: unknown) => log.warn("delete_failed", { id, error: errorMessage(e) }));
+}
+
+export const useAgents = (): Agent[] => useSyncExternalStore(reg.subscribe, () => agents, () => agents);
+
+// Wired at init: inject ctx.storage. Hydration is awaited by init() (after ctx.storage is installed).
+export function initAgents(ctx: Ctx): void {
+  useAgentData(ctx.storage);
+}

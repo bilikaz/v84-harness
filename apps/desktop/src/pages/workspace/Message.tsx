@@ -31,7 +31,7 @@ function MessageImpl({
   text,
   thinking,
   images,
-  video,
+  videos,
   files,
   toolCalls,
   results,
@@ -45,7 +45,7 @@ function MessageImpl({
   text: string;
   thinking?: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   files?: FileAttachment[];
   toolCalls?: ToolCallRequest[];
   results?: Map<string, string>;
@@ -66,9 +66,9 @@ function MessageImpl({
               ))}
             </div>
           )}
-          {video && video.length > 0 && (
+          {videos && videos.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
-              {video.map((v, i) => (
+              {videos.map((v, i) => (
                 <SavableMedia kind="video" key={i} src={v.url} name={v.name} className="max-h-48 rounded-xl" />
               ))}
             </div>
@@ -109,7 +109,7 @@ function MessageImpl({
           call={c}
           output={results?.get(c.id)}
           images={toolImages?.get(c.id)}
-          video={toolVideo?.get(c.id)}
+          videos={toolVideo?.get(c.id)}
           childSessionIds={toolChildren?.get(c.id)}
         />
       ))}
@@ -127,7 +127,7 @@ function sameMessage(prev: MessageProps, next: MessageProps): boolean {
     prev.text !== next.text ||
     prev.thinking !== next.thinking ||
     prev.images !== next.images ||
-    prev.video !== next.video ||
+    prev.videos !== next.videos ||
     prev.files !== next.files ||
     prev.toolCalls !== next.toolCalls ||
     prev.createdAt !== next.createdAt ||

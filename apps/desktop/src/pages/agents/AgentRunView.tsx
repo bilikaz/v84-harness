@@ -3,7 +3,7 @@ import { Pencil } from "lucide-react";
 
 import { useAgents } from "../../core/agents.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
-import { useActiveWorkspaceId } from "../../core/workspaces.ts";
+import { getContainer, useActiveContainerId } from "../../core/containers.ts";
 import { navigate } from "../../lib/router.ts";
 import { Composer } from "../workspace/Composer.tsx";
 import type { Attachments } from "../../core/sessions/index.ts";
@@ -13,7 +13,7 @@ export function AgentRunView({ id }: { id: string }) {
   const { t } = useTranslation();
   const ctx = useCtx();
   const agents = useAgents();
-  const workspaceId = useActiveWorkspaceId();
+  const activeContainerId = useActiveContainerId();
   const agent = agents.find((a) => a.id === id);
 
   if (!agent) {
@@ -21,7 +21,8 @@ export function AgentRunView({ id }: { id: string }) {
       <div className="flex h-full items-center justify-center text-sm text-neutral-400">{t("agents.missing")}</div>
     );
   }
-  const needsWorkspace = agent.workspace && workspaceId === null;
+  const activeType = getContainer(activeContainerId)?.type;
+  const needsWorkspace = agent.workspace && activeType !== "local" && activeType !== "remote";
 
   function run(text: string, atts: Attachments) {
     if (!agent) return;

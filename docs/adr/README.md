@@ -35,7 +35,7 @@ loading. Its index row below stays.
 | [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted (tool names refined by 0033) |
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
-| [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | accepted |
+| [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | superseded by 0043 → archived |
 | [0022](0022-subagent-orchestration.md) | Sub-agent orchestration: child sessions + ListAgents/RunAgent pair | accepted |
 | [0023](0023-agent-definition-binding-and-ceiling.md) | Agent definition: workspace binding toggle + per-agent tool ceiling | accepted (placement clause superseded by 0026) |
 | [0024](0024-agent-runs-through-composer.md) | Agent runs go through the composer (pseudo-session priming) | accepted |
@@ -49,14 +49,18 @@ loading. Its index row below stays.
 | [0032](0032-ctx-main-data-carrier.md) | Ctx — the one data carrier (config + llm + storage + tool gateway + host api + sessions) | accepted |
 | [0033](0033-tools-registry-folder-by-permission.md) | Tools — host-agnostic registry, dynamic permission tiers, per-platform execution | accepted |
 | [0034](0034-platform-hosts-over-agnostic-core.md) | Platform hosts (electron / web) over a host-agnostic core + shared renderer | accepted |
-| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned; init picks the backend (supersedes 0017) | accepted (runtime backend swap added by 0038) |
+| [0035](0035-storage-engine.md) | Storage engine — backend embedded, persistence owned (supersedes 0017) | superseded by 0043 / 0044 → archived |
 | [0036](0036-host-capability-surface.md) | Host capability surface — `ctx.api`, platform-injected, gated on presence | accepted |
 | [0037](0037-reactive-consumer-over-injected-storage.md) | Reactive `Consumer` over injected storage (supersedes 0004; `createStore`/`lib/store.ts` deleted) | accepted |
-| [0038](0038-storage-backend-swappable-at-runtime.md) | Storage backend swappable at runtime — local baseline + remote, connection swaps it, re-hydrate (no reload) | accepted |
+| [0038](0038-storage-backend-swappable-at-runtime.md) | Storage backend swappable at runtime — local baseline + remote | superseded by 0044 → archived |
 | [0039](0039-account-local-store-and-connection-lifecycle.md) | `account` — the lone local store, connection lifecycle, renderer-side memory tool tier | accepted |
 | [0040](0040-knowledge-remote-service.md) | `apps/knowledge` — the remote service (Hono + MariaDB + OpenSearch + Inngest; auth; `/data` + `/kb` + `/inngest`) | accepted |
 | [0041](0041-knowledgebase-plane.md) | Knowledgebase — all-OpenSearch, nested chunks, hybrid sparse+dense, fire-and-forget ingest | accepted |
 | [0042](0042-unified-settings-registry.md) | Unified Settings registry — providers/models/services, `config.llm` derived, media subsumed (refines 0018) | accepted |
+| [0043](0043-per-entity-repos.md) | Per-entity storage tables + `StorageRepos` (KV substrate retired; supersedes 0035, 0021) | accepted |
+| [0044](0044-storage-engine-provider-swap.md) | `StorageEngine` — provider swap with a machine-local lane (`repos()` vs `localRepos()`; supersedes 0038) | accepted |
+| [0045](0045-machine-local-vs-account-synced.md) | Machine-local vs account-synced state (`Consumer.synced`; refines 0037, 0039, 0042) | accepted |
+| [0046](0046-typed-containers.md) | Typed containers unify chat + workspace (kills the null-"Chat" sentinel) | accepted |
 
 ## Needs review / important missing parts
 

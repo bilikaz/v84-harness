@@ -49,6 +49,6 @@ authRouter.post("/refresh", async (c) => {
 });
 
 authRouter.post("/logout", requireAuth, async (c) => {
-  await openRepos().sessions.revokeById(c.get("sessionId"));
+  await openRepos().authSessions.revokeById(c.get("sessionId"));
   return c.body(null, 204);
 });

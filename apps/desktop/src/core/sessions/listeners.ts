@@ -6,6 +6,7 @@ import {
   notify,
   persistSession,
   pushAssistant,
+  pushContext,
   pushHeal,
   pushMediaFeedback,
   pushToolResult,
@@ -21,18 +22,19 @@ import {
 // alongside the new ones (the bus registry is a module singleton that survives
 // HMR) — that duplication is what doubles every streamed token in dev.
 const offs: Array<() => void> = [
-  bus.on("turn:start", (e) => pushTurn(e.sessionId, e.text, e.images, e.files, e.video)),
+  bus.on("turn:start", (e) => pushTurn(e.sessionId, e.text, e.images, e.files, e.videos)),
   bus.on("text", (e) => appendToLast(e.sessionId, e.delta, "text")),
   bus.on("thinking", (e) => appendToLast(e.sessionId, e.delta, "thinking")),
   bus.on("turn:error", (e) => appendToLast(e.sessionId, `⚠️ ${e.message}`, "text")),
 
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
-  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.video, e.childSessionIds)),
+  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.videos, e.childSessionIds)),
   bus.on("tool:child", (e) => addChildRun(e.toolCallId, e.childSessionId)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
   bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),
+  bus.on("context", (e) => pushContext(e.sessionId, e.text)),
   bus.on("stream:retry", (e) => resetLast(e.sessionId)),
-  bus.on("mediaFeedback", (e) => pushMediaFeedback(e.sessionId, e.images, e.video)),
+  bus.on("mediaFeedback", (e) => pushMediaFeedback(e.sessionId, e.images, e.videos)),
 
   // The latest request's input + output IS the current context occupancy (input
   // already includes the whole history), so set, don't add.

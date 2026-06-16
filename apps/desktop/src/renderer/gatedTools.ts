@@ -1,23 +1,22 @@
-// Renderer-side gated-tool catalog. The permissions UIs need the list of permission-gated tools synchronously;
-// the gateway's filter() is async (electron resolves it in main over the bridge), so preload it once and cache.
+// Renderer-side gated-tool catalog for the permission UIs (container + agent editors). The gateway's
+// filter() is async (electron resolves it in main over the bridge), so it's fetched into state.
 // Renderer-only — it reads ctx through useCtx, so it can't live in core (which the main process also loads).
+//
+// checkCanRun drops tools the current main model can't use (e.g. ImageLoad on a model that doesn't
+// accept images) — the editor only offers what's actually possible. Because that depends on the
+// resolved model, it's NOT cached across the session: it re-fetches per mount so a model change is reflected.
 import { useEffect, useState } from "react";
 import { useCtx } from "./ctx.tsx";
 import type { ToolFilterEntry } from "../core/tools/types.ts";
 
-// The gated set changes only with the build (which tool modules are loaded), so one fetch serves the session.
-let cache: ToolFilterEntry[] | null = null;
-
 export function useGatedTools(): ToolFilterEntry[] {
   const ctx = useCtx();
-  const [tools, setTools] = useState<ToolFilterEntry[]>(cache ?? []);
+  const [tools, setTools] = useState<ToolFilterEntry[]>([]);
   useEffect(() => {
-    if (cache) return;
     let alive = true;
     void (async () => {
-      const filtered = await ctx.tools.filter({ includeDisabled: true });
-      cache = Object.values(filtered).filter((e) => e.permissioned);
-      if (alive) setTools(cache);
+      const filtered = await ctx.tools.filter({ checkCanRun: true, includeDisabled: true });
+      if (alive) setTools(Object.values(filtered).filter((e) => e.permissioned));
     })();
     return () => {
       alive = false;
