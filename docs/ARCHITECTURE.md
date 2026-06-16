@@ -17,7 +17,7 @@ A pnpm-workspace monorepo with two apps:
   local workspaces, orchestrates stored agents as parallel sub-agents (ADR-0022),
   and generates media (images/video). **This hub maps `apps/desktop`.**
 - **`apps/knowledge`** — the remote backend it talks to when an account is
-  connected: per-user durable storage (the `/data` backend behind `RemoteStorage`),
+  connected: per-user durable storage (the per-entity data API behind the remote `StorageRepos`),
   the knowledgebase (`/kb`), and auth. A Hono service on Node + MariaDB + OpenSearch
   + Inngest, with its own area doc ([architecture/knowledge.md](architecture/knowledge.md),
   [ADR-0040](adr/0040-knowledge-remote-service.md) / [ADR-0041](adr/0041-knowledgebase-plane.md)).
@@ -74,15 +74,15 @@ Layering rules:
 
 | Path | Role |
 |------|------|
-| `src/electron/` | Electron platform: the IPC contract (`bridge.ts`), the preload (`preload.ts`), the main process (`index.ts` — window, IPC handlers, context menu, save dialogs), the main-side tool dispatch (`tools.ts`), and the SQLite storage backend (`sqliteStorage.ts`) |
-| `src/web/` | Web platform: builds the in-process tool registry on `ctx` and the browser storage backends (`idbStorage.ts`, `localStorage.ts`) |
+| `src/electron/` | Electron platform: the IPC contract (`bridge.ts`), the preload (`preload.ts`), the main process (`index.ts` — window, IPC handlers, context menu, save dialogs), the main-side tool dispatch (`tools.ts`), and the local SQLite store (`sqliteStore.ts` in main + the renderer's `sqliteRepos.ts` proxy over IPC) |
+| `src/web/` | Web platform: builds the in-process tool registry on `ctx` (the local storage backend is the host-agnostic `core/storage/idb.ts`) |
 | `src/renderer/` | Shared, platform-agnostic UI: the `App`, the boot (`main.tsx`), the ctx React bridge (`ctx.tsx` — `useCtx`), the gated-tool catalog hook (`gatedTools.ts`) |
 | `src/electron/bridge.ts` | IPC contract: `IPC` channel constants + `ElectronApi` interface (`window.api`) |
-| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine), config, sessions engine, tools engine (incl. the `account/` memory-tool tier), storage port + engine + `Consumer` base, host capability surface (`host.ts`), workspaces, approvals, the unified settings registry, agents, and the lone local `account` store (`account.ts` — identity + connection lifecycle) |
+| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine), config, sessions engine, tools engine (incl. the `account/` memory-tool tier), per-entity `StorageRepos` + `StorageEngine` + `Consumer` base, host capability surface (`host.ts`), containers, approvals, the unified settings registry, agents, and the machine-local `account` store (`account.ts` — identity + connection lifecycle) |
 | `src/llm/` | The model layer (the shared-shape floor): `client.call()` (service-named calls), Provider classes per `<modality>/<type>`, response handlers, and the shapes core/config/tools import down (`Image`/`Video`, `ToolSpec`, `ToolCallRequest`, service unions) |
 | `src/lib/` | Renderer utilities: event bus, i18n, router, registry, errors, ui state (the old `store.ts` factory is gone — state is now `core/storage/consumer.ts`) |
 | `src/lib/logger/` | `Logger` port (scoped children, structured events) + console / memory sinks |
-| `src/core/storage/` | `Storage` port + `StorageEngine` (embeds a **swappable** backend — local baseline + optional remote — and owns session-persistence IO), the reactive `Consumer` base (`consumer.ts`), and the cross-platform remote backend (`remoteStorage.ts`, HTTP to the knowledge `/data`); local backends live in their platforms (`electron/sqliteStorage.ts`, `web/idbStorage.ts`, `web/localStorage.ts`) |
+| `src/core/storage/` | The per-entity `StorageRepos` interface (`types.ts`) + `StorageEngine` (`engine.ts` — holds local + optional remote providers, exposes `repos()` active vs `localRepos()` machine lane), the reactive `Consumer` base (`consumer.ts`), and the providers: `remote.ts` (knowledge-API client), `idb.ts` (IndexedDB), `memory.ts` (tests). The electron local SQLite provider lives in its platform (`electron/sqliteStore.ts` + `sqliteRepos.ts`) |
 | `tests/` | Vitest suites for pure logic (path confinement, provider URLs, data-URL parsing) |
 | `tests-live/` | Live engine suites against a real LLM endpoint (own config; not part of `pnpm test`) |
 | `src/pages/` | Feature UIs; each feature self-registers via `register.tsx` |
@@ -110,7 +110,7 @@ Deep dives, one per subsystem — read the one for the area you're touching
 | [architecture/tools.md](architecture/tools.md) | Tool system: general / workspace / account tiers; virtual root; caps |
 | [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, LLMConfig, Provider classes, response handlers, heal |
 | [architecture/ui.md](architecture/ui.md) | Contribution registry/regions, routing, agents UX, UI patterns, i18n |
-| [architecture/storage.md](architecture/storage.md) | Durable persistence: swappable backends, key scheme, shapes, accessor surface |
+| [architecture/storage.md](architecture/storage.md) | Durable persistence: per-entity `StorageRepos`, the provider swap (`repos()` vs `localRepos()`), tables, shapes, accessor surface |
 | [architecture/knowledge.md](architecture/knowledge.md) | The `apps/knowledge` remote service: registry, auth, `/data`, the knowledgebase plane, dev stack |
 
 ## Error-handling conventions
@@ -149,9 +149,11 @@ ADR-0011); they are not restated below.
 - **Language / compiler.** TypeScript strict, ESM, Node ≥ 24. Imports always
   include the `.ts`/`.tsx` extension; `import type` for type-only imports;
   `node:` prefix for Node built-ins.
-- **Storage namespace.** The app prefix is `v84-harness:` (localStorage keys
-  `v84-harness:<feature>`); the IndexedDB database is `v84-harness` with a
-  `kv` store.
+- **Storage namespace.** The app prefix is `v84-harness:` — used for `settings`-row
+  keys (one row per `Consumer`, e.g. `v84-harness:ui`) and the handful of
+  module-load `localStorage` keys (`v84-harness:account`, `:lang`, `:llm-debug`).
+  The per-entity tables (containers/sessions/messages/media/…) are keyed by ULID,
+  not by this prefix.
 - **Known seed.** `randomSeed()` in `core/tools/helpers/generation.ts` is a
   generation seed, not an id (constants-and-identifiers.md rule 4).
 - **Naming (repo-specific).** Files: `camelCase.ts` modules, `PascalCase.tsx`

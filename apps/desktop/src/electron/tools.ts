@@ -9,7 +9,7 @@ import type { ToolCallRequest, ToolResult, ToolFilterParams, ToolFilterResult, W
 
 const MODULES = {
   ...import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true }),
-  ...import.meta.glob<Record<string, unknown>>("../core/tools/workspace/*.ts", { eager: true }),
+  ...import.meta.glob<Record<string, unknown>>("../core/tools/local/*.ts", { eager: true }),
 };
 
 // Re-seeded from each call's wire before the registry touches it.

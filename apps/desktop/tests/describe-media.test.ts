@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { ImageDescribe } from "../src/core/tools/workspace/imageDescribe.ts";
-import { VideoDescribe } from "../src/core/tools/workspace/videoDescribe.ts";
+import { ImageDescribe } from "../src/core/tools/local/imageDescribe.ts";
+import { VideoDescribe } from "../src/core/tools/local/videoDescribe.ts";
 import { createClient } from "../src/llm/index.ts";
 import type { CallTarget, ModelService } from "../src/llm/types.ts";
 
@@ -111,8 +111,8 @@ describe("DescribeVideo", () => {
     const res = await describeVideoTool.execute({ path: "/workspace/clip.mp4" }, ({ videoRec: REC }));
     expect(res.ok).toBe(true);
     expect(res.output).toBe("A short clip of nothing much.");
-    expect(res.video).toHaveLength(1);
-    expect(res.video![0].mime).toBe("video/mp4");
+    expect(res.videos).toHaveLength(1);
+    expect(res.videos![0].mime).toBe("video/mp4");
     expect(res.images).toBeUndefined();
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];

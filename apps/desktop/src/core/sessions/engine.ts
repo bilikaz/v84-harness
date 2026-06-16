@@ -7,12 +7,13 @@ import type { Ctx } from "../ctx.ts";
 import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
 import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
 import { getAgent, type Agent } from "../agents.ts";
-import { getActiveWorkspaceId, getWorkspace, type Workspace } from "../workspaces.ts";
+import { getActiveContainerId, getContainer, type Container } from "../containers.ts";
 import { isConnected } from "../account.ts";
 import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
 import { pt } from "../../lib/prompts.ts";
 import { cap } from "../tools/base.ts";
 import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgent } from "./agentTools.ts";
+import { browserToolSchemas, isBrowserTool, execBrowserTool } from "../browserTools.ts";
 import { sessionBus as bus } from "./events.ts";
 import {
   createSession,
@@ -22,10 +23,8 @@ import {
   getSession,
   getSessions,
   getStreamingIds,
-  hydrate,
   isFull,
   toChatMessages,
-  useStorage,
 } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { downscaleImage } from "../../lib/imageResize.ts";
@@ -45,6 +44,9 @@ export interface TurnResult {
 export interface SendOptions extends Attachments {
   autoName?: boolean;
   validate?: OutputValidator;
+  // A hidden user message pushed just before the visible turn — carries forwarded context
+  // (a browser window snapshot) that the visible comment references.
+  context?: string;
 }
 
 // The sessions engine: the turn loop, sub-agent orchestration, naming/compaction triggers — all bound to one ctx.
@@ -53,11 +55,8 @@ export class SessionEngine {
   private readonly inflight = new Map<string, AbortController>();
 
   constructor(private readonly ctx: Ctx) {
-    // Inject the host's storage engine into the session store, then hydrate from it (no-op in storage-less hosts).
-    if (ctx.storage) {
-      useStorage(ctx.storage);
-      void hydrate();
-    }
+    // The session store's data engine + hydration are injected/orchestrated by init() AFTER
+    // ctx.storage is installed (this constructor runs during `new Ctx`, before that).
     // Auto-name the session after its first exchange.
     bus.on("message:done", (e) => {
       if (e.firstExchange && e.autoName && !e.errored) void nameSession(this.ctx, e.sessionId);
@@ -95,7 +94,7 @@ export class SessionEngine {
     const { ws, agent } = capabilityContext(session);
     const filtered = await this.ctx.tools.filter({
       hasWorkspace: !!ws,
-      workspacePermissions: ws?.tools,
+      workspacePermissions: ws?.permissions as Record<ToolName, ToolPermission> | undefined,
       agentPermissions: agent?.tools,
       includeDisabled: true,
     });
@@ -111,7 +110,7 @@ export class SessionEngine {
     const t = text.trim();
     const session = getSession(sid);
     // Empty text is allowed as long as there's at least one attachment.
-    if (!session || (!t && !opts.images?.length && !opts.video?.length && !opts.files?.length)) return null;
+    if (!session || (!t && !opts.images?.length && !opts.videos?.length && !opts.files?.length)) return null;
     // Unconfigured (null cfg) falls through — runTurn answers that with a proper turn error.
     const cfg = resolveMain();
     if (getStreamingIds().has(sid) || (cfg && isFull(cfg, session))) return null;
@@ -129,14 +128,14 @@ export class SessionEngine {
   runAgent(
     agent: Agent,
     task: string,
-    opts: SendOptions & { parentId?: string; workspaceId?: string | null; activate?: boolean } = {},
+    opts: SendOptions & { parentId?: string; containerId?: string; activate?: boolean } = {},
   ): { sid: string; result: Promise<TurnResult | null> } {
-    const { parentId, workspaceId, activate, ...sendOpts } = opts;
+    const { parentId, containerId, activate, ...sendOpts } = opts;
     const sid = createSession(
       {
         title: agent.name,
         system: agent.system,
-        workspaceId: workspaceId !== undefined ? workspaceId : getActiveWorkspaceId(),
+        containerId: containerId !== undefined ? containerId : getActiveContainerId() ?? "",
         agentId: agent.id,
         parentId,
       },
@@ -149,8 +148,10 @@ export class SessionEngine {
     const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
     const autoName = opts.autoName !== false;
 
+    // Forwarded context is a hidden user message that must precede the visible turn the model reads.
+    if (opts.context) bus.emit("context", { sessionId: sid, text: opts.context });
     // turn:start must append the user + assistant placeholder BEFORE history is read.
-    bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, video: opts.video, files: opts.files });
+    bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, videos: opts.videos, files: opts.files });
 
     const cfg = resolveMain();
     if (!cfg) {
@@ -167,11 +168,12 @@ export class SessionEngine {
     const filtered = await this.ctx.tools.filter({
       checkCanRun: true,
       hasWorkspace: !!ws,
-      workspacePermissions: ws?.tools,
+      workspacePermissions: ws?.permissions as Record<ToolName, ToolPermission> | undefined,
       agentPermissions: agent?.tools,
     });
     const agentPair = isChild ? [] : (agentToolSchemas(!!ws) as ToolSpec[]);
-    const toolSpecs: ToolSpec[] = [...Object.values(filtered).map((e) => e.schema as ToolSpec), ...agentPair];
+    const browserPair = isChild ? [] : browserToolSchemas();
+    const toolSpecs: ToolSpec[] = [...Object.values(filtered).map((e) => e.schema as ToolSpec), ...agentPair, ...browserPair];
     llmLog.debug("turn", { workspace: ws?.name ?? null, tools: toolSpecs.map((t) => t.function.name) });
     // The virtual-root convention (ADR-0007) is invisible otherwise — tell the model only when file tools are actually advertised.
     const fsAccess = Object.values(filtered).some((e) => e.permissioned);
@@ -190,7 +192,7 @@ export class SessionEngine {
         if (controller.signal.aborted) break;
         // History is re-filtered against the CURRENT model's inputs each step — the model can change mid-session, and yesterday's images must not 400 today's text-only endpoint.
         const history = toChatMessages(getSession(sid)?.messages ?? [], cfg.input ?? {});
-        const baseSystem = getSession(sid)?.system || ws?.instructions || undefined;
+        const baseSystem = getSession(sid)?.system || (ws?.config.instructions as string | undefined) || undefined;
         // Append the workspace prompt when file tools are advertised, and the memory
         // prompt when the account is connected (same gate that advertises the memory tools).
         const system =
@@ -244,6 +246,12 @@ export class SessionEngine {
               await this.execAgentTool(sid, call, ws, controller.signal, isChild);
               return;
             }
+            // The browser-fleet read tools are driver-level too (they need the host fleet, not the registry).
+            if (isBrowserTool(call.name)) {
+              const output = isChild ? `tool "${call.name}" is not available to sub-agents.` : await execBrowserTool(call);
+              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output });
+              return;
+            }
             const mode = filtered[call.name]?.effectiveMode ?? 0;
             if (mode === 0) {
               const why = !ws
@@ -268,7 +276,7 @@ export class SessionEngine {
             try {
               // The platform's gateway runs the call — web in-process, electron over the bridge (cancel via ADR-0014).
               result =
-                (await this.ctx.tools.run({ id: call.id, name: call.name, arguments: call.arguments, cwd: ws?.root ?? "" })) ??
+                (await this.ctx.tools.run({ id: call.id, name: call.name, arguments: call.arguments, cwd: (ws?.config.root as string | undefined) ?? "" })) ??
                 { ok: false, output: `tool "${call.name}" is unavailable here.` };
             } catch (e) {
               result = { ok: false, output: `tool execution failed: ${errorMessage(e)}` };
@@ -287,10 +295,10 @@ export class SessionEngine {
                   }),
                 )
               : undefined;
-            const video = result.video?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
-            bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, video });
+            const videos = result.videos?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
+            bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, videos });
             if (images?.length) fedImages.push(...images);
-            if (video?.length) fedVideo.push(...video);
+            if (videos?.length) fedVideo.push(...videos);
           }),
         );
         // Feed back only what the model's declared inputs accept — otherwise the endpoint rejects the turn.
@@ -300,7 +308,7 @@ export class SessionEngine {
           bus.emit("mediaFeedback", {
             sessionId: sid,
             images: feedImages.length ? feedImages : undefined,
-            video: feedVideo.length ? feedVideo : undefined,
+            videos: feedVideo.length ? feedVideo : undefined,
           });
         }
         bus.emit("assistant:open", { sessionId: sid });
@@ -370,7 +378,7 @@ export class SessionEngine {
     };
   }
 
-  private async execAgentTool(sid: string, call: ToolCallRequest, ws: Workspace | undefined, signal: AbortSignal, isChild: boolean): Promise<void> {
+  private async execAgentTool(sid: string, call: ToolCallRequest, ws: Container | undefined, signal: AbortSignal, isChild: boolean): Promise<void> {
     const respond = (output: string, childSessionIds?: string[]): void =>
       bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, childSessionIds });
     // A model can hallucinate the pair even though children aren't advertised it — depth-1 must hold at run time too.
@@ -399,8 +407,8 @@ export class SessionEngine {
 
         const { sid: childSid, result } = this.runAgent(resolved, task, {
           parentId: sid,
-          // The PARENT SESSION's workspace, not the capability-masked `ws` — children inherit placement, not the mask.
-          workspaceId: getSession(sid)?.workspaceId ?? null,
+          // The PARENT SESSION's container, not the capability-masked `ws` — children inherit placement, not the mask.
+          containerId: getSession(sid)?.containerId ?? "",
           activate: false,
         });
         children.push(childSid);
@@ -427,9 +435,12 @@ export class SessionEngine {
   }
 }
 
-// The STRICTER context selection: a chat-only agent (no workspace) is masked so workspaceId is placement, never a grant.
-function capabilityContext(session: Session | undefined): { ws: Workspace | undefined; agent: Agent | undefined } {
+// The STRICTER context selection: a chat-only agent is masked (no fs workspace). Only `local`
+// containers expose the fs tool tier today (the `remote` VM tier is deferred to a later slice);
+// `chat` containers get no workspace, just the general tier.
+function capabilityContext(session: Session | undefined): { ws: Container | undefined; agent: Agent | undefined } {
   const agent = session?.agentId ? getAgent(session.agentId) : undefined;
-  const ws = agent && !agent.workspace ? undefined : getWorkspace(session?.workspaceId);
+  const container = getContainer(session?.containerId);
+  const ws = agent && !agent.workspace ? undefined : container?.type === "local" ? container : undefined;
   return { ws, agent };
 }

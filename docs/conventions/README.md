@@ -17,6 +17,7 @@ This repo's instance-specific documentation lives in
 | [types-placement.md](types-placement.md) | `types.ts` holds vocabulary (promotion test: 2+ importers / boundary / family); `shared.ts` holds cross-cutting helpers; everything else colocates |
 | [consolidation.md](consolidation.md) | Extract only essential duplication or near-universal sharing; 2-of-N look-alikes stay duplicated |
 | [capability-injection.md](capability-injection.md) | Platform parts injected onto a shared context at the composition root; agnostic code reads the carrier, gates optional capabilities on presence |
+| [capability-gating.md](capability-gating.md) | One `canRun()` predicate, enforced at both the advertise boundary and the invoke boundary; advertise-only gates drift |
 | [error-handling.md](error-handling.md) | Normalize unknown throws; context-prefixed messages; per-item catch in batches |
 | [configuration.md](configuration.md) | One env read point; typed config; exported defaults; fail fast with actionable hints |
 | [logging.md](logging.md) | Structured events with dot-scoped children; data objects, never interpolation |

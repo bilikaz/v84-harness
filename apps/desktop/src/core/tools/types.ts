@@ -9,7 +9,7 @@ export interface ToolResult {
   ok: boolean;
   output: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
 }
 
 // What crosses the bridge to the main runner alongside the call: the config snapshot (functions/clients can't

@@ -52,9 +52,9 @@ describe("toChatMessages media window", () => {
 
   it("video competes for the same budget and wins as the newer item", () => {
     const photos = msg({ images: Array.from({ length: MAX_LIVE_MEDIA + 1 }, (_, i) => img(`p${i}`)) });
-    const clip = msg({ video: [{ url: "data:video/mp4;base64,v", mime: "video/mp4", name: "clip" }] });
+    const clip = msg({ videos: [{ url: "data:video/mp4;base64,v", mime: "video/mp4", name: "clip" }] });
     const out = toChatMessages([photos, clip]);
-    expect(out[1].video?.length).toBe(1);
+    expect(out[1].videos?.length).toBe(1);
     expect(out[0].images?.length).toBe(MAX_LIVE_MEDIA - 1); // one slot went to the newer clip
   });
 
@@ -80,21 +80,21 @@ describe("toChatMessages input-capability filter", () => {
   });
 
   it("applies app defaults when input is an empty object: images on, video off", () => {
-    const out = toChatMessages([msg({ images: [img("a")], video: [clip] })], {});
+    const out = toChatMessages([msg({ images: [img("a")], videos: [clip] })], {});
     expect(out[0].images?.length).toBe(1);
-    expect(out[0].video).toBeUndefined();
+    expect(out[0].videos).toBeUndefined();
     expect(out[0].content).toContain("clip.mp4");
   });
 
   it("sends video only when declared on", () => {
-    const out = toChatMessages([msg({ video: [clip] })], { video: true });
-    expect(out[0].video?.length).toBe(1);
+    const out = toChatMessages([msg({ videos: [clip] })], { video: true });
+    expect(out[0].videos?.length).toBe(1);
     expect(out[0].content ?? "").not.toContain("does not accept");
   });
 
   it("omitting input keeps the old send-everything behavior", () => {
-    const out = toChatMessages([msg({ images: [img("a")], video: [clip] })]);
+    const out = toChatMessages([msg({ images: [img("a")], videos: [clip] })]);
     expect(out[0].images?.length).toBe(1);
-    expect(out[0].video?.length).toBe(1);
+    expect(out[0].videos?.length).toBe(1);
   });
 });

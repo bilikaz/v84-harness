@@ -5,21 +5,24 @@ import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import { pt } from "../../lib/prompts.ts";
 import type { StorageEngine } from "../storage/engine.ts";
+import type { StorageRepos } from "../storage/types.ts";
 import { createListeners } from "../storage/consumer.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
-import { normalize, toMeta, type SessionsIndex } from "./persistence.ts";
+import { normalize, toMeta, type SessionMeta } from "./persistence.ts";
+import { newId } from "../ids.ts";
+import { getActiveContainerId } from "../containers.ts";
 
 // Session store — the single source of truth for multi-session state. Plain
 // external store; React binds via ./hooks.ts. Owns STATE + the operations that
 // change it.
 const log = rootLog.child("session.store");
 
-// The durable tier — the StorageEngine the host selected, injected by SessionEngine at construction. Null in
-// non-renderer hosts (and before injection); persistence is a no-op until set, hydrate runs once it is.
-let engine: StorageEngine | null = null;
+// The durable tier — the StorageEngine (per-entity repos over the active provider), injected by init()
+// after ctx.storage is built. Null before injection; persistence is a no-op until set, hydrate runs once it is.
+let data: StorageEngine | null = null;
 export function useStorage(e: StorageEngine): void {
-  engine = e;
+  data = e;
 }
 
 // agentId stamps an agent run (the agent's output contract then applies to
@@ -28,18 +31,19 @@ export function useStorage(e: StorageEngine): void {
 export interface SessionInit {
   title?: string;
   system?: string;
-  workspaceId?: string | null;
+  containerId?: string;
   agentId?: string;
   parentId?: string;
 }
 
-// `loaded` is true: a session born in memory has nothing to lazy-load.
+// `loaded` is true: a session born in memory has nothing to lazy-load. A session always belongs
+// to a container; createSession defaults it to the active one.
 function makeSession(init: SessionInit = {}): Session {
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     title: init.title ?? i18n.t("sidebar.newSession"),
     system: init.system ?? pt("defaultChat.system"),
-    workspaceId: init.workspaceId ?? null,
+    containerId: init.containerId ?? "",
     agentId: init.agentId,
     parentId: init.parentId,
     tools: [],
@@ -48,7 +52,8 @@ function makeSession(init: SessionInit = {}): Session {
   };
 }
 
-// Until hydration completes the store holds one fresh placeholder session.
+// Until hydration completes the store holds one fresh placeholder session (no container yet —
+// it's never persisted; hydrate() replaces it with real rows or binds it to the active container).
 const placeholder = makeSession();
 let sessions: Session[] = [placeholder];
 let activeId: string = placeholder.id;
@@ -62,27 +67,54 @@ export const notify = reg.notify;
 export const subscribe = reg.subscribe;
 // ── Persistence (granular — see ./persistence.ts) ───────────────────────────
 
-function currentIndex(): SessionsIndex {
-  return { activeId, sessions: sessions.map(toMeta) };
+// Persist one session's META row, routed by its placement. Per-row — there is no index blob,
+// so nothing can overwrite the whole list. Gated on `hydrated` + a real container so the
+// pre-hydration placeholder never reaches a backend.
+export function persistSessionMeta(sid: string): void {
+  if (!data || !hydrated) return;
+  const s = getSession(sid);
+  if (!s || !s.containerId) return;
+  void data.repos().sessions.put(toMeta(s)).catch((e: unknown) => log.warn("persist_failed", { what: "meta", sid, error: errorMessage(e) }));
 }
 
-// Fire-and-forget: persistence failures are warnings, never UI errors. No-op until the engine is injected.
-export function persistIndex(): void {
-  if (!engine) return;
-  void engine.saveIndex(currentIndex()).catch((e) => log.warn("persist_failed", { what: "index", error: errorMessage(e) }));
+// Media blobs are externalized into the media repo (the message stores a `media:<id>` ref);
+// reinflated on load. Keeps message rows light and populates the media table.
+const MEDIA_REF = "media:";
+
+async function storeMedia(repos: StorageRepos, sid: string, messageId: string, kind: "image" | "video", ref: Image | Video): Promise<Image | Video> {
+  if (!ref.url.startsWith("data:")) return ref; // already a ref or an http url
+  if (!ref.id) ref.id = newId(); // stamp the in-memory ref so a re-persist reuses the same row
+  await repos.media.put({ id: ref.id, sessionId: sid, messageId, kind, mime: ref.mime ?? "", name: ref.name ?? null, data: ref.url });
+  return { ...ref, url: MEDIA_REF + ref.id };
 }
 
-// Cost is proportional to THAT session's text — never the whole profile
-// (ADR-0021).
+async function externalizeMedia(repos: StorageRepos, sid: string, messages: Message[]): Promise<Message[]> {
+  const out: Message[] = [];
+  for (const m of messages) {
+    const images = m.images && (await Promise.all(m.images.map((g) => storeMedia(repos, sid, m.id, "image", g))));
+    const videos = m.videos && (await Promise.all(m.videos.map((g) => storeMedia(repos, sid, m.id, "video", g))));
+    out.push({ ...m, images, videos });
+  }
+  return out;
+}
+
+async function inflateMedia(repos: StorageRepos, sid: string, messages: Message[]): Promise<Message[]> {
+  const blobs = new Map((await repos.media.listBySession(sid)).map((x) => [x.id, x.data]));
+  const fix = <T extends Image | Video>(g: T): T => (g.url.startsWith(MEDIA_REF) ? { ...g, url: blobs.get(g.url.slice(MEDIA_REF.length)) ?? "" } : g);
+  return messages.map((m) => ({ ...m, images: m.images?.map(fix), videos: m.videos?.map(fix) }));
+}
+
+// Persist the session's transcript (media externalized to the media repo) + its meta row.
 export function persistSession(sid: string): void {
-  const e = engine;
-  if (!e) return;
+  if (!data || !hydrated) return;
   void (async () => {
     const session = getSession(sid);
-    if (!session || session.loaded === false) return; // never clobber rows with an unloaded shell
-    const bytes = await e.saveMessages(sid, session.messages);
-    sessions = sessions.map((s) => (s.id === sid ? { ...s, bytes } : s));
-    await e.saveIndex(currentIndex());
+    if (!session || session.loaded === false || !session.containerId) return; // never clobber rows with an unloaded shell / placeholder
+    const repos = data!.repos();
+    const stored = await externalizeMedia(repos, sid, session.messages);
+    await repos.messages.replaceForSession(sid, stored);
+    const meta = getSession(sid);
+    if (meta) await repos.sessions.put(toMeta(meta));
     notify();
   })().catch((err) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(err) }));
 }
@@ -92,12 +124,12 @@ const loading = new Map<string, Promise<void>>();
 export function ensureLoaded(sid: string): Promise<void> {
   const session = getSession(sid);
   if (!session || session.loaded !== false) return Promise.resolve();
-  const e = engine;
-  if (!e) return Promise.resolve();
+  const repos = data?.repos();
+  if (!repos) return Promise.resolve();
   let p = loading.get(sid);
   if (!p) {
     p = (async () => {
-      const messages = (await e.loadMessages(sid)) ?? [];
+      const messages = await inflateMedia(repos, sid, await repos.messages.listBySession(sid));
       sessions = sessions.map((s) => (s.id === sid ? { ...s, messages, loaded: true } : s));
       notify();
     })()
@@ -113,19 +145,27 @@ export function ensureLoaded(sid: string): Promise<void> {
   return p;
 }
 
-// Reads the INDEX and the ACTIVE session's messages only; everything else lazy-loads via ensureLoaded.
-// Triggered by SessionEngine once the storage engine is injected.
+// Enumerates the session META rows (both realms — no master index), then loads the active
+// session's messages; the rest lazy-load via ensureLoaded. Runs AFTER containers hydrate (init
+// orchestrates the order) so the active container exists for a fresh profile. On a fresh
+// profile it binds one starter session to the active container.
 export async function hydrate(): Promise<void> {
-  const e = engine;
+  const e = data;
+  hydrated = false;
   try {
     if (!e) return;
-    const index = await e.loadIndex();
-    if (index) {
-      sessions = index.sessions.map((meta) => ({ ...normalize(meta), loaded: false }));
-      activeId = sessions.some((s) => s.id === index.activeId) ? index.activeId : sessions[0].id;
+    // The session metas from the active provider (no master index — the rows ARE the list).
+    const metas: SessionMeta[] = await e.repos().sessions.list();
+    if (metas.length) {
+      sessions = metas.map((meta) => ({ ...normalize(meta), loaded: false }));
+      activeId = sessions.some((s) => s.id === activeId) ? activeId : sessions[0].id;
       await ensureLoaded(activeId); // active transcript is part of first paint
     } else {
-      await e.saveIndex(currentIndex()); // first run — seed the index
+      const cid = getActiveContainerId();
+      const starter = makeSession({ containerId: cid ?? "" });
+      sessions = [starter];
+      activeId = starter.id;
+      if (cid) await e.repos().sessions.put(toMeta(starter)).catch(() => undefined);
     }
   } catch (err) {
     log.warn("hydrate_failed", {
@@ -154,9 +194,9 @@ export function getActive(): Session {
 export function getSession(id: string): Session | undefined {
   return sessions.find((s) => s.id === id);
 }
-// Sessions belonging to a workspace (null = the "no workspace / chat" group).
-export function getSessionsForWorkspace(workspaceId: string | null): Session[] {
-  return sessions.filter((s) => (s.workspaceId ?? null) === workspaceId);
+// Sessions belonging to a container.
+export function getSessionsForContainer(containerId: string): Session[] {
+  return sessions.filter((s) => s.containerId === containerId);
 }
 export function getStreamingIds(): ReadonlySet<string> {
   return streamingIds;
@@ -186,19 +226,21 @@ export function setCompacting(sid: string, on: boolean): void {
 // ── Commands (user-facing state changes) ─────────────────────────────────────
 export function setActive(id: string): void {
   activeId = id;
+  const wasUnread = getSession(id)?.unread;
   sessions = sessions.map((s) => (s.id === id && s.unread ? { ...s, unread: false } : s));
   void ensureLoaded(id);
-  persistIndex();
+  if (wasUnread) persistSessionMeta(id); // unread flag changed
   notify();
 }
 
 // `activate: false` keeps the user where they are (sub-agent runs must not
-// steal focus from the parent chat).
+// steal focus from the parent chat). Defaults the session to the active container.
 export function createSession(init: SessionInit = {}, opts: { activate?: boolean } = {}): string {
-  const s = makeSession(init);
+  const containerId = init.containerId ?? getActiveContainerId() ?? "";
+  const s = makeSession({ ...init, containerId });
   sessions = [s, ...sessions];
   if (opts.activate !== false) activeId = s.id;
-  persistIndex();
+  persistSessionMeta(s.id);
   notify();
   return s.id;
 }
@@ -210,7 +252,7 @@ export function newSession(): void {
 export function renameSession(id: string, title: string): void {
   const t = title.trim();
   sessions = sessions.map((s) => (s.id === id ? { ...s, title: t || s.title } : s));
-  persistIndex();
+  persistSessionMeta(id);
   notify();
 }
 
@@ -218,20 +260,26 @@ export function renameSession(id: string, title: string): void {
 // design.
 export function unlinkAgent(id: string): void {
   sessions = sessions.map((s) => (s.id === id ? { ...s, agentId: undefined } : s));
-  persistIndex();
+  persistSessionMeta(id);
   notify();
 }
 
 export function deleteSession(id: string): void {
+  const gone = getSession(id);
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";
-  if (engine) void engine.deleteSessionData(id).catch((e) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
+  if (data && gone) {
+    const repos = data.repos();
+    void repos.sessions.remove(id).catch((e: unknown) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
+    // Offline (local provider) hard-clears the transcript too; connected (remote) the server
+    // soft-deletes the session and keeps its messages for restore.
+    if (!data.connected) void repos.messages.replaceForSession(id, []);
+  }
   if (sessions.length === 0) {
-    createSession(); // never leave the user with zero sessions (persists the index)
+    createSession(); // never leave the user with zero sessions (persists its own meta row)
     return;
   }
   if (activeId) void ensureLoaded(activeId);
-  persistIndex();
   notify();
 }
 
@@ -248,9 +296,9 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
-export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], video?: Video[]): void {
+export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], videos?: Video[]): void {
   const at = Date.now();
-  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, video, files, createdAt: at };
+  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, videos, files, createdAt: at };
   const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: at };
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
@@ -267,6 +315,15 @@ export function pushHeal(sid: string, correction: string): void {
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
   );
+  notify();
+}
+
+// A hidden user message carrying forwarded context (a browser window's snapshot), pushed
+// just before the visible comment that references it. Sent to the model, skipped in the UI —
+// the durable record of what was forwarded, so the reference survives the window being closed.
+export function pushContext(sid: string, text: string): void {
+  const msg: Message = { id: crypto.randomUUID(), role: "user", text, hidden: true, createdAt: Date.now() };
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
 
@@ -289,10 +346,10 @@ export function pushToolResult(
   toolCallId: string,
   output: string,
   images?: Image[],
-  video?: Video[],
+  videos?: Video[],
   childSessionIds?: string[],
 ): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, video, childSessionIds, createdAt: Date.now() };
+  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, videos, childSessionIds, createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
@@ -312,13 +369,13 @@ export function getChildRuns(): Record<string, string[]> {
 
 // Feed tool-produced media back to the model as a hidden user turn (skipped in
 // the UI — it already shows in the tool card; this lets a vision agent see it).
-export function pushMediaFeedback(sid: string, images?: Image[], video?: Video[]): void {
+export function pushMediaFeedback(sid: string, images?: Image[], videos?: Video[]): void {
   const msg: Message = {
     id: crypto.randomUUID(),
     role: "user",
     text: "Media attached above for your review.",
     images,
-    video,
+    videos,
     hidden: true,
     createdAt: Date.now(),
   };
@@ -362,7 +419,7 @@ export function markUnread(sid: string): void {
 
 export function setTitle(id: string, title: string): void {
   sessions = sessions.map((s) => (s.id === id ? { ...s, title } : s));
-  persistIndex();
+  persistSessionMeta(id);
   notify();
 }
 
@@ -434,9 +491,9 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
   };
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m.role === "tool" || (!m.images?.length && !m.video?.length)) continue;
+    if (m.role === "tool" || (!m.images?.length && !m.videos?.length)) continue;
     // Within a message, video first (rarer and deliberate), then images.
-    const video = takeWhileFits(m.video);
+    const video = takeWhileFits(m.videos);
     const images = takeWhileFits(m.images);
     keep.set(m.id, { images, video });
   }
@@ -468,11 +525,11 @@ export function toChatMessages(messages: Message[], input?: NonNullable<ChatMode
   const allowVideo = input ? input.video === true : true;
   const window = mediaWindow(messages);
   return messages
-    .filter((m) => m.text || m.images?.length || m.video?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
+    .filter((m) => m.text || m.images?.length || m.videos?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
     .map((m) => {
       const keep = window.get(m.id) ?? { images: 0, video: 0 };
       const imgAll = m.role === "tool" ? [] : (m.images ?? []);
-      const vidAll = m.role === "tool" ? [] : (m.video ?? []);
+      const vidAll = m.role === "tool" ? [] : (m.videos ?? []);
       const images = allowImage ? imgAll.slice(0, keep.images) : [];
       const video = allowVideo ? vidAll.slice(0, keep.video) : [];
       // Capability-hidden media gets its own note (the whole modality is
@@ -492,7 +549,7 @@ export function toChatMessages(messages: Message[], input?: NonNullable<ChatMode
         // on a tool message, so they're never sent. Vision feedback goes through
         // the hidden user turn (pushMediaFeedback) instead.
         images: images?.length ? images.map((im) => ({ url: im.url, mime: im.mime })) : undefined,
-        video: video?.length ? video.map((v) => ({ url: v.url, mime: v.mime })) : undefined,
+        videos: video?.length ? video.map((v) => ({ url: v.url, mime: v.mime })) : undefined,
         toolCalls: m.toolCalls,
         toolCallId: m.toolCallId,
       };

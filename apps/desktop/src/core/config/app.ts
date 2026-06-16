@@ -1,5 +1,6 @@
 // The app-tunables config — the ONLY place overrides meet defaults.
-// A ctx-injected consumer: overrides persist through ctx.storage.
+// A ctx-injected consumer: overrides persist through ctx.storage (the settings table; synced —
+// follows the connection to the cloud, like settings).
 
 import { Consumer } from "../storage/consumer.ts";
 import type { Ctx } from "../ctx.ts";
@@ -92,7 +93,7 @@ class AppConfig extends Consumer<ConfigOverrides> {
   private cached: ConfigApp | null = null;
 
   constructor(ctx: Ctx) {
-    super(ctx, KEY, {});
+    super(ctx, KEY, {}, true); // synced — app tunables follow the connection to the cloud
   }
 
   // Cache invalidates whenever state changes (hydrate or commit both notify).

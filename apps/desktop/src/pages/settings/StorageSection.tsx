@@ -6,7 +6,7 @@ import { Trash2 } from "lucide-react";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
 import { useSessions, type Session } from "../../core/sessions/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
-import { useWorkspaces } from "../../core/workspaces.ts";
+import { useContainers } from "../../core/containers.ts";
 import { fmtBytes } from "../../lib/format.ts";
 
 function sessionBytes(s: Session): number {
@@ -16,17 +16,12 @@ function sessionBytes(s: Session): number {
 export function StorageSection() {
   const { t } = useTranslation();
   const sessions = useSessions();
-  const workspaces = useWorkspaces();
-  const backend = useCtx().storage?.name ?? "…";
+  const containers = useContainers();
+  const backend = useCtx().storage.connected ? "remote" : "local";
 
-  const groups: { key: string; name: string; sessions: Session[] }[] = [
-    { key: "none", name: t("storage.noWorkspace"), sessions: sessions.filter((s) => !s.workspaceId) },
-    ...workspaces.map((w) => ({
-      key: w.id,
-      name: w.name,
-      sessions: sessions.filter((s) => s.workspaceId === w.id),
-    })),
-  ].filter((g) => g.sessions.length > 0);
+  const groups: { key: string; name: string; sessions: Session[] }[] = containers
+    .map((c) => ({ key: c.id, name: c.name, sessions: sessions.filter((s) => s.containerId === c.id) }))
+    .filter((g) => g.sessions.length > 0);
 
   const total = sessions.reduce((n, s) => n + sessionBytes(s), 0);
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { BaseWorkspaceTool } from "../src/core/tools/workspace/base.ts";
+import { BaseWorkspaceTool } from "../src/core/tools/local/base.ts";
 import type { ToolResult, ToolSpec } from "../src/core/tools/types.ts";
 import { createClient } from "../src/llm/index.ts";
 

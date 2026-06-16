@@ -3,6 +3,7 @@ import { ApprovalModal } from "./components/ApprovalModal.tsx";
 import { Lightbox } from "./components/Lightbox.tsx";
 import { Sidebar } from "./pages/workspace/Sidebar.tsx";
 import { SessionView } from "./pages/workspace/SessionView.tsx";
+import { BrowserOverlay } from "./pages/browser/BrowserOverlay.tsx";
 import { SettingsModal } from "./pages/settings/SettingsModal.tsx";
 import { contributionsFor } from "./lib/registry.ts";
 import { useRoute } from "./lib/router.ts";
@@ -22,8 +23,9 @@ export default function App() {
     <div className="flex h-screen overflow-hidden bg-white text-neutral-900">
       <Sidebar />
 
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         <MainView />
+        <BrowserOverlay />
       </main>
 
       {rightPanel && (

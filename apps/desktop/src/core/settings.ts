@@ -137,7 +137,7 @@ function pruneServices(
 
 class Settings extends Consumer<SettingsState> {
   constructor(ctx: Ctx) {
-    super(ctx, KEY, DEFAULTS);
+    super(ctx, KEY, DEFAULTS, true); // synced — providers/models (incl. keys) follow the connection to the cloud
   }
 
   // Derived views are cached so the React hooks return a STABLE reference until
@@ -173,6 +173,7 @@ class Settings extends Consumer<SettingsState> {
         maxImageSize: m.maxImageSize,
         maxVideoSize: m.maxVideoSize,
       },
+      input: m.input,
     };
   }
 

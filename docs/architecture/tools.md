@@ -82,8 +82,13 @@ The model sees `/workspace` as the root. `workspace/base.ts` maps virtual ↔ re
 enforces confinement (leading-slash paths outside `/workspace` are refused; symlink-escape
 checks); `expandWorkspace` expands the marker in shell commands and `hideRoot` hides the
 real root in output. `ImageLoad`/`VideoLoad`/`ImageDescribe`/`VideoDescribe` share the
-file guards in `workspace/base.ts`, capability-gated by the model's declared inputs
-([ADR-0018](../adr/0018-capability-gated-media-tools.md)).
+file guards in `workspace/base.ts` and are capability-gated via `canRun()`
+([ADR-0018](../adr/0018-capability-gated-media-tools.md)) — but on different signals:
+`ImageLoad`/`VideoLoad` gate on the **main model's** declared inputs (`resolve("main").input.image/.video`),
+since they put media in the chat model's context; `ImageDescribe`/`VideoDescribe` gate
+on a configured **recognition service** (`resolve("imageRec"/"videoRec")`), since they
+hand the main model only text. The gate is enforced at advertise time (the schema filter
+drops it) and again per call, and the permission card hides what `canRun()` rejects.
 
 ## Contracts & caps
 

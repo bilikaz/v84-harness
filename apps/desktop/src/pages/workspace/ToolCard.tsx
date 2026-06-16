@@ -13,13 +13,13 @@ export const ToolCard = memo(function ToolCard({
   call,
   output,
   images,
-  video,
+  videos,
   childSessionIds,
 }: {
   call: ToolCallRequest;
   output?: string;
   images?: Image[];
-  video?: Video[];
+  videos?: Video[];
   childSessionIds?: string[];
 }) {
   const { t } = useTranslation();
@@ -62,9 +62,9 @@ export const ToolCard = memo(function ToolCard({
           ))}
         </div>
       )}
-      {video && video.length > 0 && (
+      {videos && videos.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
-          {video.map((v, i) => (
+          {videos.map((v, i) => (
             <SavableMedia kind="video" key={i} src={v.url} name={v.name} className="max-h-72 rounded-lg" />
           ))}
         </div>
