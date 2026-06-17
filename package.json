@@ -26,6 +26,10 @@
       "electron",
       "electron-builder",
       "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "electron-winstaller",
+      "protobufjs"
     ]
   }
 }

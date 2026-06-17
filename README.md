@@ -19,6 +19,51 @@ iteration (only the media tools work there). Configure the chat model in
 **Settings → Provider** (OpenAI-compatible / vLLM, Anthropic, or Gemini) and
 the generation endpoint in **Settings → Media**.
 
+### Building the Windows app
+
+Run the packaging on a **Windows host** (electron-builder cross-build from WSL
+needs Wine; Windows is the supported path). In **PowerShell**:
+
+```powershell
+# 1. Node >= 24 is required. Get the pinned pnpm through Corepack (ships with Node):
+node -v                                     # must be v24+
+corepack enable
+corepack prepare pnpm@10.33.0 --activate
+
+# 2. If PowerShell blocks the pnpm script ("running scripts is disabled"):
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+
+# 3. Install + build (from the repo root):
+pnpm install                                # downloads the Electron binary (see note)
+pnpm --filter @v84-harness/desktop dist:win
+```
+
+Output lands in `apps/desktop/release/`: a **portable** single-file `.exe`
+(self-contained, no install) and an **NSIS installer** `… Setup <version>.exe`.
+
+Notes / gotchas:
+
+- **Build scripts must be allowed.** pnpm 10 does not run dependency build
+  scripts by default; `package.json` whitelists them via
+  `pnpm.onlyBuiltDependencies` (`electron`, `electron-builder`, `esbuild`) so
+  `pnpm install` actually downloads the Electron binary. Without it, install
+  silently skips it and the build fails with "Electron uninstall". On a checkout
+  that already installed once, run `pnpm rebuild electron` (or
+  `pnpm approve-builds`) to fetch it.
+- **No native rebuild.** `build.npmRebuild: false` is set — the app has no native
+  modules, and `@electron/rebuild` otherwise crashes walking pnpm's
+  `node_modules`.
+- **Code-signing toolchain needs symlink privilege.** electron-builder extracts
+  `winCodeSign`, which contains macOS symlinks; creating symlinks on Windows
+  fails with *"A required privilege is not held by the client"* under a normal
+  user. Fix by enabling **Developer Mode** (Settings → Privacy & security → For
+  developers) **or** running the build in an **Administrator** PowerShell. If a
+  prior run left a corrupt cache, clear it:
+  `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"`.
+- The artifacts are **unsigned** — Windows SmartScreen shows an "unknown
+  publisher" prompt on first run (*More info → Run anyway*). Real signing needs a
+  certificate.
+
 ## What works
 
 - **Workspaces** — a workspace is a folder + settings: name, default model,

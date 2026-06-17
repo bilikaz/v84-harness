@@ -21,6 +21,7 @@
   "build": {
     "appId": "eu.v84.harness",
     "productName": "V84 Harness",
+    "npmRebuild": false,
     "directories": {
       "output": "release",
       "buildResources": "build"
