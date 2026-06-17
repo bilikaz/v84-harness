@@ -62,6 +62,17 @@ design and its consequences, surface the corner cases, and restate what will be
 done — then start editing once the user confirms the shape. Reading code and
 docs while the debate runs is fine; changing files is not.
 
+### The alignment doc (`implementation.md`)
+
+For work beyond a trivial change, once the design is discussed and settled,
+write it to `implementation.md` at the repo root before building: what will be
+done, the shape, the decisions, what we get. It is the shared-understanding
+artifact the user reads to confirm we're aligned, and the working reference while
+building (kept in sync as decisions shift). It is **never committed** — it's
+gitignored, a scratchpad for the session, not part of the permanent record (the
+ADRs + map are). Delete it once the work lands and the docs pass has captured the
+durable decisions.
+
 ## When the user says it's time to write docs
 
 This step runs only on the user's signal, at the end of a session:

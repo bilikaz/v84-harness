@@ -268,6 +268,11 @@
     "llmDebug": "LLM debug logging",
     "llmDebugHint": "Logs every model request/response to the console (prefixed [llm]). On by default in dev."
   },
+  "plugins": {
+    "title": "Plugins",
+    "subtitle": "Enable and configure first-party plugins.",
+    "none": "No plugins are installed."
+  },
   "common": {
     "cancel": "Cancel",
     "save": "Save",

@@ -1,7 +1,9 @@
-// Config hub — aggregates each domain (app, llm) into the main Config the app and tools read.
+// Config hub — aggregates each domain (app, llm, plugins) into the main Config the app and tools read.
 
 import { getAppConfig, type ConfigApp } from "./app.ts";
 import { getLLMConfigList, type LLMConfigList } from "./llm.ts";
+import { getPluginsConfig } from "../plugins/config.ts";
+import type { PluginsConfig } from "../plugins/types.ts";
 
 export * from "./app.ts";
 export * from "./llm.ts";
@@ -10,8 +12,9 @@ export * from "./llm.ts";
 export interface Config {
   app: ConfigApp;
   llm: LLMConfigList;
+  plugins: PluginsConfig;
 }
 
 export function getConfig(): Config {
-  return { app: getAppConfig(), llm: getLLMConfigList() };
+  return { app: getAppConfig(), llm: getLLMConfigList(), plugins: getPluginsConfig() };
 }

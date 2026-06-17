@@ -35,6 +35,18 @@ provider") falls out of the lookup instead of needing guard code.
 5. Modules that aren't implementations (a kind's `base.ts`, content modules)
    may live in the same folders — they simply never match a key, because keys
    come from a closed union that doesn't contain `base`.
+6. **Enumerate-and-instantiate variant.** Some registries don't resolve one
+   implementation by key — they instantiate *every* implementation in a folder
+   (e.g. a tool registry that pre-builds all tools by name). Here there is no key
+   to "not match", so absence can't filter out non-implementations. Two rules keep
+   it safe: **(a) filter to the family** — instantiate only modules whose export is
+   actually a member of the family (`v.prototype instanceof Base`), so a sibling
+   helper export is ignored, not constructed; and **(b) keep non-implementations
+   out of the globbed set** — put shared helpers in a sibling `helpers/` folder the
+   glob doesn't reach, not beside the implementations. Relying on convention alone
+   (only-implementations-here) breaks the first time a helper is added next to them;
+   the family filter is the cheap guard that makes the mistake a no-op instead of a
+   crash.
 
 ## Example
 

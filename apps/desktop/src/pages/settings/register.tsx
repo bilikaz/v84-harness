@@ -1,10 +1,11 @@
-import { UserCircle, Plug, Image, Database, Wrench } from "lucide-react";
+import { UserCircle, Plug, Image, Database, Wrench, Blocks } from "lucide-react";
 
 import { register } from "../../lib/registry.ts";
 import { AccountSection } from "./AccountSection.tsx";
 import { ProviderSection } from "./ProviderSection.tsx";
 import { ModelsSection } from "./ModelsSection.tsx";
 import { StorageSection } from "./StorageSection.tsx";
+import { PluginsSection } from "./PluginsSection.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";
 
 register(
@@ -46,11 +47,20 @@ register(
   },
   {
     region: "settings",
+    id: "plugins",
+    title: "Plugins",
+    icon: Blocks,
+    route: "settings/plugins",
+    order: 4,
+    render: () => <PluginsSection />,
+  },
+  {
+    region: "settings",
     id: "developer",
     title: "Developer",
     icon: Wrench,
     route: "settings/developer",
-    order: 4,
+    order: 5,
     render: () => <DeveloperSection />,
   },
 );

@@ -1,4 +1,5 @@
-import type { LLMClient } from "../../llm/index.ts";
+import { createClient, type LLMClient } from "../../llm/index.ts";
+import type { Config } from "../config/index.ts";
 import { type ToolResult, type ToolSpec, type ToolPermission } from "./types.ts";
 
 // Largest tool output handed back to the model — a runaway command can't blow its context.
@@ -10,10 +11,26 @@ export function cap(s: string): string {
   return s.slice(0, OUTPUT_CAP) + `\n\n[...output truncated; ${s.length - OUTPUT_CAP} more bytes dropped]`;
 }
 
-// Every tool is a class constructed once with the LLM client — its only host dependency (model calls +
-// slot resolution via llm.resolve). `schema` is a getter so a tool's advertised shape can vary if needed.
+// Every tool is constructed once with a getter onto the live app config — the one dependency common to
+// all tools (a getter, since config is reactive; a snapshot would go stale). Not every tool calls a model
+// or is a plugin, but every tool can read config: the model client is derived from config.llm on use (see
+// `llm`), plugin tools read config.plugins.<slug>, others read config.app.
 export abstract class BaseTool {
-  constructor(protected readonly llm: LLMClient) {}
+  constructor(protected readonly config: () => Config) {}
+
+  // The model client, derived from config.llm. createClient is a stateless wrapper over the resolver, so
+  // building it per use is cheap and always reflects current config — tools that never call a model never build one.
+  protected get llm(): LLMClient {
+    const config = this.config;
+    return createClient(
+      { resolve: (service) => config().llm[service] ?? null },
+      {
+        get maxHeals() {
+          return config().app.llm.maxHealAttempts;
+        },
+      },
+    );
+  }
 
   abstract get schema(): ToolSpec;
 
@@ -47,4 +64,4 @@ export abstract class BaseTool {
 }
 
 // What a tool module exports: a constructor the registry resolves by folder layout.
-export type ToolCtor = new (llm: LLMClient) => BaseTool;
+export type ToolCtor = new (config: () => Config) => BaseTool;

@@ -12,7 +12,7 @@ type Stmt = { all: (...a: unknown[]) => unknown[]; get: (...a: unknown[]) => unk
 type Db = { exec: (sql: string) => void; prepare: (sql: string) => Stmt };
 type Entity = { id: string; sessionId?: string };
 
-const ID_TABLES = ["containers", "sessions", "agents", "plugins"]; // (id, data)
+const ID_TABLES = ["containers", "sessions", "agents"]; // (id, data)
 const SESSION_TABLES = ["messages", "media"]; // (id, session_id, data)
 
 let db: Db | null = null;

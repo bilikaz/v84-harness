@@ -3,29 +3,55 @@
 
 import { BaseTool, type ToolCtor } from "./base.ts";
 import { type ToolCallRequest, type ToolResult, type ToolFilterParams, type ToolFilterResult, type ToolFilterEntry } from "./types.ts";
-import type { LLMClient } from "../../llm/index.ts";
+import type { Config } from "../config/index.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import type { ToolPermission } from "./types.ts";
+
+// A tool globbed from src/plugins/<slug>/tools/... is OWNED by that plugin; core tools have no owner.
+// The owner is read off the glob path so the registry can drop a disabled plugin's tools.
+function ownerFromPath(path: string): string | undefined {
+  return /\/plugins\/([^/]+)\//.exec(path)?.[1];
+}
 
 export class ToolRegistry {
   readonly byName = new Map<string, BaseTool>();
   readonly running = new Map<string, AbortController>();
+  // tool name → owning plugin slug (only for plugin-contributed tools).
+  private readonly owners = new Map<string, string>();
 
-  constructor(llm: LLMClient, modules: Record<string, Record<string, unknown>>) {
-    const ctors: ToolCtor[] = Object.entries(modules)
-      .filter(([path]) => !path.endsWith("/base.ts"))
-      .flatMap(([, mod]) => Object.values(mod).filter((v): v is ToolCtor => typeof v === "function"));
-
-    for (const Ctor of ctors) {
-      const tool = new Ctor(llm);
-      this.byName.set(tool.schema.function.name, tool);
+  constructor(
+    private readonly config: () => Config,
+    modules: Record<string, Record<string, unknown>>,
+  ) {
+    for (const [path, mod] of Object.entries(modules)) {
+      if (path.endsWith("/base.ts")) continue; // abstract bases live in base.ts; skip by path
+      const owner = ownerFromPath(path);
+      for (const v of Object.values(mod)) {
+        // Only concrete BaseTool subclasses are tools — a tool module may also export plain helpers
+        // (e.g. a formatter), which must NOT be instantiated as tools.
+        if (typeof v !== "function" || !(v.prototype instanceof BaseTool)) continue;
+        const tool = new (v as ToolCtor)(config);
+        const name = tool.schema.function.name;
+        this.byName.set(name, tool);
+        if (owner) this.owners.set(name, owner);
+      }
     }
+  }
+
+  // A plugin tool advertises/runs only while its plugin is enabled (config.plugins.<slug>.enabled).
+  // Core tools (no owner) are never gated this way. Fail-closed: an unknown/absent entry hides the tool.
+  private ownerEnabled(name: string): boolean {
+    const owner = this.owners.get(name);
+    return owner ? !!this.config().plugins[owner]?.enabled : true;
   }
 
   filter(params?: ToolFilterParams): ToolFilterResult {
     const out: ToolFilterResult = {};
     for (const tool of this.byName.values()) {
       const name = tool.schema.function.name;
+
+      // disabled-plugin gate: a disabled plugin's tools never advertise (not even as "off")
+      if (!this.ownerEnabled(name)) continue;
 
       // canRun gate
       if (params?.checkCanRun && !tool.canRun()) continue;
@@ -63,6 +89,7 @@ export class ToolRegistry {
   async run(call: ToolCallRequest): Promise<ToolResult | null> {
     const tool = this.byName.get(call.name);
     if (!tool) return null;
+    if (!this.ownerEnabled(call.name)) return { ok: false, output: `tool "${call.name}" belongs to a disabled plugin.` };
     if (!tool.canRun()) return { ok: false, output: `tool "${call.name}" is not available for this model.` };
     const controller = new AbortController();
     if (call.id) this.running.set(call.id, controller);

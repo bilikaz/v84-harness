@@ -7,6 +7,8 @@ import path from "node:path";
 import { registerIpc } from "./ipc.ts";
 import { registerContextMenu } from "./contextMenu.ts";
 import { initBrowserFleet } from "./browserFleet.ts";
+import { wirePluginEvents } from "./pluginServices.ts";
+import { IPC } from "./bridge.ts";
 
 const electron = createRequire(import.meta.url)("electron") as typeof import("electron");
 const { app, BrowserWindow, screen } = electron;
@@ -39,6 +41,8 @@ function createWindow(): void {
 
   registerContextMenu(electron, win);
   initBrowserFleet(electron, win);
+  // Forward plugin-service events (main→renderer push), so plugin UIs reflect live service state.
+  wirePluginEvents((slug, type, payload) => win.webContents.send(IPC.pluginEvent, slug, type, payload));
   win.once("ready-to-show", () => win.show());
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(ZOOM));
 

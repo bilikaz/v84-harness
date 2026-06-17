@@ -6,7 +6,7 @@ import type { Container } from "../containers.ts";
 import type { SessionMeta } from "../sessions/persistence.ts";
 import type { Message } from "../sessions/types.ts";
 import type { Agent } from "../agents.ts";
-import type { StorageRepos, CrudRepo, MessageRepo, MediaRepo, MediaRow, SettingRepo, SettingRow, PluginRow, PluginDataRepo, PluginDataRow } from "./types.ts";
+import type { StorageRepos, CrudRepo, MessageRepo, MediaRepo, MediaRow, SettingRepo, SettingRow, PluginDataRepo, PluginDataRow } from "./types.ts";
 
 // An authenticated fetch (token + refresh) bound to the knowledge API base — supplied by account.ts.
 export type AuthedFetch = (path: string, init?: RequestInit) => Promise<Response>;
@@ -119,7 +119,6 @@ export function remoteRepos(fetch: AuthedFetch): StorageRepos {
     media,
     agents: crud<Agent>("/agents", "agents", (r) => r as Agent),
     settings,
-    plugins: crud<PluginRow>("/plugins", "plugins", (r) => r as PluginRow),
     pluginData,
   };
 }

@@ -78,7 +78,7 @@ Layering rules:
 | `src/web/` | Web platform: builds the in-process tool registry on `ctx` (the local storage backend is the host-agnostic `core/storage/idb.ts`) |
 | `src/renderer/` | Shared, platform-agnostic UI: the `App`, the boot (`main.tsx`), the ctx React bridge (`ctx.tsx` — `useCtx`), the gated-tool catalog hook (`gatedTools.ts`) |
 | `src/electron/bridge.ts` | IPC contract: `IPC` channel constants + `ElectronApi` interface (`window.api`) |
-| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine), config, sessions engine, tools engine (incl. the `account/` memory-tool tier), per-entity `StorageRepos` + `StorageEngine` + `Consumer` base, host capability surface (`host.ts`), containers, approvals, the unified settings registry, agents, and the machine-local `account` store (`account.ts` — identity + connection lifecycle) |
+| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine), config, sessions engine, tools engine (incl. the `account/` memory-tool tier), per-entity `StorageRepos` + `StorageEngine` + `Consumer` base, host capability surface (`host.ts`), containers, approvals, the unified settings registry, agents, the machine-local `account` store (`account.ts` — identity + connection lifecycle), and the plugin system (`plugins/` — manifest registry, `config.plugins` slice, `pluginData` handle, boot scan) |
 | `src/llm/` | The model layer (the shared-shape floor): `client.call()` (service-named calls), Provider classes per `<modality>/<type>`, response handlers, and the shapes core/config/tools import down (`Image`/`Video`, `ToolSpec`, `ToolCallRequest`, service unions) |
 | `src/lib/` | Renderer utilities: event bus, i18n, router, registry, errors, ui state (the old `store.ts` factory is gone — state is now `core/storage/consumer.ts`) |
 | `src/lib/logger/` | `Logger` port (scoped children, structured events) + console / memory sinks |
@@ -86,6 +86,7 @@ Layering rules:
 | `tests/` | Vitest suites for pure logic (path confinement, provider URLs, data-URL parsing) |
 | `tests-live/` | Live engine suites against a real LLM endpoint (own config; not part of `pnpm test`) |
 | `src/pages/` | Feature UIs; each feature self-registers via `register.tsx` |
+| `src/plugins/` | First-party, in-tree plugins (`<slug>/`: manifest, `service.ts`, `tools/`, `ui/`, `locales/`) — a feature as one toggleable folder ([architecture/plugins.md](architecture/plugins.md)) |
 | `src/components/` | Reusable presentational components (Modal, Markdown, InlineEdit, …) |
 | `src/locales/` | i18n resources (`en.json`, `lt.json`) — must stay key-for-key in parity |
 
@@ -111,6 +112,7 @@ Deep dives, one per subsystem — read the one for the area you're touching
 | [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, LLMConfig, Provider classes, response handlers, heal |
 | [architecture/ui.md](architecture/ui.md) | Contribution registry/regions, routing, agents UX, UI patterns, i18n |
 | [architecture/storage.md](architecture/storage.md) | Durable persistence: per-entity `StorageRepos`, the provider swap (`repos()` vs `localRepos()`), tables, shapes, accessor surface |
+| [architecture/plugins.md](architecture/plugins.md) | The plugin system: in-tree `<slug>/` folders, the full surface, the service bridge (RPC + events + lifecycle), the MySQL reference plugin |
 | [architecture/knowledge.md](architecture/knowledge.md) | The `apps/knowledge` remote service: registry, auth, `/data`, the knowledgebase plane, dev stack |
 
 ## Error-handling conventions
@@ -158,7 +160,11 @@ ADR-0011); they are not restated below.
   generation seed, not an id (constants-and-identifiers.md rule 4).
 - **Naming (repo-specific).** Files: `camelCase.ts` modules, `PascalCase.tsx`
   components. Tools: a `BaseTool` subclass named for the capability (`ImageGenerate`)
-  in `<name>.ts`. LLM providers: the class is always `Provider` in
+  in `<name>.ts`; the model-facing tool name is PascalCase. A **plugin's** tools prefix
+  the model-facing name with the plugin (`MysqlQuery`, not `mysql_query`) — namespacing
+  against collisions while staying consistent with core tools. A **plugin** is a folder
+  named by its **slug** (`plugins/<slug>/`), lowercase, which is its identity everywhere
+  ([architecture/plugins.md](architecture/plugins.md)). LLM providers: the class is always `Provider` in
   `llm/providers/<modality>/<type>.ts` (the path IS the name); abstract bases are
   `Base<Modality>Provider` in each folder's `base.ts`; wire mappers stay
   `stream<Provider>` / `to<Provider>Messages`. A host-agnostic stateful collaborator

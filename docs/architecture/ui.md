@@ -9,6 +9,12 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   contributions. Features plug in without touching `App.tsx`. The `Region` type
   only lists surfaces the shell actually renders — the former `menu` region was
   deleted when it lost its renderer ([ADR-0024](../adr/0024-agent-runs-through-composer.md)).
+- **Plugin contributions** ([plugins.md](plugins.md)): a plugin's `ui/register.tsx` is globbed at boot
+  like a feature's, but each contribution carries a `pluginId`. `<Slot>` (and `SettingsModal`, for the
+  settings menu) **drop a contribution whose plugin is disabled** (`usePluginsConfig`), so enabling/
+  disabling a plugin adds/removes its UI live. An enabled plugin's settings get their **own
+  settings-menu section** (`settings` region, gated); the core "Plugins" section
+  (`pages/settings/PluginsSection.tsx`) is the enable/disable master list.
 - **Right panel**: the context-window card (`ProgressPanel`, order 0), the
   agents library (`AgentsPanel`, order 1 — one row per agent, filtered to the
   active context, hover play/pencil), the sub-agent run-log cleanup button

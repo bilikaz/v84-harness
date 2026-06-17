@@ -133,27 +133,12 @@ CREATE TABLE IF NOT EXISTS settings (
   CONSTRAINT fk_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- plugins: installed plugin registrations
-CREATE TABLE IF NOT EXISTS plugins (
-  id          VARCHAR(36)     NOT NULL,
-  user_id     BIGINT UNSIGNED NOT NULL,
-  name        VARCHAR(255)    NOT NULL,
-  version     VARCHAR(64)         NULL,
-  enabled     TINYINT(1)      NOT NULL DEFAULT 1,
-  config      JSON            NOT NULL,
-  permissions JSON            NOT NULL,
-  placement   VARCHAR(16)     NOT NULL,
-  created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  updated_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-  deleted_at  DATETIME(3)         NULL,
-  PRIMARY KEY (user_id, id),
-  CONSTRAINT fk_plugins_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- plugin_data: a plugin's own namespaced rows (its "tables")
+-- plugin_data: a plugin's own namespaced rows (its "tables"). plugin_id is the plugin's SLUG
+-- (its in-tree folder name) — first-party plugins have no installed-registration row; enable +
+-- settings live in the settings table under config.plugins.<slug>.
 CREATE TABLE IF NOT EXISTS plugin_data (
   user_id    BIGINT UNSIGNED NOT NULL,
-  plugin_id  VARCHAR(36)     NOT NULL,
+  plugin_id  VARCHAR(64)     NOT NULL,
   collection VARCHAR(128)    NOT NULL,
   `key`      VARCHAR(255)    NOT NULL,
   value      JSON            NOT NULL,

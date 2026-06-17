@@ -268,6 +268,11 @@
     "llmDebug": "LLM derinimo žurnalas",
     "llmDebugHint": "Registruoja kiekvieną modelio užklausą/atsakymą konsolėje (su prefiksu [llm]). Dev režime įjungta pagal numatytuosius nustatymus."
   },
+  "plugins": {
+    "title": "Papildiniai",
+    "subtitle": "Įjunkite ir konfigūruokite vidinius papildinius.",
+    "none": "Papildinių nėra."
+  },
   "common": {
     "cancel": "Atšaukti",
     "save": "Išsaugoti",

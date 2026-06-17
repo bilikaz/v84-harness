@@ -70,8 +70,11 @@ per-entity tables/stores:
 | `media` | `MediaRow` | `id` (indexed by `sessionId`) | externalized blobs |
 | `agents` | `Agent` | `id` | CRUD |
 | `settings` | `SettingRow` | `key` | one row per consumer key; `scope` = `account` \| `local` |
-| `plugins` | `PluginRow` | `id` | CRUD |
-| `plugin_data` | `PluginDataRow` | `(pluginId, collection, key)` | per-plugin collections |
+| `plugin_data` | `PluginDataRow` | `(pluginId, collection, key)` | a plugin's runtime collections; `pluginId` is the plugin **slug** ([plugins.md](plugins.md)) |
+
+There is **no `plugins` table** — first-party plugins have no installed-registration row; enable +
+settings live in the `settings` table under `config.plugins.<slug>` and identity is the folder slug
+([ADR-0047](../adr/0047-first-party-in-tree-plugins.md)). `plugin_data` is the only plugin table.
 
 Ids are **ULIDs** (`core/ids.ts`) — sortable by creation time, client-generated,
 stable across a row moving local↔remote so foreign keys (`containerId`,

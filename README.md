@@ -160,3 +160,21 @@ task-builder (cloud: RAG + ingest + API)
 - Gemini can reject unsupported JSON-Schema keywords in tool `parameters`; a
   schema sanitizer may be needed in its mapper.
 - `packages/core` lift, cloud sync — later.
+
+## License
+
+Licensed under the **GNU Affero General Public License v3.0** ([LICENSE](LICENSE)) — © 2026 VBTECH.
+
+You may use, modify, run, and **commercially host it (including as a SaaS)**. The AGPL's
+network-copyleft is the catch: if you run a modified version for others over a network, you
+must make your modified source available to them under the AGPL. The intent is that use feeds
+the project's growth rather than forking off silently — improvements flow back as code.
+
+**Commercial license.** To use it in a closed-source product/service without the AGPL's
+source-sharing obligations, a commercial license is available — contact
+**valdas@vbtech.eu**. So a business contributes back either way: as code
+(pull requests / its AGPL-published changes) or financially (a commercial license).
+
+Contributions are welcome by pull request. Once outside contributions are accepted, a
+Contributor License Agreement will be required so the project can keep offering the commercial
+option (the maintainer needs the rights to relicense).
