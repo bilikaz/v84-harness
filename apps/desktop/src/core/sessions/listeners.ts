@@ -28,7 +28,7 @@ const offs: Array<() => void> = [
   bus.on("turn:error", (e) => appendToLast(e.sessionId, `⚠️ ${e.message}`, "text")),
 
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
-  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.videos, e.childSessionIds)),
+  bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.videos, e.childSessionIds, e.browserWindowId)),
   bus.on("tool:child", (e) => addChildRun(e.toolCallId, e.childSessionId)),
   bus.on("assistant:open", (e) => pushAssistant(e.sessionId)),
   bus.on("heal", (e) => pushHeal(e.sessionId, e.correction)),

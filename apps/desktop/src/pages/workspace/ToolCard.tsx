@@ -1,8 +1,9 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, ChevronDown, RefreshCw, SquareArrowOutUpRight, Terminal, Wrench } from "lucide-react";
+import { Bot, ChevronDown, Globe, RefreshCw, SquareArrowOutUpRight, Terminal, Wrench } from "lucide-react";
 
 import { setActive, useSessions } from "../../core/sessions/index.ts";
+import { browserFleet, useFleetWindows } from "../../core/browser.ts";
 import { SavableMedia } from "../../components/SavableMedia.tsx";
 import { navigate } from "../../lib/router.ts";
 import { cn } from "../../lib/cn.ts";
@@ -15,12 +16,14 @@ export const ToolCard = memo(function ToolCard({
   images,
   videos,
   childSessionIds,
+  browserWindowId,
 }: {
   call: ToolCallRequest;
   output?: string;
   images?: Image[];
   videos?: Video[];
   childSessionIds?: string[];
+  browserWindowId?: string;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -31,9 +34,10 @@ export const ToolCard = memo(function ToolCard({
     /* keep {} */
   }
   const isAgent = call.name === "RunAgent" || call.name === "ListAgents";
-  const summary = String(args.agent ?? args.command ?? args.path ?? args.pattern ?? "");
+  const isBrowser = call.name === "Browser" || call.name === "BrowserContent" || call.name === "BrowserDescribe" || call.name === "ActiveBrowsers";
+  const summary = String(args.agent ?? args.command ?? args.path ?? args.pattern ?? args.url ?? "");
   const inText = call.name === "Bash" ? String(args.command ?? "") : JSON.stringify(args, null, 2);
-  const Icon = call.name === "Bash" ? Terminal : isAgent ? Bot : Wrench;
+  const Icon = call.name === "Bash" ? Terminal : isAgent ? Bot : isBrowser ? Globe : Wrench;
 
   return (
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50/70 text-sm">
@@ -53,6 +57,11 @@ export const ToolCard = memo(function ToolCard({
           {childSessionIds.map((csid) => (
             <ChildRunLink key={csid} sid={csid} />
           ))}
+        </div>
+      )}
+      {browserWindowId && (
+        <div className="flex flex-wrap gap-1.5 border-t border-neutral-200 px-3 py-1.5">
+          <BrowserWindowLink id={browserWindowId} />
         </div>
       )}
       {images && images.length > 0 && (
@@ -103,6 +112,30 @@ function ChildRunLink({ sid }: { sid: string }) {
       className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800"
     >
       <SquareArrowOutUpRight size={11} /> {child.title}
+    </button>
+  );
+}
+
+// A live window is a clickable link (opens the overlay); a closed one is a tombstone — same shape as
+// ChildRunLink, reading liveness from the fleet instead of the sessions store. Live status (the load dot)
+// lives only in the right-rail panel, not here.
+function BrowserWindowLink({ id }: { id: string }) {
+  const { t } = useTranslation();
+  const win = useFleetWindows().find((w) => w.id === id);
+  if (!win)
+    return (
+      <span className="flex shrink-0 cursor-default items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-neutral-300 line-through">
+        <Globe size={11} /> {t("browser.deletedWindow")}
+      </span>
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => browserFleet().view(id)}
+      title={t("browser.title")}
+      className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800"
+    >
+      <Globe size={11} /> {win.title || win.url}
     </button>
   );
 }

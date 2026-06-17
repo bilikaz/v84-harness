@@ -41,9 +41,11 @@ export function BrowserOverlay() {
   const id = viewingId;
   const win = windows.find((w) => w.id === id);
 
+  // Route the comment to the window's OWNING session, not the focused one — the agent that opened this
+  // window (and is waiting on a login/filter) is the one that needs to continue.
   async function forward(text: string): Promise<void> {
     const fwd = await buildForward(id, text);
-    if (fwd) void ctx.sessions.send(fwd.text, { context: fwd.context });
+    if (fwd && win) void ctx.sessions.sendTo(win.ownerSessionId, fwd.text, { context: fwd.context });
     await browserFleet().unview();
   }
 

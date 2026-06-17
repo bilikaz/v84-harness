@@ -10,10 +10,11 @@ import { getAgent, type Agent } from "../agents.ts";
 import { getActiveContainerId, getContainer, type Container } from "../containers.ts";
 import { isConnected } from "../account.ts";
 import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
-import { pt } from "../../lib/prompts.ts";
-import { cap } from "../tools/base.ts";
-import { LIST_AGENTS, RUN_AGENT, agentToolSchemas, listAgentsOutput, resolveAgent } from "./agentTools.ts";
-import { browserToolSchemas, isBrowserTool, execBrowserTool } from "../browserTools.ts";
+import { pt, fill } from "../../lib/prompts.ts";
+import { engineToolSchemas, isEngineTool, runEngineTool } from "../tools/engine/dispatch.ts";
+import type { EngineCtx } from "../tools/engine/base.ts";
+import { browserFleet } from "../browser.ts";
+import { enabledPluginPrompts } from "../plugins/config.ts";
 import { sessionBus as bus } from "./events.ts";
 import {
   createSession,
@@ -85,6 +86,8 @@ export class SessionEngine {
   deleteSession(id: string): void {
     for (const child of getSessions().filter((s) => s.parentId === id)) this.deleteSession(child.id);
     this.stopTurn(id);
+    // A deleted session's browser windows have no owner left to drive them — close them.
+    void browserFleet().closeForSession(id);
     deleteSessionState(id);
   }
 
@@ -163,28 +166,31 @@ export class SessionEngine {
 
     const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
     const { ws, agent } = capabilityContext(getSession(sid));
-    // One policy pass: the gateway returns the advertised schemas + each tool's effective mode. The sub-agent
-    // pair is driver-level (top-level sessions only, depth 1) and joins the advertised set here.
+    const controller = new AbortController();
+    this.inflight.set(sid, controller);
+    // The engine-call context for the driver-level tool tier (browser fleet, sub-agent spawner).
+    const ec: EngineCtx = { ctx: this.ctx, sessionId: sid, workspace: ws, signal: controller.signal, isChild, engine: this };
+    // One policy pass: the gateway returns the advertised schemas + each tool's effective mode. The engine
+    // tier (sub-agent pair, browser fleet) is driver-level and joins the advertised set here.
     const filtered = await this.ctx.tools.filter({
       checkCanRun: true,
       hasWorkspace: !!ws,
       workspacePermissions: ws?.permissions as Record<ToolName, ToolPermission> | undefined,
       agentPermissions: agent?.tools,
     });
-    const agentPair = isChild ? [] : (agentToolSchemas(!!ws) as ToolSpec[]);
-    const browserPair = isChild ? [] : browserToolSchemas();
-    const toolSpecs: ToolSpec[] = [...Object.values(filtered).map((e) => e.schema as ToolSpec), ...agentPair, ...browserPair];
+    const toolSpecs: ToolSpec[] = [...Object.values(filtered).map((e) => e.schema as ToolSpec), ...engineToolSchemas(ec)];
     llmLog.debug("turn", { workspace: ws?.name ?? null, tools: toolSpecs.map((t) => t.function.name) });
     // The virtual-root convention (ADR-0007) is invisible otherwise — tell the model only when file tools are actually advertised.
     const fsAccess = Object.values(filtered).some((e) => e.permissioned);
+    // Browser guidance (reuse windows, short ids, ask the user for logins) — only when the fleet is live and
+    // the browser tools are actually advertised (top-level sessions on the electron host).
+    const browserAccess = !isChild && browserFleet().available();
 
     let finalText = "";
     let finalThinking = "";
     let errored = false;
     let healAttempts = 0;
 
-    const controller = new AbortController();
-    this.inflight.set(sid, controller);
     const maxSteps = getAppConfig().session.maxSteps;
     let step = 0;
     try {
@@ -192,11 +198,26 @@ export class SessionEngine {
         if (controller.signal.aborted) break;
         // History is re-filtered against the CURRENT model's inputs each step — the model can change mid-session, and yesterday's images must not 400 today's text-only endpoint.
         const history = toChatMessages(getSession(sid)?.messages ?? [], cfg.input ?? {});
-        const baseSystem = getSession(sid)?.system || (ws?.config.instructions as string | undefined) || undefined;
+        // The overridable BASE block, resolved live: the agent's baked system → the session's container
+        // (workspace) message → the user's global system prompt (Settings) → the built-in default. Read the
+        // session's OWN container (not the fs-masked `ws`) so a workspace message applies even when its file
+        // tools are masked. The capability blocks below (workspace fs / browser / memory) append on top
+        // regardless, to enforce proper tool usage.
+        const containerMessage = getContainer(getSession(sid)?.containerId)?.config.instructions as string | undefined;
+        // fill() so {{language}} (and any vars) expand in user/workspace messages too, not just built-ins.
+        const baseSystem = fill(
+          getSession(sid)?.system || containerMessage || getAppConfig().systemPrompt || pt("defaultChat.system"),
+        );
         // Append the workspace prompt when file tools are advertised, and the memory
         // prompt when the account is connected (same gate that advertises the memory tools).
         const system =
-          [baseSystem, fsAccess ? pt("workspace.system") : undefined, isConnected() ? pt("memory.system") : undefined]
+          [
+            baseSystem,
+            fsAccess ? pt("workspace.system") : undefined,
+            browserAccess ? pt("browser.system") : undefined,
+            isConnected() ? pt("memory.system") : undefined,
+            ...enabledPluginPrompts(), // each enabled plugin's own tool guidance
+          ]
             .filter(Boolean)
             .join("\n\n") || undefined;
 
@@ -241,15 +262,14 @@ export class SessionEngine {
         const fedVideo: Video[] = []; // tool-produced video — fed back only when the model takes video input
         await Promise.all(
           calls.map(async (call) => {
-            // The sub-agent pair is driver-level (it spawns sessions) — handled before the registry/policy paths.
-            if (call.name === LIST_AGENTS || call.name === RUN_AGENT) {
-              await this.execAgentTool(sid, call, ws, controller.signal, isChild);
-              return;
-            }
-            // The browser-fleet read tools are driver-level too (they need the host fleet, not the registry).
-            if (isBrowserTool(call.name)) {
-              const output = isChild ? `tool "${call.name}" is not available to sub-agents.` : await execBrowserTool(call);
-              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output });
+            // The engine tool tier (sub-agent pair, browser fleet) is driver-level — it needs the live
+            // engine/ctx, not the registry. One gated dispatch; the engine emits its result + feeds images.
+            if (isEngineTool(call.name)) {
+              const res = await runEngineTool(call, ec);
+              const images = await this.downscaleToolImages(res.images, effectiveImageMaxDim(cfg.imageMaxDim));
+              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: res.output, images, videos: res.videos, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId });
+              if (images?.length) fedImages.push(...images);
+              if (res.videos?.length) fedVideo.push(...res.videos);
               return;
             }
             const mode = filtered[call.name]?.effectiveMode ?? 0;
@@ -284,17 +304,7 @@ export class SessionEngine {
               controller.signal.removeEventListener("abort", onAbort);
             }
             const output = result.output;
-            // Downscale runs in this renderer hop because canvas lives here, not in main.
-            const maxDim = effectiveImageMaxDim(cfg.imageMaxDim);
-            const images = result.images
-              ? await Promise.all(
-                  result.images.map(async (g) => {
-                    // the item's mime is optional; the resizer treats unknown ("") as "try".
-                    const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
-                    return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
-                  }),
-                )
-              : undefined;
+            const images = await this.downscaleToolImages(result.images, effectiveImageMaxDim(cfg.imageMaxDim));
             const videos = result.videos?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
             bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, videos });
             if (images?.length) fedImages.push(...images);
@@ -378,60 +388,16 @@ export class SessionEngine {
     };
   }
 
-  private async execAgentTool(sid: string, call: ToolCallRequest, ws: Container | undefined, signal: AbortSignal, isChild: boolean): Promise<void> {
-    const respond = (output: string, childSessionIds?: string[]): void =>
-      bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, childSessionIds });
-    // A model can hallucinate the pair even though children aren't advertised it — depth-1 must hold at run time too.
-    if (isChild) return respond(`tool "${call.name}" is not available to sub-agents.`);
-    if (call.name === LIST_AGENTS) return respond(listAgentsOutput(!!ws));
-
-    let args: Record<string, unknown> = {};
-    try {
-      args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
-    } catch {
-      /* keep {} — the shape check below answers with usage */
-    }
-    // Lenient input: {runs: [...]}, the {agents: [...]} alias, and the flat {agent, task} shape all accepted.
-    const raw = Array.isArray(args.runs) ? args.runs : Array.isArray(args.agents) ? args.agents : args.agent ? [args] : [];
-    const runs = raw as Record<string, unknown>[];
-    if (!runs.length) return respond("RunAgent needs runs: [{agent, task}, …] — one entry per sub-agent run.");
-
-    const children: string[] = [];
-    const answers = await Promise.all(
-      runs.map(async (run, i) => {
-        const label = runs.length > 1 ? `${i + 1}. ` : "";
-        const resolved = resolveAgent(String(run.agent ?? ""), !!ws);
-        if (typeof resolved === "string") return `${label}${resolved}`;
-        const task = String(run.task ?? "").trim();
-        if (!task) return `${label}"${resolved.name}": missing task — say what the agent should do, with all the context it needs.`;
-
-        const { sid: childSid, result } = this.runAgent(resolved, task, {
-          parentId: sid,
-          // The PARENT SESSION's container, not the capability-masked `ws` — children inherit placement, not the mask.
-          containerId: getSession(sid)?.containerId ?? "",
-          activate: false,
-        });
-        children.push(childSid);
-        bus.emit("tool:child", { sessionId: sid, toolCallId: call.id, childSessionId: childSid });
-        const onAbort = (): void => this.stopTurn(childSid);
-        signal.addEventListener("abort", onAbort, { once: true });
-        let outcome: TurnResult | null;
-        try {
-          outcome = await result;
-        } finally {
-          signal.removeEventListener("abort", onAbort);
-        }
-        const name = runs.length > 1 ? `${label}"${resolved.name}": ` : "";
-        if (!outcome) return `${name}the run did not start (empty task or a busy session).`;
-        if (outcome.aborted) return `${name}the sub-agent run was stopped.`;
-        if (outcome.errored) {
-          const detail = outcome.text ? `; its last output:\n${cap(outcome.text)}` : " — see its session for the error";
-          return `${name}sub-agent "${resolved.name}" failed${detail}`;
-        }
-        return `${name}${cap(outcome.text) || "(the sub-agent returned no text)"}`;
+  // Downscale tool-produced images in this renderer hop (canvas lives here, not main). The item's mime is
+  // optional; the resizer treats unknown ("") as "try". Shared by the registry path and the engine tier.
+  private async downscaleToolImages(images: Image[] | undefined, maxDim: number): Promise<Image[] | undefined> {
+    if (!images?.length) return undefined;
+    return Promise.all(
+      images.map(async (g) => {
+        const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
+        return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
       }),
     );
-    respond(cap(answers.join("\n\n")), children.length ? children : undefined);
   }
 }
 

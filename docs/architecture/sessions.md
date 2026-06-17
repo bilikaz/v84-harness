@@ -81,9 +81,16 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   (per-run, or all of a parent's via the right-panel cleanup button) costs only
   the child transcripts; mid-flight deletes stop the run first and the parent's
   RunAgent call settles as "stopped".
-- When gated file tools are advertised, the `workspace.system` prompt asset is
-  appended to the system message — the `/` virtual root (ADR-0007) is stated to
-  the model, never assumed known.
+- **System prompt = overridable base + appended capability blocks**, resolved live
+  each turn ([ADR-0052](../adr/0052-system-prompt-layering.md)). The BASE is the
+  first match of: the agent's baked `session.system` → the session's container
+  (workspace) message → the global `config.app.systemPrompt` → built-in
+  `defaultChat` (sessions no longer bake the default at creation). On top, always
+  appended when their capability is live: `workspace.system` (gated file tools — the
+  `/` virtual root, ADR-0007, is stated, never assumed), `browser.system` (browser
+  tools), `memory.system` (account), and **each enabled plugin's
+  `manifest.systemPrompt`** (`enabledPluginPrompts()`). `{{language}}` (and vars)
+  expand in the base too (`fill()`), not just built-ins.
 - Validation failures (the generic `opts.validate` hook) trigger a bounded heal
   loop (hidden correction turns).
 - Tool-produced media (generated or loaded) is fed back as a hidden user turn

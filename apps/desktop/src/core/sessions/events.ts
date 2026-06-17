@@ -55,6 +55,7 @@ export interface ToolResultEvent {
   images?: Image[];
   videos?: Video[];
   childSessionIds?: string[];
+  browserWindowId?: string; // a window this call opened/navigated, for the tool-card link
 }
 // One event per child; a multi-run call emits several with the same toolCallId.
 export interface ToolChild {

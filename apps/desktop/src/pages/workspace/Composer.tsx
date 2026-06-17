@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, ChevronDown, Plus, RefreshCw, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, Plus, Square } from "lucide-react";
 
-import { detectModels, useProvider } from "../../core/settings.ts";
+import { useProvider } from "../../core/settings.ts";
 import { effectiveImageMaxDim, getAppConfig } from "../../core/config/index.ts";
 import { readAttachments } from "../../lib/attachments.ts";
 import { navigate } from "../../lib/router.ts";
@@ -25,7 +25,6 @@ export function Composer(props: {
   const [videos, setVideos] = useState<Video[]>([]);
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [attachNote, setAttachNote] = useState("");
-  const [detecting, setDetecting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -40,16 +39,6 @@ export function Composer(props: {
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
-
-  async function detect() {
-    if (detecting) return;
-    setDetecting(true);
-    try {
-      await detectModels();
-    } finally {
-      setDetecting(false);
-    }
-  }
 
   async function addAttachments(list: FileList) {
     const maxDim = effectiveImageMaxDim(provider.imageMaxDim);
@@ -170,15 +159,6 @@ export function Composer(props: {
           >
             {provider.model.id || t("session.selectModel")}
             <ChevronDown size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => void detect()}
-            disabled={detecting}
-            title={t("session.detectModels")}
-            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
-          >
-            <RefreshCw size={18} className={detecting ? "animate-spin" : ""} />
           </button>
           {props.streaming ? (
             <button

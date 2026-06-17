@@ -1,10 +1,10 @@
 // The Electron bridge contract — the shape of `window.harness` plus the IPC channel names.
 
 import type { ToolSpec, ToolCallRequest, ToolResult, WireConfig, ToolFilterParams, ToolFilterResult } from "../core/tools/types.ts";
-import type { MediaModelsResult, MediaEndpoint, BrowserWindowInfo, BrowserWindowContent, ViewBounds } from "../core/host.ts";
+import type { MediaModelsResult, MediaEndpoint, BrowserWindowInfo, BrowserWindowContent, BrowserWindowUpdate, ViewBounds } from "../core/host.ts";
 
 export type { ToolSpec, ToolCallRequest, ToolResult, WireConfig, ToolFilterParams, ToolFilterResult };
-export type { MediaModelsResult, MediaEndpoint, BrowserWindowInfo, BrowserWindowContent, ViewBounds };
+export type { MediaModelsResult, MediaEndpoint, BrowserWindowInfo, BrowserWindowContent, BrowserWindowUpdate, ViewBounds };
 
 export interface ElectronApi {
   isElectron: true;
@@ -42,6 +42,9 @@ export interface ElectronApi {
     show(id: string, bounds: ViewBounds): Promise<void>;
     hide(): Promise<void>;
     close(id: string): Promise<void>;
+    capturePage(id: string): Promise<string | null>;
+    // Subscribe to main→renderer window-change pushes ({id, {url, title, loading}}). Returns an unsubscribe fn.
+    onEvent(cb: (id: string, update: BrowserWindowUpdate) => void): () => void;
   };
   // Resolves to the written path, or null if cancelled. suggestedName pre-fills the dialog.
   saveImage(dataUrl: string, suggestedName?: string): Promise<string | null>;
@@ -61,6 +64,8 @@ export const IPC = {
   browserShow: "harness:browser:show",
   browserHide: "harness:browser:hide",
   browserClose: "harness:browser:close",
+  browserCapture: "harness:browser:capture",
+  browserEvent: "harness:browser:event",
   saveImage: "harness:saveImage",
   saveVideo: "harness:saveVideo",
   storageAvailable: "harness:storage:available",

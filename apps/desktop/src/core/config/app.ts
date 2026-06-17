@@ -58,6 +58,7 @@ function presets(p: Record<Quality, QualityPreset>, d: Record<Quality, QualityPr
 function validate(c: ConfigApp): ConfigApp {
   const d = CONFIG_DEFAULTS;
   return {
+    systemPrompt: typeof c.systemPrompt === "string" ? c.systemPrompt : d.systemPrompt,
     media: {
       imageMaxDim: posInt(c.media.imageMaxDim, d.media.imageMaxDim),
       imageMaxBytes: posInt(c.media.imageMaxBytes, d.media.imageMaxBytes),

@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAgent, deleteAgent, getAgents, saveAgent } from "../src/core/agents.ts";
-import { agentToolSchemas, catalogAgents, listAgentsOutput, resolveAgent } from "../src/core/sessions/agentTools.ts";
+import { agentToolSchemas, catalogAgents, listAgentsOutput, resolveAgent } from "../src/core/tools/engine/agents/catalog.ts";
 import { initTestCtx } from "./ctx.ts";
 
 // The agents store is a ctx-injected consumer (ADR-0037) — build a fresh one and

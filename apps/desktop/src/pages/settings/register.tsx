@@ -1,4 +1,4 @@
-import { UserCircle, Plug, Image, Database, Wrench, Blocks } from "lucide-react";
+import { UserCircle, Plug, Image, Database, Wrench, Blocks, MessageSquareText } from "lucide-react";
 
 import { register } from "../../lib/registry.ts";
 import { AccountSection } from "./AccountSection.tsx";
@@ -7,6 +7,7 @@ import { ModelsSection } from "./ModelsSection.tsx";
 import { StorageSection } from "./StorageSection.tsx";
 import { PluginsSection } from "./PluginsSection.tsx";
 import { DeveloperSection } from "./DeveloperSection.tsx";
+import { SystemSection } from "./SystemSection.tsx";
 
 register(
   {
@@ -35,6 +36,15 @@ register(
     route: "settings/media",
     order: 2,
     render: () => <ModelsSection />,
+  },
+  {
+    region: "settings",
+    id: "system",
+    title: "System message",
+    icon: MessageSquareText,
+    route: "settings/system",
+    order: 2.5,
+    render: () => <SystemSection />,
   },
   {
     region: "settings",

@@ -1,12 +1,13 @@
-import { agentsForContext, type Agent } from "../agents.ts";
-import type { ToolSpec } from "../tools/types.ts";
+import { agentsForContext, type Agent } from "../../../agents.ts";
+import type { ToolSpec } from "../../types.ts";
 
-// Sub-agent tool pair: stable schemas so provider prompt caches hold.
+// Sub-agent catalog + name resolution + the stable schema pair. Helpers shared by the ListAgents /
+// RunAgent engine tools (and exercised directly by tests). Stable schemas so provider prompt caches hold.
 
 export const LIST_AGENTS = "ListAgents";
 export const RUN_AGENT = "RunAgent";
 
-const LIST_SCHEMA: ToolSpec = {
+export const LIST_SCHEMA: ToolSpec = {
   type: "function",
   function: {
     name: LIST_AGENTS,
@@ -16,7 +17,7 @@ const LIST_SCHEMA: ToolSpec = {
   },
 };
 
-const RUN_SCHEMA: ToolSpec = {
+export const RUN_SCHEMA: ToolSpec = {
   type: "function",
   function: {
     name: RUN_AGENT,

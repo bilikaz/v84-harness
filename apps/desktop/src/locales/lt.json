@@ -17,7 +17,12 @@
     "root": "Aplankas",
     "delete": "Ištrinti",
     "tools": "Įrankių leidimai",
-    "toolsHint": "Šios darbo srities įrankių riba; agentas gali ją susiaurinti, bet ne išplėsti."
+    "toolsHint": "Šios darbo srities įrankių riba; agentas gali ją susiaurinti, bet ne išplėsti.",
+    "tabSettings": "Nustatymai",
+    "tabOther": "Kita",
+    "systemPrompt": "Sistemos žinutė",
+    "systemPromptHint": "Pakeičia numatytąsias bazines instrukcijas šios darbo srities pokalbiams. Įrankių nurodymai (failai, naršyklė, atmintis) vis tiek pridedami. Agentai išlaiko savo.",
+    "systemPromptPlaceholder": "pvz. Visada atsakyk glaustai ir nurodyk failų kelius."
   },
   "agents": {
     "title": "Agentai",
@@ -67,11 +72,11 @@
   "browser": {
     "title": "Naršyklės langai",
     "empty": "Nėra atidarytų naršyklės langų.",
-    "urlPlaceholder": "Atverti URL…",
-    "open": "Atverti",
     "minimize": "Suskleisti",
     "close": "Uždaryti langą",
-    "closed": "langas uždarytas"
+    "loading": "Įkeliama…",
+    "loaded": "Įkelta",
+    "deletedWindow": "langas uždarytas"
   },
   "menu": {
     "settings": "Nustatymai",
@@ -200,7 +205,6 @@
     "hidePanel": "Slėpti skydelį",
     "showPanel": "Rodyti skydelį",
     "changeModel": "Keisti tiekėją / modelį",
-    "detectModels": "Aptikti galimus modelius",
     "stop": "Stabdyti",
     "compacting": "Ankstesnės žinutės apibendrinamos, kad atsilaisvintų kontekstas…",
     "thinking": "Mąsto…",
@@ -267,6 +271,13 @@
     "subtitle": "Diagnostika, žurnalai ir funkcijų jungikliai.",
     "llmDebug": "LLM derinimo žurnalas",
     "llmDebugHint": "Registruoja kiekvieną modelio užklausą/atsakymą konsolėje (su prefiksu [llm]). Dev režime įjungta pagal numatytuosius nustatymus."
+  },
+  "system": {
+    "title": "Sistemos žinutė",
+    "subtitle": "Numatytosios instrukcijos asistentui paprastuose pokalbiuose. Darbo sritys ir agentai gali jas pakeisti; įrankių nurodymai (failai, naršyklė, atmintis) visada pridedami. Palikite tuščią numatytajai.",
+    "placeholder": "pvz. Tu esi mano inžinerijos asistentas. Būk glaustas, teik kodą, nurodyk failų kelius.",
+    "languageHint": "Naudokite {{language}} bet kur — jis pakeičiamas dabartine vartotojo kalba.",
+    "defaultLabel": "Numatytoji žinutė (naudojama, kai laukas tuščias):"
   },
   "plugins": {
     "title": "Papildiniai",

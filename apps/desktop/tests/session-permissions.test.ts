@@ -45,9 +45,14 @@ describe("sessionToolModes", () => {
     const agentId = addAgent("joker", { workspace: false });
     const sid = createSession({ containerId: cid, agentId });
     const modes = await modesFor(sid);
-    const vals = Object.values(modes);
-    expect(vals.length).toBeGreaterThan(0);
-    for (const m of vals) expect(m).toBe(0);
+    const entries = Object.entries(modes);
+    expect(entries.length).toBeGreaterThan(0);
+    // Workspace (fs) tools are masked to 0 — placement grants nothing. A permissioned tool that needs NO
+    // workspace (Fetch — arbitrary HTTP) is workspace-independent, so it stays available even in chat.
+    for (const [name, m] of entries) {
+      if (name === "Fetch") expect(m).toBe(1); // ask, available
+      else expect(m).toBe(0);
+    }
   });
 
   it("applies min(workspace policy, ceiling) for a workspace agent", async () => {

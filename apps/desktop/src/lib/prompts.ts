@@ -17,6 +17,16 @@ const PROMPTS: Tree = {
       "Example paths: `/workspace/src/index.ts`, `notes.md`. " +
       "Bash runs in the same root — use relative paths or `/workspace/…`.",
   },
+  browser: {
+    system:
+      "You can open and read web pages through your browser tools. Windows are yours for this session, " +
+      'addressed by short ids (1, 2, …). REUSE a window: to follow a link or move on, navigate the one you ' +
+      "already have (Browser {id: 1, url}) instead of opening new ones — check ActiveBrowsers for your ids " +
+      "and never guess them. Read a page with BrowserContent; if you can't see images yourself, use " +
+      "BrowserDescribe to understand its structure (forms, buttons, layout). When a page needs a login, a " +
+      "captcha, or a popup dismissed, ASK THE USER to handle it in the window — they can act on it and tell " +
+      "you to continue.",
+  },
   memory: {
     system:
       "You have a persistent memory (a shared knowledgebase) through the memory tools. " +
@@ -46,9 +56,19 @@ function languageName(): string {
   return LANGUAGES.find((l) => l.code === i18n.language)?.name ?? "English";
 }
 
+// Substitute {{vars}} (and the implicit {{language}}) into arbitrary text — used for user/workspace/plugin
+// system messages so they can target the user's language the same way the built-in prompts do.
+export function fill(text: string, vars?: Vars): string {
+  const all: Vars = { language: languageName(), ...vars };
+  return text.replace(/\{\{(\w+)\}\}/g, (_, k) => all[k] ?? "");
+}
+
 // Named `pt` (not `prompt`) to avoid colliding with the global window.prompt.
 export function pt(key: string, vars?: Vars): string {
-  const s = resolve(key) ?? key;
-  const all: Vars = { language: languageName(), ...vars };
-  return s.replace(/\{\{(\w+)\}\}/g, (_, k) => all[k] ?? "");
+  return fill(resolve(key) ?? key, vars);
+}
+
+// The built-in default base prompt, RAW (with {{language}} visible) — shown in Settings as the reference.
+export function defaultSystemPrompt(): string {
+  return resolve("defaultChat.system") ?? "";
 }

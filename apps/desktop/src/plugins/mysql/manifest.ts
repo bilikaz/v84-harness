@@ -29,6 +29,13 @@ export const manifest: PluginManifest<MysqlSettings> = {
   name: "MySQL",
   version: "0.1.0",
   defaultEnabled: false,
+  systemPrompt:
+    "You can query MySQL databases through the Mysql tools. Call MysqlConnections first to see the " +
+    "configured connections (their names + which database each points at) — never guess a connection name. " +
+    "Run SQL with MysqlQuery, passing the connection name; results are row-capped, so add LIMIT and select " +
+    "only the columns you need. Read and write share one tool — the connecting user's privileges plus the " +
+    "per-query approval are the safety boundary, so prefer SELECT unless the user asked you to change data, " +
+    "and state what a write will do before running it. MysqlTestConnection checks a connection is reachable.",
   settingsDefaults: { connections: [] },
   validateSettings(raw: unknown): MysqlSettings {
     const list = (raw as { connections?: unknown })?.connections;

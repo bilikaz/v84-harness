@@ -4,7 +4,7 @@
 
 import { createRequire } from "node:module";
 
-import { IPC, type ElectronApi, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type ViewBounds } from "./bridge.ts";
+import { IPC, type ElectronApi, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type ViewBounds, type BrowserWindowUpdate } from "./bridge.ts";
 
 const { contextBridge, ipcRenderer } = createRequire(import.meta.url)("electron") as typeof import("electron");
 
@@ -40,6 +40,12 @@ const api: ElectronApi = {
     show: (id: string, bounds: ViewBounds) => ipcRenderer.invoke(IPC.browserShow, id, bounds),
     hide: () => ipcRenderer.invoke(IPC.browserHide),
     close: (id: string) => ipcRenderer.invoke(IPC.browserClose, id),
+    capturePage: (id: string) => ipcRenderer.invoke(IPC.browserCapture, id),
+    onEvent: (cb: (id: string, update: BrowserWindowUpdate) => void) => {
+      const h = (_e: unknown, id: string, update: BrowserWindowUpdate): void => cb(id, update);
+      ipcRenderer.on(IPC.browserEvent, h);
+      return () => void ipcRenderer.removeListener(IPC.browserEvent, h);
+    },
   },
   saveImage: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl, suggestedName),
   saveVideo: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl, suggestedName),

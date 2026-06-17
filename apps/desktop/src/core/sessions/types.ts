@@ -32,6 +32,7 @@ export interface Message {
   toolCalls?: ToolCallRequest[];
   toolCallId?: string;
   childSessionIds?: string[];
+  browserWindowId?: string; // a browser window a Browser call opened/navigated — tool-card link target
   summary?: boolean;
   hidden?: boolean;
   createdAt?: number; // epoch ms at creation (optional — pre-existing messages lack it)

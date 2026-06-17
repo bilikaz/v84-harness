@@ -32,3 +32,13 @@ modes, both observed in real work:
 - Conversely, never *undersell*: if live work is killed as a side effect
   (deleting a streaming task stops it), the surrounding flow must make that
   consequence knowable — a safe-sounding label must not hide an unsafe effect.
+- **Live "what's active now" views are exempt from the tombstone rule** — they
+  are a snapshot of current state, not a history, so an item leaving on close is
+  expected, not a silent shrink (a running-processes list shrinks when a process
+  exits; nobody reads corruption into it). The tombstone obligation falls on the
+  **historical** enumeration instead. Split the two: the live panel drops the
+  item; the durable log (transcript, audit list) renders the inert tombstone. The
+  test for which surface is which: would a user expect this list to only ever
+  grow? If yes it's a history (tombstone); if it tracks "right now" it may drop.
+  (Example: closing a browser window removes it from the all-windows panel, while
+  the tool-call that opened it keeps an alive-link-or-tombstone in the transcript.)

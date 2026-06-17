@@ -4,7 +4,7 @@
 //
 // One shared session partition so a login/captcha solved in one window carries to the rest.
 
-import type { BrowserWindowInfo, BrowserWindowContent, ViewBounds } from "../core/host.ts";
+import type { BrowserWindowInfo, BrowserWindowContent, BrowserWindowUpdate, ViewBounds } from "../core/host.ts";
 
 type Electron = typeof import("electron");
 type BrowserWindow = import("electron").BrowserWindow;
@@ -15,7 +15,11 @@ const PARTITION = "persist:scraper";
 interface Entry {
   view: WebContentsView;
   updatedAt: number;
+  loading: boolean;
 }
+
+// Main → renderer window-change push (url/title/loading) so the god-view never goes stale.
+export type BrowserEmit = (id: string, update: BrowserWindowUpdate) => void;
 
 export class BrowserFleet {
   private readonly views = new Map<string, Entry>();
@@ -24,6 +28,7 @@ export class BrowserFleet {
   constructor(
     private readonly electron: Electron,
     private readonly host: BrowserWindow,
+    private readonly emit: BrowserEmit,
   ) {}
 
   open(url: string): string {
@@ -35,14 +40,25 @@ export class BrowserFleet {
       webPreferences: { partition: PARTITION, backgroundThrottling: false, contextIsolation: true, sandbox: true },
     });
     const wc = view.webContents;
+    // Every change pushes the live url/title/loading so the god-view tracks navigation, not just first load.
     wc.on("did-navigate", () => this.touch(id));
-    wc.on("did-finish-load", () => this.touch(id));
+    wc.on("did-navigate-in-page", () => this.touch(id));
     wc.on("page-title-updated", () => this.touch(id));
+    // Load state drives the dot (and the Browser tool's await): start loading on open, finish on stop.
+    wc.on("did-start-loading", () => this.setLoading(id, true));
+    wc.on("did-stop-loading", () => this.setLoading(id, false));
     this.host.contentView.addChildView(view);
     view.setVisible(false);
-    this.views.set(id, { view, updatedAt: Date.now() });
+    this.views.set(id, { view, updatedAt: Date.now(), loading: true });
     void wc.loadURL(url);
     return id;
+  }
+
+  async capturePage(id: string): Promise<string | null> {
+    const entry = this.views.get(id);
+    if (!entry) return null;
+    const img = await entry.view.webContents.capturePage().catch(() => null);
+    return img && !img.isEmpty() ? img.toDataURL() : null;
   }
 
   async get(id: string): Promise<BrowserWindowContent | null> {
@@ -71,6 +87,7 @@ export class BrowserFleet {
       url: entry.view.webContents.getURL(),
       title: entry.view.webContents.getTitle(),
       active: id === this.visibleId,
+      loading: entry.loading,
       updatedAt: entry.updatedAt,
     }));
   }
@@ -109,7 +126,25 @@ export class BrowserFleet {
 
   private touch(id: string): void {
     const entry = this.views.get(id);
-    if (entry) entry.updatedAt = Date.now();
+    if (!entry) return;
+    entry.updatedAt = Date.now();
+    this.push(id);
+  }
+
+  private setLoading(id: string, loading: boolean): void {
+    const entry = this.views.get(id);
+    if (!entry) return;
+    entry.loading = loading;
+    entry.updatedAt = Date.now();
+    this.push(id);
+  }
+
+  // Push the window's current url/title/loading to the renderer.
+  private push(id: string): void {
+    const entry = this.views.get(id);
+    if (!entry) return;
+    const wc = entry.view.webContents;
+    this.emit(id, { url: wc.getURL(), title: wc.getTitle(), loading: entry.loading });
   }
 }
 
@@ -117,8 +152,8 @@ export class BrowserFleet {
 // lazily by the IPC handlers (which are registered before the window is built).
 let fleet: BrowserFleet | null = null;
 
-export function initBrowserFleet(electron: Electron, host: BrowserWindow): void {
-  fleet = new BrowserFleet(electron, host);
+export function initBrowserFleet(electron: Electron, host: BrowserWindow, emit: BrowserEmit): void {
+  fleet = new BrowserFleet(electron, host, emit);
 }
 
 export function getBrowserFleet(): BrowserFleet | null {

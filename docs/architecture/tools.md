@@ -22,9 +22,13 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   (`v.prototype instanceof BaseTool`), so a tool module's sibling helper exports are ignored, not
   `new`-ed (abstract bases are skipped by the `base.ts` path too). Non-tool code lives in `tools/helpers/`.
 - **The folder is the permission tier** (and the process it's globbed into):
-  - **`general/`** — permissionless (`ImageGenerate`, `VideoGenerate`): no workspace, no
-    gate; `canRun()` only. Host-agnostic (provider HTTP + data-URLs). Globbed into both the web
-    renderer and electron main.
+  - **`general/`** — no workspace, available in any session (chat included). Host-agnostic (HTTP +
+    data-URLs), globbed into both the web renderer and electron main. Mostly permissionless
+    (`ImageGenerate`, `VideoGenerate` — `canRun()` only), but a general tool MAY still opt into the policy
+    via `isPermissioned()`: `Fetch` (arbitrary HTTP — method/headers/body to any URL, for talking to APIs
+    without a browser) is permissioned, **default ask** — it can authenticate and act anywhere, so the
+    human approves each call. `needsWorkspace()=false`, so it stays available in chat (not masked off like
+    fs tools). On electron it runs in main (no CORS); on the web host it's subject to the browser's CORS.
   - **`local/`** — gated by the per-workspace policy (`0|1|2`): `Read`, `List`,
     `Grep`, `Write`, `Edit`, `CreateFolder`, `Bash`, `ImageLoad`, `VideoLoad`,
     `ImageDescribe`, `VideoDescribe`. Need Node (fs/shell), so globbed only into electron main and
@@ -49,6 +53,29 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   workspace/agent policies are partial maps (stricter of grant and ceiling wins), a missing
   entry falls back to the tool's `defaultPermission()`, and a `needsWorkspace` tool is forced
   to mode 0 when no workspace is in context.
+
+## The engine tier — driver-level tools ([ADR-0050](../adr/0050-engine-tool-tier.md))
+
+A separate category from the registry, for tools that need the **live engine/ctx**, not just config —
+so they can't satisfy the config-only `BaseTool` contract ([ADR-0048](../adr/0048-tool-ctx-config-carrier.md)).
+Lives in `core/tools/engine/`:
+
+- **`base.ts`** — `BaseEngineTool` (`schema`, `available(ec)`, `defaultPermission()`, `childSafe`,
+  `run(call, ec)`). `ec` (`EngineCtx`) = `{ ctx, sessionId, workspace, signal, isChild, engine }`, built per
+  call by the turn loop. No per-folder `service.ts` — the "service" is the engine/ctx, handed in via `ec`.
+- **`dispatch.ts`** — eager-globs `./*/*.ts` (one folder per family: `agents/`, `browser/`), instantiates
+  the subclasses, and exposes `isEngineTool` / `engineToolSchemas(ec)` / `runEngineTool(call, ec)`. One
+  gated path: child guard → `defaultPermission()` (mode 1 → `requestApproval`) → `run`. The turn loop
+  advertises `engineToolSchemas(ec)` alongside the registry schemas and routes `isEngineTool` calls through
+  `runEngineTool`. The glob is HERE, not in `base.ts`: Vite hoists eager globs above class declarations, so
+  globbing in the contract file imports the tools before `BaseEngineTool` exists.
+- **Members**: `agents/` — `ListAgents` / `RunAgent` (the sub-agent pair, [ADR-0022](../adr/0022-subagent-orchestration.md),
+  relocated here; `RunAgent` spawns via `ec.engine`). `browser/` — `Browser` / `BrowserContent` /
+  `BrowserDescribe` / `ActiveBrowsers` ([browser.md](browser.md)). Both families are `childSafe = false`
+  (top-level only, depth-1).
+
+This is where driver-level tools are **finally permission-gated** — previously they were dispatched
+ad-hoc, before the policy path, with no gate.
 
 ## Execution lives in the platform, via `ctx.tools`
 

@@ -38,6 +38,7 @@ function MessageImpl({
   toolImages,
   toolVideo,
   toolChildren,
+  toolBrowserWindows,
   createdAt,
   streaming,
 }: {
@@ -52,6 +53,7 @@ function MessageImpl({
   toolImages?: Map<string, Image[]>;
   toolVideo?: Map<string, Video[]>;
   toolChildren?: Map<string, string[]>; // toolCallId → sub-agent sessions (RunAgent's doors)
+  toolBrowserWindows?: Map<string, string>; // toolCallId → browser window a Browser call opened
   createdAt?: number;
   streaming: boolean;
 }) {
@@ -111,6 +113,7 @@ function MessageImpl({
           images={toolImages?.get(c.id)}
           videos={toolVideo?.get(c.id)}
           childSessionIds={toolChildren?.get(c.id)}
+          browserWindowId={toolBrowserWindows?.get(c.id)}
         />
       ))}
       <Stamp ts={createdAt} />
@@ -140,7 +143,8 @@ function sameMessage(prev: MessageProps, next: MessageProps): boolean {
       prev.results?.get(c.id) === next.results?.get(c.id) &&
       prev.toolImages?.get(c.id) === next.toolImages?.get(c.id) &&
       prev.toolVideo?.get(c.id) === next.toolVideo?.get(c.id) &&
-      prev.toolChildren?.get(c.id) === next.toolChildren?.get(c.id),
+      prev.toolChildren?.get(c.id) === next.toolChildren?.get(c.id) &&
+      prev.toolBrowserWindows?.get(c.id) === next.toolBrowserWindows?.get(c.id),
   );
 }
 

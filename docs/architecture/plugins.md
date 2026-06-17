@@ -130,7 +130,8 @@ enable + settings and the manifest owns identity + version ([ADR-0047](../adr/00
 Exercises the whole surface: connect to MySQL servers and run queries.
 
 - **manifest** — slug `mysql`; settings are named connections `{ name, host, port, user, password?,
-  database }` (password optional), validated on store.
+  database }` (password optional), validated on store. Declares a `systemPrompt` — the worked example of a
+  plugin **capability block** (see below).
 - **service** — connection pools keyed by name. One `resolve()` reuses the live pool or establishes +
   validates a new one (so every failure surfaces with its message: missing password, server unreachable,
   access denied), and tears a failed pool down. `rpc` = `connect` / `disconnect` / `status`;
@@ -139,11 +140,16 @@ Exercises the whole surface: connect to MySQL servers and run queries.
   connections — discovery), `MysqlQuery` (run any SQL, **permissioned → ask**, results row-capped at 50),
   `MysqlTestConnection` (liveness check). Read/write is **not** split — classifying SQL gives no real
   safety; the boundary is the connecting DB user's privileges plus the per-query approval.
-- **UI** — a settings-menu section (collapsible connection cards + a Test probe), a left-rail status
-  block, and a right-rail connections card with connect/disconnect and an inline password prompt when a
-  connection has no saved password. The card subscribes to service events, so an agent query's
-  auto-connect flips the status dot live.
+- **UI** — a settings-menu section (collapsible connection cards + a Test probe) and a right-rail
+  connections card with connect/disconnect and an inline password prompt when a connection has no saved
+  password. The card subscribes to service events, so an agent query's auto-connect flips the status dot
+  live. (Contributes to `settings` + `right-panel` regions only — no left-rail block.)
 - **helpers** — `tools/helpers/format.ts` (row formatter), kept out of the tier folders.
+- **system prompt** — `manifest.systemPrompt` teaches the model the Mysql tools (discover via
+  `MysqlConnections`, `LIMIT` your queries, the privilege/approval safety boundary). It's a **capability
+  block**: `enabledPluginPrompts()` collects it and the turn loop appends it to the system prompt **while
+  the plugin is enabled** — the same shape as the built-in browser/memory blocks
+  ([ADR-0052](../adr/0052-system-prompt-layering.md)).
 
 Tool names are **PascalCase, prefixed by the plugin** (`MysqlQuery`, not `mysql_query`) — consistent
 with core tools and namespaced against collisions.
@@ -151,7 +157,8 @@ with core tools and namespaced against collisions.
 ## Writing a new plugin
 
 1. Create `plugins/<slug>/manifest.ts` exporting a `PluginManifest` (slug, name, version, settings
-   defaults + `validateSettings`). It appears in Settings → Plugins, disabled by default.
+   defaults + `validateSettings`; an optional `systemPrompt` to teach the model its tools). It appears in
+   Settings → Plugins, disabled by default.
 2. Add tools under `tools/<tier>/` — `BaseTool` subclasses; pick the tier by the process + permission it
    needs (Node/fs → `local`, permissionless/HTTP → `general`, account token → `account`). Read config
    via `this.config().plugins.<slug>`. Non-tool helpers go in `tools/helpers/`.

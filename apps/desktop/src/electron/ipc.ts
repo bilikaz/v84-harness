@@ -54,6 +54,7 @@ export function registerIpc(electron: Electron): void {
   ipcMain.handle(IPC.browserShow, (_e: unknown, id: string, bounds: ViewBounds) => void getBrowserFleet()?.show(id, bounds));
   ipcMain.handle(IPC.browserHide, () => void getBrowserFleet()?.hide());
   ipcMain.handle(IPC.browserClose, (_e: unknown, id: string) => void getBrowserFleet()?.close(id));
+  ipcMain.handle(IPC.browserCapture, (_e: unknown, id: string) => getBrowserFleet()?.capturePage(id) ?? null);
 
   ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
   ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
