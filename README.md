@@ -1,210 +1,175 @@
 # v84 harness
 
-A **multi-session agent harness** — an Electron desktop app that runs agent
-sessions against a workspace folder, with file/shell tools, per-workspace
-permissions, media generation, and automatic context compaction. Part of a
-larger all-TypeScript pipeline (task-builder → harness → reviewer).
+**Your own agent workbench.** A local-first, multi-session AI harness where agents
+don't just chat — they read your files, run commands, browse the web, call APIs,
+generate media, spawn sub-agents, and remember — all behind a permission model you
+control, against any model you point it at.
 
-## Run it
+Runs as a desktop app **or** in the browser. **Built for local models first** —
+point it at your own vLLM / OpenAI-compatible endpoint and keep the entire loop on
+your hardware. Cloud providers (Anthropic, Gemini) work too, but they're the
+option, not the premise. Your data **and your models** stay yours; the cloud is
+opt-in.
+
+> Part of an all-TypeScript pipeline: **task-builder → harness → reviewer**, with
+> company-knowledge RAG wired in as a permission-filtered tool.
+
+---
+
+## Why it's different
+
+Most "chat with your repo" tools give you one assistant and a text box. This gives
+you a **workbench**:
+
+- 🧩 **Many sessions, many agents at once** — every chat is its own session; an
+  orchestrator fans work out to **stored sub-agents running concurrently**, each in
+  its own context, and collects their answers. And they're not a black box: each
+  sub-agent is a **real, openable thread** — watch it stream live in the sidebar
+  (indented under its parent), and click straight into its full transcript from the
+  tool call that spawned it.
+- 🗂️ **Real workspace tools, safely** — `Read` / `List` / `Grep` / `Write` /
+  `Edit` / `Bash` over a folder, **confined to a virtual root** (the model never
+  escapes the workspace), each tool gated **off / ask / auto** per workspace.
+- 🌐 **Agents that actually browse** — managed browser windows the agent opens,
+  reads, and navigates; it can **see** a page (screenshot to a vision model) or
+  have it **described** (forms, buttons, layout) for text-only models. Hit a login
+  or captcha? It asks *you* to handle it in the window, then carries on.
+- 🔌 **Talk to any API** — a `Fetch` tool (method, headers, body) for hitting real
+  services without a browser. Gated *ask* by default, because it can act anywhere.
+- 🎨 **Generate media** — images and video from the chat, fed back to the agent so
+  it can inspect what it made.
+- 🧠 **Memory + company knowledge** — connect an account and agents gain a shared,
+  searchable knowledgebase (hybrid sparse+dense RAG) and persistent memory.
+- 🧱 **Build it for your needs** — the plugin system makes the harness *yours*: one
+  folder under `plugins/<slug>/` adds new agent tools, settings, UI, and its own
+  system-prompt guidance — wire in your database, your internal API, your team's
+  workflow, whatever you need the agent to reach. First-party, in-tree, no install
+  ceremony. (A MySQL plugin ships as the worked example to copy.)
+- 🧭 **System prompts you own** — a global default, a per-workspace message, a
+  per-agent playbook, and per-plugin tool guidance — layered, with capability
+  instructions always added on top.
+- ♻️ **Never loses the thread** — sessions auto-name themselves and auto-compact
+  when they outgrow the context window.
+- 🔒 **Local-first & private** — most harnesses are built around a cloud provider's
+  API; this one is built for the models **you** run. Your self-hosted models, your
+  machine, no per-token meter, no vendor lock-in. Connect the cloud only when *you*
+  want shared memory and company knowledge.
+
+All host-agnostic at the core: the **same renderer** runs as a pure web app and as
+an Electron desktop app; desktop-only powers (the file/shell tools, the browser
+fleet) light up when you run the Electron build.
+
+---
+
+## Quick start
 
 ```bash
 pnpm install
-pnpm dev:desktop            # renderer only, in the browser (http://localhost:5173)
-pnpm dev:desktop:electron   # the full Electron app (tools + folder access)
-pnpm dist:win               # package (electron-builder; run on a Windows host)
+pnpm dev:desktop            # web build — fast UI iteration (http://localhost:5173)
+pnpm dev:desktop:electron   # the full Electron app (file/shell tools + browser fleet)
 ```
 
-Tools and folder access need the Electron app; the browser build is for fast UI
-iteration (only the media tools work there). Configure the chat model in
-**Settings → Provider** (OpenAI-compatible / vLLM, Anthropic, or Gemini) and
-the generation endpoint in **Settings → Media**.
+Then in **Settings**: pick your chat model under **Provider** (OpenAI-compatible /
+vLLM, Anthropic, or Gemini), media endpoints under **Media models**, and your
+default assistant instructions under **System message**.
 
-### Building the Windows app
+> File/shell tools and the browser fleet need the **Electron** app; the browser
+> build is for UI iteration (media tools work there too). vLLM is the
+> primary, battle-tested provider path — start it with
+> `--enable-auto-tool-choice --tool-call-parser …` so tools fire.
 
-Run the packaging on a **Windows host** (electron-builder cross-build from WSL
-needs Wine; Windows is the supported path). In **PowerShell**:
+### Build the desktop app
+
+```bash
+pnpm dist:win    # package on a Windows host (electron-builder)
+```
+
+<details>
+<summary>Windows packaging notes & gotchas</summary>
+
+Run packaging on a **Windows host** (cross-building from WSL needs Wine; Windows is
+the supported path). In **PowerShell**:
 
 ```powershell
-# 1. Node >= 24 is required. Get the pinned pnpm through Corepack (ships with Node):
-node -v                                     # must be v24+
+node -v                                       # Node >= 24 required
 corepack enable
 corepack prepare pnpm@10.33.0 --activate
-
-# 2. If PowerShell blocks the pnpm script ("running scripts is disabled"):
+# If PowerShell blocks the pnpm script:
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-
-# 3. Install + build (from the repo root):
-pnpm install                                # downloads the Electron binary (see note)
+pnpm install                                  # downloads the Electron binary
 pnpm --filter @v84-harness/desktop dist:win
 ```
 
-Output lands in `apps/desktop/release/`: a **portable** single-file `.exe`
-(self-contained, no install) and an **NSIS installer** `… Setup <version>.exe`.
+Output → `apps/desktop/release/`: a **portable** single-file `.exe` and an **NSIS
+installer**.
 
-Notes / gotchas:
-
-- **Build scripts must be allowed.** pnpm 10 does not run dependency build
-  scripts by default; `package.json` whitelists them via
-  `pnpm.onlyBuiltDependencies` (`electron`, `electron-builder`, `esbuild`) so
-  `pnpm install` actually downloads the Electron binary. Without it, install
-  silently skips it and the build fails with "Electron uninstall". On a checkout
-  that already installed once, run `pnpm rebuild electron` (or
-  `pnpm approve-builds`) to fetch it.
-- **No native rebuild.** `build.npmRebuild: false` is set — the app has no native
-  modules, and `@electron/rebuild` otherwise crashes walking pnpm's
-  `node_modules`.
-- **Code-signing toolchain needs symlink privilege.** electron-builder extracts
-  `winCodeSign`, which contains macOS symlinks; creating symlinks on Windows
-  fails with *"A required privilege is not held by the client"* under a normal
-  user. Fix by enabling **Developer Mode** (Settings → Privacy & security → For
-  developers) **or** running the build in an **Administrator** PowerShell. If a
-  prior run left a corrupt cache, clear it:
+- **Build scripts must be allowed.** pnpm 10 skips dependency build scripts by
+  default; `package.json` whitelists `electron`/`electron-builder`/`esbuild` via
+  `pnpm.onlyBuiltDependencies`. If a checkout already installed, run
+  `pnpm rebuild electron` (or `pnpm approve-builds`) to fetch the binary.
+- **No native rebuild** — `build.npmRebuild: false` (no native modules).
+- **Code-signing extraction needs symlink privilege** — enable **Developer Mode**
+  or run the build in an **Administrator** PowerShell. Clear a corrupt cache with
   `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"`.
-- The artifacts are **unsigned** — Windows SmartScreen shows an "unknown
-  publisher" prompt on first run (*More info → Run anyway*). Real signing needs a
-  certificate.
+- Artifacts are **unsigned** — SmartScreen shows "unknown publisher" on first run
+  (*More info → Run anyway*). Real signing needs a certificate.
 
-## What works
+</details>
 
-- **Workspaces** — a workspace is a folder + settings: name, default model,
-  isolation mode, optional project instructions (per-workspace system prompt),
-  and a **per-tool permission map**. Sessions are scoped to a workspace; the
-  sidebar switches between workspaces and their sessions. Sessions without a
-  workspace are plain chats (media tools only).
-- **Tool-use loop** — the model gets the workspace's enabled tools and the turn
-  loops: stream → run tool calls → feed results back → repeat (max 50 steps).
-  **Parallel tool calls are supported on all three providers** — all calls of a
-  step run concurrently, results are linked by call id.
-- **Tools** — gated fs/shell tools run in Electron **main** (Node
-  `fs`/`child_process`): `Read`, `List`, `Grep`, `Write`, `Edit`,
-  `CreateFolder`, `Bash`, plus the media loaders `LoadImage`/`LoadVideo`
-  (advertised only when the model declares the matching image/video input).
-  Permissionless media tools run in the renderer and work everywhere (browser
-  build included): `GenerateImage`, `GenerateVideo`. Tool output is capped at
-  64 KB per result.
-- **Per-tool permissions (`0/1/2`)** — disabled / ask / auto, set per
-  workspace. fs tools default to auto (confinement is the safety); `Bash` asks
-  by default via an approval dialog (a queue — concurrent sessions and parallel
-  calls each get their prompt).
-- **Virtual-root confinement** — the model only ever sees workspace-relative
-  paths (`/` = the workspace root). fs tools reject anything escaping the
-  workspace (`..`, absolutes, escaping symlinks); `Bash` command paths are
-  rewritten in, and real paths scrubbed out of its output.
-- **Media generation** — `GenerateImage` (quality presets, aspect ratios,
-  negative prompt) and `GenerateVideo` (duration up to 10s) POST to the media
-  endpoint and return data-URLs. Prompts are upsampled into the provider's
-  JSON schema by the chat model through a validate→heal loop. Tool-produced
-  media — generated or loaded from the workspace — is fed back to the model as
-  a hidden turn (images and video, each only when the model's declared inputs
-  accept it) so the agent can inspect it; save/copy/paste via native dialogs.
-- **Auto-compaction** — when a session crosses its usable budget
-  (context window − reserve), the conversation is summarized in the background
-  and replaced with a single hidden summary. Manual "Summarize" in the context
-  card; the card shows usage against the usable budget.
-- **Auto-naming** — sessions title themselves after the first exchange.
-- **Stored agents** — reusable playbooks (system MD + user MD + optional JSON
-  output contract with required keys). Running one spins up a session whose
-  output is validated and healed against the contract.
-- **Persistence** — a detected durable tier (SQLite in Electron > IndexedDB >
-  localStorage) holding granular rows: a session index, per-session messages,
-  and media blobs written once at creation. Boot loads the index + active
-  session; the rest lazy-loads. No cloud; everything is local.
-- **Reviewer gate (CI)** — `@bilikaz/code-reviewer` runs on PRs via
-  `.github/workflows/review.yml`.
+---
 
-## The LLM layer (`src/providers/`)
+## How it's built
 
-One call algorithm, one retry policy, one heal contract — providers are pure
-wire-format mappers and everything shared lives in the router:
+A pnpm-workspace monorepo:
 
-```
-types.ts       the provider-agnostic contract: ChatMessage, ToolCall, ToolSpec,
-               StreamEvent (text | thinking | tool_call | usage | retry | error | done)
-transport.ts   wire recovery — sseRequest (one fetch + typed HttpError) and
-               withRetry (408/429/5xx/network → backoff + jitter + Retry-After,
-               max 3 re-sends; 4xx/abort are fatal; emits "retry" so consumers
-               discard the dead attempt's partial output)
-openai.ts      ┐ mappers only: translate the contract to/from each wire format
-anthropic.ts   │ (incl. tool calls — OpenAI tool_calls[], Anthropic tool_use
-gemini.ts      ┘ blocks, Gemini functionCall parts), nothing else
-index.ts       the router: streamModel (mapper + retry + inline-<think> demux),
-               chatOnce (the non-streaming call — the same stream, buffered),
-               healLoop/healCorrection (semantic repair), model listing
-```
+- **`apps/desktop`** — the Electron + React harness (this is the app above).
+- **`apps/knowledge`** — the remote backend it talks to when an account is
+  connected: per-user durable storage, the knowledgebase, and auth (Hono + Node +
+  MariaDB + OpenSearch).
 
-The two recovery layers are deliberately separate:
+The desktop app is **platform hosts over an agnostic core**: `core/` + the renderer
+know nothing of the platform — they read a `ctx` (config + LLM client + storage +
+tool gateway + host capabilities + the sessions engine); each platform (`electron/`,
+`web/`) builds that `ctx` and installs the parts that differ. Tools are a folder-is-
+the-registry system with permission tiers (`general` / `local` / `account`) plus an
+**engine tier** for driver-level tools (sub-agents, the browser fleet).
 
-- **Transport retry** (below the call): the request failed — lost connection,
-  429, 529 overloaded. There is no output to fix, so the identical request is
-  re-sent. Applies to every caller automatically: chat turns, auto-naming,
-  compaction, the upsamplers.
-- **Heal** (above the call): the output exists but fails validation. A
-  correction turn quoting the error is injected into the same conversation and
-  the model retries (max 3). The chat driver drives it through the session
-  store/bus; standalone callers use `healLoop(chatOnce)`.
+The repo documents itself in three layers — start here:
 
-There is **no separate non-streaming path** — `chatOnce` drains the same
-stream to completion. "Streaming vs call" is only whether the consumer forwards
-deltas (driver → bus → UI) or buffers them.
+- 🗺️ **Map** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + the per-area docs in
+  [docs/architecture/](docs/architecture/) (sessions, tools, browser, llm, storage,
+  plugins, …).
+- 📐 **Conventions** — portable engineering rules in
+  [docs/conventions/](docs/conventions/).
+- 🧾 **Decisions** — the dated ADR log in [docs/adr/](docs/adr/).
 
-## Architecture
+The working procedure that keeps those in sync (and that agent sessions read on
+start) is [CLAUDE.md](CLAUDE.md).
 
-```
-src/
-  main/        Electron main — window, IPC handlers, native dialogs, tool dispatcher
-  preload/     contextBridge → window.harness (the IPC bridge)
-  bridge.ts    the main↔renderer contract (types + channel names)
-  core/        host-agnostic logic
-    sessions/  store (state + persistence), driver (the turn/tool loop),
-               listeners (bus → store), events, naming, compaction
-    tools/     tool implementations + dispatcher types, virtual-root paths
-    workspaces.ts, approvals.ts
-  providers/   the LLM layer (see above)
-  pages/, components/, lib/   the React renderer (browser-runnable)
-docs/
-  ARCHITECTURE.md     the map: structure, patterns, flows
-  STORAGE.md          the storage chart: key scheme, shapes, accessor surface
-  conventions/        portable engineering rules (naming, types placement, …)
-  adr/                dated architecture decision records (scope: ADR-0000)
-```
-
-Documentation is layered: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is this
-repo's map, [docs/conventions/](docs/conventions/) holds the portable rule set,
-and [docs/adr/](docs/adr/) is the decision log. The working procedure that
-maintains these layers is the root [CLAUDE.md](CLAUDE.md) — agent sessions read
-it on start.
-
-- **Trust boundary is `main`** — gated tools execute there; the renderer
-  reaches them only through `window.harness`. Dependency direction is one-way:
-  `core ← bridge ← {main, preload, renderer}`.
-- The driver publishes events; listeners update the store; React binds to the
-  store. The driver itself is React-free.
-- `core/` is staged here; it lifts into a shared `packages/core` later (reused
-  by a cloud API runner / CLI).
+---
 
 ## The bigger pipeline
 
 ```
-task-builder (cloud: RAG + ingest + API)
-      │  company-knowledge RAG exposed as a tool (permission-filtered)
+task-builder (RAG + ingest + API)
+      │  company-knowledge exposed as a permission-filtered tool
       ▼
   harness (this repo)  ── orchestrates sessions ──►  reviewer (quality gate)
 ```
 
-## Known / next
+A reviewer gate (`@bilikaz/code-reviewer`) runs on PRs via
+`.github/workflows/review.yml`.
 
-- **Worktree isolation is not yet wired** — the workspace "isolation" toggle is
-  stored but tools always run in the workspace root.
-- **Anthropic/Gemini tool calling is wired but not yet live-tested** — the
-  OpenAI-compatible path (vLLM) is the primary, battle-tested one. vLLM must be
-  started with `--enable-auto-tool-choice --tool-call-parser …` for tools to
-  fire.
-- **Batch agent loop extraction** — the full stream→tools→heal cycle currently
-  lives only in the session driver; headless (no-UI) agents need it extracted
-  into a plain-array runner, with the driver becoming a thin bus/store adapter.
-- Gemini can reject unsupported JSON-Schema keywords in tool `parameters`; a
-  schema sanitizer may be needed in its mapper.
-- `packages/core` lift, cloud sync — later.
+## Roadmap / honest edges
+
+- **Worktree isolation** — the workspace isolation toggle is stored but not yet
+  wired; tools run in the workspace root.
+- **Remote workspaces** — the `remote` container type is scaffolded (data model +
+  tool tier); the VM runtime behind it isn't built yet.
+- **Anthropic / Gemini tool calling** — wired; the vLLM/OpenAI-compatible path is
+  the battle-tested one.
+- **`Bash` refactor** — it's too open-ended and has no real shell on Windows; a
+  narrower, cross-platform command surface is planned (see [TODO.md](TODO.md)).
 
 ## License
 
@@ -212,14 +177,11 @@ Licensed under the **GNU Affero General Public License v3.0** ([LICENSE](LICENSE
 
 You may use, modify, run, and **commercially host it (including as a SaaS)**. The AGPL's
 network-copyleft is the catch: if you run a modified version for others over a network, you
-must make your modified source available to them under the AGPL. The intent is that use feeds
-the project's growth rather than forking off silently — improvements flow back as code.
+must make your modified source available to them under the AGPL — improvements flow back as code.
 
 **Commercial license.** To use it in a closed-source product/service without the AGPL's
-source-sharing obligations, a commercial license is available — contact
-**valdas@vbtech.eu**. So a business contributes back either way: as code
-(pull requests / its AGPL-published changes) or financially (a commercial license).
+source-sharing obligations, contact **valdas@vbtech.eu**.
 
 Contributions are welcome by pull request. Once outside contributions are accepted, a
 Contributor License Agreement will be required so the project can keep offering the commercial
-option (the maintainer needs the rights to relicense).
+option.
