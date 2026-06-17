@@ -24,6 +24,14 @@ const api: ElectronApi = {
     available: () => ipcRenderer.invoke(IPC.storageAvailable),
     exec: (repo: string, method: string, args: unknown[]) => ipcRenderer.invoke(IPC.storageExec, repo, method, args),
   },
+  plugins: {
+    invoke: (slug: string, method: string, args: unknown[]) => ipcRenderer.invoke(IPC.pluginInvoke, slug, method, args),
+    onEvent: (cb: (slug: string, type: string, payload: unknown) => void) => {
+      const h = (_e: unknown, slug: string, type: string, payload: unknown): void => cb(slug, type, payload);
+      ipcRenderer.on(IPC.pluginEvent, h);
+      return () => void ipcRenderer.removeListener(IPC.pluginEvent, h);
+    },
+  },
   browser: {
     open: (url: string) => ipcRenderer.invoke(IPC.browserOpen, url),
     navigate: (id: string, url: string) => ipcRenderer.invoke(IPC.browserNavigate, id, url),

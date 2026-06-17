@@ -2,6 +2,7 @@
 
 import { IPC, type ToolCallRequest, type WireConfig, type ToolFilterParams, type MediaEndpoint, type MediaModelsResult, type ViewBounds } from "./bridge.ts";
 import { cancelTool, execTool, toolFilter } from "./tools.ts";
+import { invokePluginService } from "./pluginServices.ts";
 import { getBrowserFleet } from "./browserFleet.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
 import { openSqliteStore, execData } from "./sqliteStore.ts";
@@ -26,6 +27,8 @@ export function registerIpc(electron: Electron): void {
   ipcMain.handle(IPC.toolsFilter, (_e: unknown, wire: WireConfig, params?: ToolFilterParams) => toolFilter(wire, params));
   ipcMain.handle(IPC.toolsExec, (_e: unknown, call: ToolCallRequest, wire: WireConfig) => execTool(call, wire));
   ipcMain.handle(IPC.toolsCancel, (_e: unknown, callId: string) => cancelTool(callId));
+
+  ipcMain.handle(IPC.pluginInvoke, (_e: unknown, slug: string, method: string, args: unknown[]) => invokePluginService(slug, method, args));
 
   ipcMain.handle(IPC.mediaModels, async (_e: unknown, cfg: MediaEndpoint): Promise<MediaModelsResult> => {
     try {

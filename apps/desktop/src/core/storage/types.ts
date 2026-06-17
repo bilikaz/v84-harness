@@ -53,16 +53,9 @@ export interface SettingRepo {
   remove(key: string): Promise<void>;
 }
 
-export interface PluginRow {
-  id: string;
-  name: string;
-  version: string | null;
-  enabled: boolean;
-  config: unknown;
-  permissions: unknown;
-  placement: string;
-}
-
+// A plugin's namespaced data row. pluginId is the plugin's SLUG (its folder name) — plugins are
+// first-party and in-tree, so there is no installed-registration row; enable + settings live in
+// config.plugins.<slug>, and this table holds only the plugin's own runtime data.
 export interface PluginDataRow {
   pluginId: string;
   collection: string;
@@ -83,6 +76,5 @@ export interface StorageRepos {
   media: MediaRepo;
   agents: CrudRepo<Agent>;
   settings: SettingRepo;
-  plugins: CrudRepo<PluginRow>;
   pluginData: PluginDataRepo;
 }

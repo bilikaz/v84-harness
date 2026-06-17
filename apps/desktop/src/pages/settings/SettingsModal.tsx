@@ -4,13 +4,16 @@ import { useTranslation } from "react-i18next";
 import { Modal } from "../../components/Modal.tsx";
 import { cn } from "../../lib/cn.ts";
 import { contributionsFor } from "../../lib/registry.ts";
+import { usePluginsConfig } from "../../core/plugins/config.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
 
 export function SettingsModal() {
   const { t } = useTranslation();
   const route = useRoute();
   const open = route === "settings" || route.startsWith("settings/");
-  const items = contributionsFor("settings");
+  // A plugin's settings section shows only while the plugin is enabled (disabling it removes the menu item).
+  const plugins = usePluginsConfig();
+  const items = contributionsFor("settings").filter((c) => !c.pluginId || plugins[c.pluginId]?.enabled);
   const activeId = route.replace(/^settings\/?/, "") || items[0]?.id;
   const active = items.find((i) => i.id === activeId) ?? items[0];
 

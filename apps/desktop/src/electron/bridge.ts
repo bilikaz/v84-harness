@@ -26,6 +26,13 @@ export interface ElectronApi {
     available(): Promise<boolean>;
     exec(repo: string, method: string, args: unknown[]): Promise<unknown>;
   };
+  // Plugin services — a plugin's main-side service.ts `rpc` methods, invoked by its renderer UI (connect/
+  // test/disconnect/status). Separate from the tool registry: these are host/UI operations, never agent tools.
+  plugins: {
+    invoke(slug: string, method: string, args: unknown[]): Promise<unknown>;
+    // Subscribe to a plugin service's pushed events (main→renderer). Returns an unsubscribe fn.
+    onEvent(cb: (slug: string, type: string, payload: unknown) => void): () => void;
+  };
   // The managed browser-window fleet (the fetch feature) — WebContentsViews owned in main.
   browser: {
     open(url: string): Promise<string>;
@@ -58,6 +65,8 @@ export const IPC = {
   saveVideo: "harness:saveVideo",
   storageAvailable: "harness:storage:available",
   storageExec: "harness:storage:exec",
+  pluginInvoke: "harness:plugin:invoke",
+  pluginEvent: "harness:plugin:event",
 } as const;
 
 

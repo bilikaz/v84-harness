@@ -6,23 +6,30 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
 
 ## `core/tools/` — host-agnostic building blocks
 
-- A tool is a **class** extending `BaseTool` (one file, canonical export), constructed
-  **once** with just the LLM client (`new Ctor(llm)`) — its only host dependency. `schema`
-  is a getter, `run(args, cwd?, signal?)` does the work and takes the cwd + signal per call
-  (the tool holds no ctx). Four cheap per-tool checks: `canRun()` (capability),
+- A tool is a **class** extending `BaseTool`, constructed **once** with a single dependency: a getter
+  onto the live config (`() => Config`, `{ app, llm, plugins }`) — the one thing every tool can read
+  ([ADR-0048](../adr/0048-tool-ctx-config-carrier.md)). `this.config()` reads it; `this.llm` is **derived
+  from `config.llm`** on use (`createClient` is a stateless wrapper, so a tool that never calls a model
+  never builds one). `schema` is a getter, `run(args, cwd?, signal?)` takes the cwd + signal per call. A
+  tool module may also export plain **helpers** alongside the class — see registry. Four cheap per-tool checks: `canRun()` (capability),
   `isPermissioned()` (is it gated? `BaseWorkspaceTool` → `true`), `needsWorkspace()`
   (requires a workspace folder; `BaseWorkspaceTool` → `true`), and `defaultPermission()`
   (default policy mode; `Bash` → ask, rest → allow). `OUTPUT_CAP` / `cap()` live in
   `tools/base.ts`; the vocabulary in `tools/types.ts`.
 - **`registry.ts`** (`ToolRegistry`) is the registry engine: a folder of eager-globbed
   modules → pre-instantiated tools by name → resolve (find → `canRun` → parse → run). It
-  knows nothing of who calls it.
-- **The folder is the permission tier**:
+  knows nothing of who calls it. Discovery instantiates **only concrete `BaseTool` subclasses**
+  (`v.prototype instanceof BaseTool`), so a tool module's sibling helper exports are ignored, not
+  `new`-ed (abstract bases are skipped by the `base.ts` path too). Non-tool code lives in `tools/helpers/`.
+- **The folder is the permission tier** (and the process it's globbed into):
   - **`general/`** — permissionless (`ImageGenerate`, `VideoGenerate`): no workspace, no
-    gate; `canRun()` only. Host-agnostic (provider HTTP + data-URLs).
-  - **`workspace/`** — gated by the per-workspace policy (`0|1|2`): `Read`, `List`,
+    gate; `canRun()` only. Host-agnostic (provider HTTP + data-URLs). Globbed into both the web
+    renderer and electron main.
+  - **`local/`** — gated by the per-workspace policy (`0|1|2`): `Read`, `List`,
     `Grep`, `Write`, `Edit`, `CreateFolder`, `Bash`, `ImageLoad`, `VideoLoad`,
-    `ImageDescribe`, `VideoDescribe`. Need Node (fs/shell).
+    `ImageDescribe`, `VideoDescribe`. Need Node (fs/shell), so globbed only into electron main and
+    absent from the web bundle. A tool here needs Node but not necessarily a workspace folder — it can
+    override `needsWorkspace() = false` (e.g. a plugin's MySQL tool).
   - **`account/`** — the memory tools (`SaveMemory`, `SearchMemory`, `GetMemory`,
     `EditMemory`, `DeleteMemory`): permissionless, but `canRun()` gates them on a
     **connected account** (`BaseAccountTool` → `isConnected()`). They call the
@@ -30,6 +37,10 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
     **renderer**, never main (see the execution note below;
     [ADR-0039](../adr/0039-account-local-store-and-connection-lifecycle.md),
     [knowledge.md](knowledge.md)).
+- **Plugin tools reuse these tiers.** A plugin's `tools/<tier>/` folders are globbed into the same
+  registries by the same paths ([plugins.md](plugins.md)); the registry tags each with its
+  `ownerPluginId` (from the `plugins/<slug>/` glob path) and **drops a disabled plugin's tools** in
+  `filter()`/`run()` — the same gate shape as `canRun()`, keyed on `config.plugins.<slug>.enabled`.
 - **The gated-tool list is dynamic**: it's the tools that report `isPermissioned()`. The
   renderer reads it through `renderer/gatedTools.ts` (`useGatedTools()`), which calls
   `ctx.tools.filter({ includeDisabled: true })` and keeps the permissioned `ToolFilterEntry`s

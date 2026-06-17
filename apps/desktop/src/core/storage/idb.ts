@@ -6,7 +6,7 @@ import type { Container } from "../containers.ts";
 import type { SessionMeta } from "../sessions/persistence.ts";
 import type { Message } from "../sessions/types.ts";
 import type { Agent } from "../agents.ts";
-import type { StorageRepos, CrudRepo, MessageRepo, MediaRepo, MediaRow, SettingRepo, SettingRow, PluginRow, PluginDataRepo, PluginDataRow } from "./types.ts";
+import type { StorageRepos, CrudRepo, MessageRepo, MediaRepo, MediaRow, SettingRepo, SettingRow, PluginDataRepo, PluginDataRow } from "./types.ts";
 
 const DB_NAME = "v84-harness-data";
 
@@ -22,7 +22,6 @@ function openDb(): Promise<IDBDatabase> {
       if (!has("media")) db.createObjectStore("media", { keyPath: "id" }).createIndex("sessionId", "sessionId");
       if (!has("agents")) db.createObjectStore("agents", { keyPath: "id" });
       if (!has("settings")) db.createObjectStore("settings", { keyPath: "key" });
-      if (!has("plugins")) db.createObjectStore("plugins", { keyPath: "id" });
       if (!has("plugin_data")) db.createObjectStore("plugin_data", { keyPath: ["pluginId", "collection", "key"] }).createIndex("pc", ["pluginId", "collection"]);
     };
     req.onsuccess = () => resolve(req.result);
@@ -111,7 +110,6 @@ export async function idbRepos(): Promise<StorageRepos> {
     media,
     agents: crud<Agent>("agents"),
     settings,
-    plugins: crud<PluginRow>("plugins"),
     pluginData,
   };
 }

@@ -69,4 +69,10 @@ export interface HostApi {
   mediaModels?(endpoint: MediaEndpoint): Promise<MediaModelsResult>;
   // The managed browser-window fleet (the fetch feature). Desktop only — absent in the browser.
   browser?: BrowserFleet;
+  // Invoke a plugin's main-side service method (its service.ts `rpc` surface) — the renderer→main path
+  // for plugin UI operations that aren't agent tools. Desktop only — absent in the browser.
+  invokePlugin?(slug: string, method: string, args: unknown[]): Promise<unknown>;
+  // Subscribe to plugin-service events pushed from main (e.g. live connection state). Returns an
+  // unsubscribe fn. Desktop only — absent in the browser.
+  onPluginEvent?(cb: (slug: string, type: string, payload: unknown) => void): () => void;
 }

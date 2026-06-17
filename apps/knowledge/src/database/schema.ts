@@ -109,17 +109,7 @@ export interface SettingsTable {
   deleted_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
 }
 
-export interface PluginsTable extends Timestamps {
-  id: string;
-  user_id: number;
-  name: string;
-  version: string | null;
-  enabled: ColumnType<number, number | undefined, number>;
-  config: Json;
-  permissions: Json;
-  placement: string;
-}
-
+// plugin_id is the plugin's SLUG (first-party, in-tree); enable + settings live in `settings`.
 export interface PluginDataTable {
   user_id: number;
   plugin_id: string;
@@ -139,6 +129,5 @@ export interface DB {
   media: MediaTable;
   agents: AgentsTable;
   settings: SettingsTable;
-  plugins: PluginsTable;
   plugin_data: PluginDataTable;
 }

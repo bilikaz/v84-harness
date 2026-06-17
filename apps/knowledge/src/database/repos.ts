@@ -11,7 +11,6 @@ import { MessagesRepo } from "../features/data/messages/repo.ts";
 import { MediaRepo } from "../features/data/media/repo.ts";
 import { AgentsRepo } from "../features/data/agents/repo.ts";
 import { SettingsRepo } from "../features/data/settings/repo.ts";
-import { PluginsRepo } from "../features/data/plugins/repo.ts";
 import { PluginDataRepo } from "../features/data/plugin_data/repo.ts";
 
 export interface Repos {
@@ -23,7 +22,6 @@ export interface Repos {
   media: MediaRepo;
   agents: AgentsRepo;
   settings: SettingsRepo;
-  plugins: PluginsRepo;
   pluginData: PluginDataRepo;
 }
 
@@ -38,7 +36,6 @@ export function openRepos(): Repos {
     media: new MediaRepo(db),
     agents: new AgentsRepo(db),
     settings: new SettingsRepo(db),
-    plugins: new PluginsRepo(db),
     pluginData: new PluginDataRepo(db),
   };
 }

@@ -10,9 +10,16 @@ import { attachAccount, authedFetch, isConnected } from "../core/account.ts";
 
 // Account tools (memory) run IN THE RENDERER — they need authedFetch (token +
 // refresh), which only exists here. Everything else (workspace/fs) goes to main.
-const ACCOUNT_MODULES = import.meta.glob<Record<string, unknown>>("../core/tools/account/*.ts", { eager: true });
+// Plugin account-tier tools run here too; their local/remote tiers run in main (electron/tools.ts).
+const ACCOUNT_MODULES = {
+  ...import.meta.glob<Record<string, unknown>>("../core/tools/account/*.ts", { eager: true }),
+  ...import.meta.glob<Record<string, unknown>>("../plugins/*/tools/account/*.ts", { eager: true }),
+};
 import { initAppConfig } from "../core/config/app.ts";
 import { initSettings } from "../core/settings.ts";
+import { initPluginsConfig, installEnabledPlugins } from "../core/plugins/config.ts";
+import { initPluginData } from "../core/plugins/data.ts";
+import { registerPluginManifests } from "../core/plugins/boot.ts";
 import { initAgents, hydrateAgents } from "../core/agents.ts";
 import { initUi } from "../core/ui.ts";
 import { initBrowser } from "../core/browser.ts";
@@ -32,9 +39,14 @@ export async function init(): Promise<Ctx> {
   ctx.storage = new StorageEngine(local, isConnected() ? remoteRepos(authedFetch) : null);
   useSessionData(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
 
+  // Register plugin manifests before config derives config.plugins from them.
+  registerPluginManifests();
+
   // Construct the ctx-injected consumers, then load them all from the backend.
   initAppConfig(ctx);
   initSettings(ctx);
+  initPluginsConfig(ctx);
+  initPluginData(ctx);
   initAgents(ctx);
   initUi(ctx);
   initBrowser(ctx);
@@ -48,7 +60,7 @@ export async function init(): Promise<Ctx> {
   await hydrateSessions();
 
   // Account tools run in this (renderer) registry; everything else over the bridge.
-  const accountReg = new ToolRegistry(ctx.llm, ACCOUNT_MODULES);
+  const accountReg = new ToolRegistry(() => ctx.config, ACCOUNT_MODULES);
   ctx.tools = {
     filter: async (params) => ({ ...(await api!.tools.filter({ config: ctx.config }, params)), ...accountReg.filter(params) }),
     run: (call) => (accountReg.byName.has(call.name) ? accountReg.run(call) : api!.tools.exec(call, { config: ctx.config })),
@@ -64,6 +76,9 @@ export async function init(): Promise<Ctx> {
     saveVideo: (dataUrl, name) => api!.saveVideo(dataUrl, name),
     mediaModels: (ep) => api!.media.models(ep),
     browser: api!.browser,
+    invokePlugin: (slug, method, args) => api!.plugins.invoke(slug, method, args),
+    onPluginEvent: (cb) => api!.plugins.onEvent(cb),
   };
+  installEnabledPlugins(ctx);
   return ctx;
 }

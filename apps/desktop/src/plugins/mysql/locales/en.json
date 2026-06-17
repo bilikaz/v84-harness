@@ -1,0 +1,17 @@
+{
+  "title": "MySQL",
+  "connectionsHint": "Configure MySQL connections. The agent runs queries against them via the MysqlQuery tool (each query asks for approval).",
+  "name": "Name",
+  "host": "Host",
+  "port": "Port",
+  "user": "User",
+  "password": "Password (optional)",
+  "database": "Database",
+  "addConnection": "Add connection",
+  "empty": "No connections yet.",
+  "test": "Test connection",
+  "connected": "Connected",
+  "connect": "Connect",
+  "disconnect": "Disconnect",
+  "testUnavailable": "MySQL runs in the desktop app only."
+}

@@ -61,6 +61,9 @@ loading. Its index row below stays.
 | [0044](0044-storage-engine-provider-swap.md) | `StorageEngine` — provider swap with a machine-local lane (`repos()` vs `localRepos()`; supersedes 0038) | accepted |
 | [0045](0045-machine-local-vs-account-synced.md) | Machine-local vs account-synced state (`Consumer.synced`; refines 0037, 0039, 0042) | accepted |
 | [0046](0046-typed-containers.md) | Typed containers unify chat + workspace (kills the null-"Chat" sentinel) | accepted |
+| [0047](0047-first-party-in-tree-plugins.md) | First-party, in-tree plugin system (slug identity, config-as-truth, drops the `plugins` table) | accepted |
+| [0048](0048-tool-ctx-config-carrier.md) | Tools constructed with a config getter; the LLM client is derived from it (amends 0033) | accepted |
+| [0049](0049-plugin-service-bridge.md) | Plugin service bridge — RPC + main→renderer event push + install/uninstall lifecycle | accepted |
 
 ## Needs review / important missing parts
 
@@ -73,7 +76,8 @@ it from this list.
 | Workspace isolation (`worktree`) | [ADR-0016](0016-workspace-isolation-field.md) | The entire concept: worktree lifecycle, merge-back, non-git workspaces. Field is settable but read by nothing. |
 | Storage quota warning | [ADR-0012](0012-sessions-dual-tier-persistence.md) | Manual pruning shipped (Settings → Storage: per-workspace/session usage + delete). Still missing: a user-facing warning when a persist write fails (today it's only a logged `persist_failed`). |
 | Video job orphaning on cancel/quit | [ADR-0014](0014-stop-semantics-and-tool-cancellation.md) | Stop ends polling but the server job keeps running; no job-id persistence for resume or cleanup (endpoint has no cancel API). |
-| Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 12 IPC channels now (was 6 when "revisit if it grows" was written); a missing handler still hangs the invoke silently. A startup ping would catch it. |
+| Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 16 IPC channels now (was 6 when "revisit if it grows" was written; +2 for the plugin bridge, [ADR-0049](0049-plugin-service-bridge.md)); a missing handler still hangs the invoke silently. A startup ping would catch it. |
+| Plugin service lifecycle/dispose depth | [ADR-0049](0049-plugin-service-bridge.md) | `install`/`uninstall` exist, but there's no teardown on app quit (process death is relied on) and no per-window scoping; fine for single-window desktop, revisit if a plugin holds resources that need graceful release. |
 | Tests/typecheck not in CI | conventions/testing.md | `.github/workflows/review.yml` runs the reviewer gate only; nothing runs `pnpm typecheck` / `pnpm test` on push. |
 
 Resolved since first written: reasoning config beyond OpenAI-compatible

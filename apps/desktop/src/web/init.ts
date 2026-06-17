@@ -7,6 +7,9 @@ import { ToolRegistry } from "../core/tools/registry.ts";
 import { attachAccount, authedFetch, isConnected } from "../core/account.ts";
 import { initAppConfig } from "../core/config/app.ts";
 import { initSettings } from "../core/settings.ts";
+import { initPluginsConfig, installEnabledPlugins } from "../core/plugins/config.ts";
+import { initPluginData } from "../core/plugins/data.ts";
+import { registerPluginManifests } from "../core/plugins/boot.ts";
 import { initAgents, hydrateAgents } from "../core/agents.ts";
 import { initUi } from "../core/ui.ts";
 import { initBrowser } from "../core/browser.ts";
@@ -18,10 +21,13 @@ import { remoteRepos } from "../core/storage/remote.ts";
 import type { HostApi, MediaModelsResult, MediaEndpoint } from "../core/host.ts";
 import { errorMessage } from "../lib/errors.ts";
 
-// Web runs all in-process (renderer): general + account tools (no workspace/fs tier).
+// Web runs all in-process (renderer): general + account tools (no workspace/fs tier). Plugin tools in
+// those same tiers are globbed alongside (the local/ + remote/ tiers need main, absent in the web bundle).
 const MODULES = {
   ...import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true }),
   ...import.meta.glob<Record<string, unknown>>("../core/tools/account/*.ts", { eager: true }),
+  ...import.meta.glob<Record<string, unknown>>("../plugins/*/tools/general/*.ts", { eager: true }),
+  ...import.meta.glob<Record<string, unknown>>("../plugins/*/tools/account/*.ts", { eager: true }),
 };
 // The browser host api: save = download via an <a>, mediaModels = a direct fetch. No folder picker in the browser.
 function browserHost(): HostApi {
@@ -62,9 +68,14 @@ export async function init(): Promise<Ctx> {
   ctx.storage = new StorageEngine(await idbRepos(), isConnected() ? remoteRepos(authedFetch) : null);
   useSessionData(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
 
+  // Register plugin manifests before config derives config.plugins from them.
+  registerPluginManifests();
+
   // Construct the ctx-injected consumers, then load them all from the backend.
   initAppConfig(ctx);
   initSettings(ctx);
+  initPluginsConfig(ctx);
+  initPluginData(ctx);
   initAgents(ctx);
   initUi(ctx);
   initBrowser(ctx);
@@ -75,12 +86,13 @@ export async function init(): Promise<Ctx> {
   await hydrateAgents();
   await hydrateSessions();
 
-  const reg = new ToolRegistry(ctx.llm, MODULES);
+  const reg = new ToolRegistry(() => ctx.config, MODULES);
   ctx.tools = {
     filter: (params) => reg.filter(params),
     run: (call) => reg.run(call),
     cancel: (id) => reg.cancel(id),
   };
   ctx.api = browserHost();
+  installEnabledPlugins(ctx);
   return ctx;
 }

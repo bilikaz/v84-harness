@@ -7,3 +7,4 @@ release/
 *.log
 *.sh
 .claude/
+implementation.md

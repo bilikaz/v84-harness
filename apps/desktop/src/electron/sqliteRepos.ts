@@ -15,7 +15,6 @@ import type {
   MediaRow,
   SettingRepo,
   SettingRow,
-  PluginRow,
   PluginDataRepo,
   PluginDataRow,
 } from "../core/storage/types.ts";
@@ -59,7 +58,6 @@ export function sqliteRepos(): StorageRepos {
     media,
     agents: crud<Agent>("agents"),
     settings,
-    plugins: crud<PluginRow>("plugins"),
     pluginData,
   };
 }
