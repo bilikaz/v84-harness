@@ -2,6 +2,7 @@
   "name": "@v84-harness/desktop",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
