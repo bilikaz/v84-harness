@@ -21,7 +21,16 @@ export interface BrowserWindowInfo {
   url: string;
   title: string;
   active: boolean; // currently the shown overlay (vs. live-but-minimized); closed windows are absent entirely
+  loading: boolean; // a page load is in flight (grey dot); false once it finishes (green dot)
   updatedAt: number; // ms epoch, bumped on navigation / load
+}
+
+// A live push from main when a window changes (navigation, title update, load start/stop) — keeps the
+// god-view's title/url/dot current instead of frozen at first load.
+export interface BrowserWindowUpdate {
+  url: string;
+  title: string;
+  loading: boolean;
 }
 
 export interface BrowserWindowContent {
@@ -53,8 +62,14 @@ export interface BrowserFleet {
   show(id: string, bounds: ViewBounds): Promise<void>;
   // Collapse the overlay (the window stays live, just not shown).
   hide(): Promise<void>;
-  // Destroy the live view, freeing its renderer (the fleet record becomes a tombstone in core).
+  // Destroy the live view, freeing its renderer (the core fleet drops the record).
   close(id: string): Promise<void>;
+  // A PNG screenshot of the page as a data URL, or null if the view is gone/blank. Used by BrowserContent
+  // (vision agents) and BrowserDescribe (the imageRec model).
+  capturePage(id: string): Promise<string | null>;
+  // Push window changes (main → renderer) — url/title/loading on navigation, title update, load start/stop —
+  // so the god-view stays current and the load dot flips live. Returns an unsubscribe fn.
+  onEvent(cb: (id: string, update: BrowserWindowUpdate) => void): () => void;
 }
 
 export interface HostApi {

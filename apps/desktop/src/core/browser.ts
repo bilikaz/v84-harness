@@ -1,25 +1,28 @@
 // The browser-window fleet (the fetch feature) — reactive runtime state over the host's
 // WebContentsView manager (ctx.api.browser, electron only). Transient: live windows don't
-// survive a restart, and the durable trail of what was fetched is the forwarded message in
-// the session transcript, not this store.
+// survive a restart, and the durable trail of what was fetched is the agent's Browser/BrowserContent
+// tool calls in the session transcript, not this store.
 //
-// Lifecycle mirrors the agent fleet: active (shown overlay) → inactive (live, minimized) →
-// closed (renderer freed; the record stays as a tombstone, never a silent gap).
+// Windows are OWNED by the session that opened them (ownerSessionId): agent tools see only their own
+// session's windows (no cross-agent races), while the user's right-rail panel is a god-view over all of
+// them. Closing a window REMOVES its record — no tombstones pile up here; the closed-window history lives
+// in the transcript. Lifecycle: active (shown overlay) → inactive (live, minimized) → closed (record gone).
 
 import { Consumer } from "./storage/consumer.ts";
 import { cap } from "./tools/base.ts";
 import type { Ctx } from "./ctx.ts";
-import type { BrowserWindowContent, BrowserWindowInfo, ViewBounds } from "./host.ts";
+import type { BrowserWindowContent, BrowserWindowInfo, BrowserWindowUpdate, ViewBounds } from "./host.ts";
 
-export type WindowState = "active" | "inactive" | "closed";
-export type SeededBy = "user" | "agent";
+export type WindowState = "active" | "inactive";
 
 export interface FleetWindow {
-  id: string;
+  id: string; // the host key (UUID) — internal; the UI + tool-card link use this
   url: string;
   title: string;
-  seededBy: SeededBy; // human-seeded windows are sticky under eviction (a login can't be re-established)
+  ownerSessionId: string; // the session that opened it — scopes agent visibility + session-close cleanup
+  alias: string; // the short per-session id the AGENT uses (1, 2, 3…) — random UUIDs are hallucination bait
   state: WindowState;
+  loading: boolean; // a page load is in flight (grey dot); false once it settles (green dot)
   updatedAt: number;
 }
 
@@ -29,8 +32,20 @@ interface FleetState {
 }
 
 class BrowserFleetStore extends Consumer<FleetState> {
+  // id → callbacks waiting on a load to finish (the Browser tool awaits these via whenLoaded).
+  private readonly loadWaiters = new Map<string, Array<() => void>>();
+  // sessionId → last per-session window number. Monotonic, never reused — "browser 2" always means the
+  // same window for the life of the session, even after earlier ones close.
+  private readonly aliasSeq = new Map<string, number>();
+
   constructor(ctx: Ctx) {
     super(ctx, null, { windows: [], viewingId: null });
+  }
+
+  // Subscribe to the host's load-state pushes. Called from init() once ctx.api is installed (the store is
+  // built before that). No-op on the web host (no fleet).
+  bindHostEvents(): void {
+    this.host?.onEvent((id, update) => this.applyUpdate(id, update));
   }
 
   // The host capability — absent in the browser host, so every command degrades to a no-op there.
@@ -42,12 +57,15 @@ class BrowserFleetStore extends Consumer<FleetState> {
     return !!this.host;
   }
 
-  async open(url: string, seededBy: SeededBy = "user"): Promise<string | null> {
+  // Open a new window owned by the given session. Agents open via the Browser tool (ec.sessionId).
+  async open(url: string, ownerSessionId: string): Promise<string | null> {
     const host = this.host;
     if (!host) return null;
     const id = await host.open(url);
     if (!id) return null;
-    const win: FleetWindow = { id, url, title: url, seededBy, state: "inactive", updatedAt: Date.now() };
+    const n = (this.aliasSeq.get(ownerSessionId) ?? 0) + 1;
+    this.aliasSeq.set(ownerSessionId, n);
+    const win: FleetWindow = { id, url, title: url, ownerSessionId, alias: String(n), state: "inactive", loading: true, updatedAt: Date.now() };
     this.setWindows([...this.state.windows, win]);
     return id;
   }
@@ -66,14 +84,21 @@ class BrowserFleetStore extends Consumer<FleetState> {
     this.setWindows(this.state.windows.map((w) => (w.state === "active" ? { ...w, state: "inactive" } : w)));
   }
 
+  // Closing REMOVES the record — no tombstone. The god-view panel and ActiveBrowsers stay live-only.
   async close(id: string): Promise<void> {
     const host = this.host;
     if (!host) return;
     await host.close(id);
+    this.resolveLoad(id); // anything awaiting its load stops waiting — it's gone
     this.commit({
-      windows: this.state.windows.map((w) => (w.id === id ? { ...w, state: "closed" } : w)),
+      windows: this.state.windows.filter((w) => w.id !== id),
       viewingId: this.state.viewingId === id ? null : this.state.viewingId,
     });
+  }
+
+  // Session-close cleanup: a deleted session's windows have no owner left to drive them.
+  async closeForSession(sid: string): Promise<void> {
+    for (const w of this.state.windows.filter((w) => w.ownerSessionId === sid)) await this.close(w.id);
   }
 
   // Surface a window as the overlay (the overlay component then reports its bounds to show()).
@@ -92,29 +117,87 @@ class BrowserFleetStore extends Consumer<FleetState> {
   async navigate(id: string, url: string): Promise<void> {
     const host = this.host;
     if (!host) return;
+    // Mark loading up front so whenLoaded waits for THIS navigation to settle, not a stale state.
+    this.patch(id, (w) => ({ ...w, url, loading: true, updatedAt: Date.now() }));
     await host.navigate(id, url);
-    this.patch(id, (w) => ({ ...w, url, updatedAt: Date.now() }));
   }
 
   getContent(id: string): Promise<BrowserWindowContent | null> {
     return this.host?.get(id) ?? Promise.resolve(null);
   }
 
-  // Pull live truth from main and reconcile: refresh url/title/updatedAt, and tombstone any
-  // record main no longer knows (a window that died on its own — navigation crash, etc.).
+  // A PNG screenshot of the page (data URL), for BrowserContent (vision) and BrowserDescribe (imageRec).
+  capturePage(id: string): Promise<string | null> {
+    return this.host?.capturePage(id) ?? Promise.resolve(null);
+  }
+
+  // Host push on any window change: keep url/title/dot current (so the god-view tracks navigation), and
+  // release any whenLoaded waiters once a load settles.
+  applyUpdate(id: string, update: BrowserWindowUpdate): void {
+    if (!this.record(id)) return;
+    this.patch(id, (w) => ({ ...w, url: update.url || w.url, title: update.title || w.title, loading: update.loading, updatedAt: Date.now() }));
+    if (!update.loading) this.resolveLoad(id);
+  }
+
+  // Resolve once the window's current load settles (or it's gone, or after a safety timeout) — the Browser
+  // tool awaits this so it can return only when the page is actually ready to read.
+  whenLoaded(id: string, timeoutMs = 20000): Promise<void> {
+    const w = this.record(id);
+    if (!w || !w.loading) return Promise.resolve();
+    return new Promise((resolve) => {
+      const waiters = this.loadWaiters.get(id) ?? [];
+      let done = false;
+      const fire = (): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(fire, timeoutMs);
+      waiters.push(fire);
+      this.loadWaiters.set(id, waiters);
+    });
+  }
+
+  private resolveLoad(id: string): void {
+    const waiters = this.loadWaiters.get(id);
+    if (!waiters) return;
+    this.loadWaiters.delete(id);
+    for (const fire of waiters) fire();
+  }
+
+  // The stored record for one host id (UUID) — used internally + by the tool-card link.
+  record(id: string): FleetWindow | undefined {
+    return this.state.windows.find((w) => w.id === id);
+  }
+
+  // Resolve a session's short alias (1, 2, …) to its window. Lenient — strips quotes/spaces the model may
+  // echo (e.g. '"2 "') so a small formatting quirk doesn't read as "no such window".
+  recordByAlias(sid: string, alias: string): FleetWindow | undefined {
+    const a = alias.replace(/['"\s]/g, "");
+    return this.state.windows.find((w) => w.ownerSessionId === sid && w.alias === a);
+  }
+
+  // Live windows owned by one session — the agent-scoped view (ActiveBrowsers).
+  windowsForSession(sid: string): FleetWindow[] {
+    return this.state.windows.filter((w) => w.ownerSessionId === sid);
+  }
+
+  // Pull live truth from main and reconcile: refresh url/title/updatedAt, and DROP any record main no
+  // longer knows (a window that died on its own — navigation crash, user close). No tombstone is kept.
   async refresh(): Promise<BrowserWindowInfo[]> {
     const host = this.host;
     if (!host) return [];
     const live = await host.active();
     const byId = new Map(live.map((w) => [w.id, w]));
-    this.setWindows(
-      this.state.windows.map((w) => {
-        if (w.state === "closed") return w;
-        const info = byId.get(w.id);
-        if (!info) return { ...w, state: "closed" };
-        return { ...w, url: info.url, title: info.title || w.title, updatedAt: info.updatedAt, state: info.active ? "active" : "inactive" };
-      }),
-    );
+    const windows = this.state.windows
+      .filter((w) => byId.has(w.id))
+      .map((w) => {
+        const info = byId.get(w.id)!;
+        return { ...w, url: info.url, title: info.title || w.title, loading: info.loading, updatedAt: info.updatedAt, state: (info.active ? "active" : "inactive") as WindowState };
+      });
+    const viewingId = this.state.viewingId && byId.has(this.state.viewingId) ? this.state.viewingId : null;
+    this.commit({ windows, viewingId });
     return live;
   }
 
@@ -147,9 +230,10 @@ export const browserFleet = (): BrowserFleetStore => store;
 export const useFleetWindows = (): FleetWindow[] => store.useWindows();
 export const useViewingId = (): string | null => store.useViewingId();
 
-// Build a forward: a hidden context message (the window snapshot at send time, so the
-// reference survives the window closing) + the visible comment that references it. The UI
-// passes these to ctx.sessions.send(text, { context }). Null if the window is already gone.
+// Build a forward: a hidden context message (the window snapshot at send time, so the reference survives
+// the window closing) + the visible comment that references it. The overlay routes these to the OWNING
+// session via ctx.sessions.sendTo, so the agent that opened the window picks up the user's manual step.
+// Null if the window is already gone.
 export async function buildForward(id: string, comment: string): Promise<{ text: string; context: string } | null> {
   const content = await store.getContent(id);
   if (!content) return null;

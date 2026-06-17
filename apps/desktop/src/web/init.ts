@@ -12,7 +12,7 @@ import { initPluginData } from "../core/plugins/data.ts";
 import { registerPluginManifests } from "../core/plugins/boot.ts";
 import { initAgents, hydrateAgents } from "../core/agents.ts";
 import { initUi } from "../core/ui.ts";
-import { initBrowser } from "../core/browser.ts";
+import { initBrowser, browserFleet } from "../core/browser.ts";
 import { initContainers, hydrateContainers } from "../core/containers.ts";
 import { hydrate as hydrateSessions, useStorage as useSessionData } from "../core/sessions/store.ts";
 import { StorageEngine } from "../core/storage/engine.ts";
@@ -93,6 +93,7 @@ export async function init(): Promise<Ctx> {
     cancel: (id) => reg.cancel(id),
   };
   ctx.api = browserHost();
+  browserFleet().bindHostEvents(); // no-op on the web host (no fleet), kept symmetric with electron
   installEnabledPlugins(ctx);
   return ctx;
 }

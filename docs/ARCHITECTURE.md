@@ -78,7 +78,7 @@ Layering rules:
 | `src/web/` | Web platform: builds the in-process tool registry on `ctx` (the local storage backend is the host-agnostic `core/storage/idb.ts`) |
 | `src/renderer/` | Shared, platform-agnostic UI: the `App`, the boot (`main.tsx`), the ctx React bridge (`ctx.tsx` — `useCtx`), the gated-tool catalog hook (`gatedTools.ts`) |
 | `src/electron/bridge.ts` | IPC contract: `IPC` channel constants + `ElectronApi` interface (`window.api`) |
-| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine), config, sessions engine, tools engine (incl. the `account/` memory-tool tier), per-entity `StorageRepos` + `StorageEngine` + `Consumer` base, host capability surface (`host.ts`), containers, approvals, the unified settings registry, agents, the machine-local `account` store (`account.ts` — identity + connection lifecycle), and the plugin system (`plugins/` — manifest registry, `config.plugins` slice, `pluginData` handle, boot scan) |
+| `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine), config, sessions engine, tools (the `account/` registry tier + the `engine/` driver-level tier — sub-agents + browser fleet, [ADR-0050](adr/0050-engine-tool-tier.md)), the browser fleet store (`browser.ts`, [browser.md](architecture/browser.md)), per-entity `StorageRepos` + `StorageEngine` + `Consumer` base, host capability surface (`host.ts`), containers, approvals, the unified settings registry, agents, the machine-local `account` store (`account.ts` — identity + connection lifecycle), and the plugin system (`plugins/` — manifest registry, `config.plugins` slice, `pluginData` handle, boot scan) |
 | `src/llm/` | The model layer (the shared-shape floor): `client.call()` (service-named calls), Provider classes per `<modality>/<type>`, response handlers, and the shapes core/config/tools import down (`Image`/`Video`, `ToolSpec`, `ToolCallRequest`, service unions) |
 | `src/lib/` | Renderer utilities: event bus, i18n, router, registry, errors, ui state (the old `store.ts` factory is gone — state is now `core/storage/consumer.ts`) |
 | `src/lib/logger/` | `Logger` port (scoped children, structured events) + console / memory sinks |
@@ -108,7 +108,8 @@ Deep dives, one per subsystem — read the one for the area you're touching
 |----------|--------|
 | [architecture/state.md](architecture/state.md) | Reactive `Consumer` pattern + hooks; the typed event bus |
 | [architecture/sessions.md](architecture/sessions.md) | Sessions engine module shape; the turn loop; sub-agents; media resend window |
-| [architecture/tools.md](architecture/tools.md) | Tool system: general / workspace / account tiers; virtual root; caps |
+| [architecture/tools.md](architecture/tools.md) | Tool system: general / workspace / account registry tiers + the engine tier (driver-level tools); virtual root; caps |
+| [architecture/browser.md](architecture/browser.md) | Browser fleet: session-owned/ephemeral windows, the agent tools, host capturePage + load push, the god-view + comment flow |
 | [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, LLMConfig, Provider classes, response handlers, heal |
 | [architecture/ui.md](architecture/ui.md) | Contribution registry/regions, routing, agents UX, UI patterns, i18n |
 | [architecture/storage.md](architecture/storage.md) | Durable persistence: per-entity `StorageRepos`, the provider swap (`repos()` vs `localRepos()`), tables, shapes, accessor surface |

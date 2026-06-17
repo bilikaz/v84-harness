@@ -55,20 +55,22 @@ export function SessionView() {
 
   // toolChildren merges live links (in-flight childRuns) with settled ones (tool-result messages).
   const childRuns = useChildRuns();
-  const { toolResults, toolImages, toolVideo, toolChildren } = useMemo(() => {
+  const { toolResults, toolImages, toolVideo, toolChildren, toolBrowserWindows } = useMemo(() => {
     const toolResults = new Map<string, string>();
     const toolImages = new Map<string, Image[]>();
     const toolVideo = new Map<string, Video[]>();
     const toolChildren = new Map<string, string[]>(Object.entries(childRuns));
+    const toolBrowserWindows = new Map<string, string>();
     for (const m of session.messages) {
       if (m.role === "tool" && m.toolCallId) {
         toolResults.set(m.toolCallId, m.text);
         if (m.images?.length) toolImages.set(m.toolCallId, m.images);
         if (m.videos?.length) toolVideo.set(m.toolCallId, m.videos);
         if (m.childSessionIds?.length) toolChildren.set(m.toolCallId, m.childSessionIds);
+        if (m.browserWindowId) toolBrowserWindows.set(m.toolCallId, m.browserWindowId);
       }
     }
-    return { toolResults, toolImages, toolVideo, toolChildren };
+    return { toolResults, toolImages, toolVideo, toolChildren, toolBrowserWindows };
   }, [session.messages, childRuns]);
 
   useOutsideClick(menuOpen, headerRef, () => setMenuOpen(false));
@@ -199,6 +201,7 @@ export function SessionView() {
                 toolImages={toolImages}
                 toolVideo={toolVideo}
                 toolChildren={toolChildren}
+                toolBrowserWindows={toolBrowserWindows}
                 streaming={streaming && i === session.messages.length - 1}
               />
             ),

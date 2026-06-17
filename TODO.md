@@ -18,11 +18,20 @@ removed ones, leave the rest. No schema change — just the `replaceForSession`
 contract (client store + server repo). Matters most for long sessions / slow
 remote.
 
-## Browser fleet optimization
+## Refactor the Bash tool
 
-The managed browser-window fleet (`apps/desktop/src/core/browser.ts`,
-`core/browserTools.ts`, `electron/browserFleet.ts`, `pages/browser/`) needs an
-optimization pass. **Specifics TBD** — define the actual bottleneck before acting.
+`Bash` is too open-ended: agents reach for it as a catch-all and run arbitrary,
+ad-hoc commands, so runs end up messy and hard to reason about (and to gate — one
+"ask" covers everything from `ls` to `rm -rf`). Tighten it: narrower, intention-
+revealing affordances over a raw shell where a dedicated tool fits, and/or
+constraints on what `Bash` accepts, so the common cases stop going through a
+blank shell prompt.
+
+It also isn't portable: the Windows build has **no real bash**, so a
+`Bash`-centric agent degrades or breaks there. The refactor needs a cross-platform
+story — a portable command layer, or platform-appropriate shells behind one tool
+contract — so workspace tooling works the same on Windows as on Linux/macOS.
+Needs a design pass (and likely an ADR, given the tool-surface + permission impact).
 
 ## Implement remote workspaces
 
@@ -32,13 +41,3 @@ scaffolded only — the data model holds it (`type: "remote"`, `config:
 it. Implement the actual remote workspace: provision/attach a Docker container
 per workspace, route the `remote/` tools to execute inside it, and wire its
 lifecycle (create / connect / teardown). Needs its own design pass + ADR.
-
-## Implement the plugin system
-
-The `plugins` + `plugin_data` tables/repos exist across all backends
-([ADR-0043](docs/adr/0043-per-entity-repos.md)) but nothing reads or writes them
-yet — pure scaffolding. Build the actual plugin system: a registration model, a
-plugin's own UI contributions (Slot regions) + tools, and its namespaced data
-store (`pluginData`, keyed by `(pluginId, collection, key)`). Needs its own
-design pass + ADR (capability/permission surface, load/enable lifecycle, trust
-boundary).

@@ -40,7 +40,8 @@ function createWindow(): void {
   });
 
   registerContextMenu(electron, win);
-  initBrowserFleet(electron, win);
+  // Push browser window changes (url/title/loading) to the renderer so the god-view + load dot stay live.
+  initBrowserFleet(electron, win, (id, update) => win.webContents.send(IPC.browserEvent, id, update));
   // Forward plugin-service events (main→renderer push), so plugin UIs reflect live service state.
   wirePluginEvents((slug, type, payload) => win.webContents.send(IPC.pluginEvent, slug, type, payload));
   win.once("ready-to-show", () => win.show());

@@ -3,7 +3,6 @@ import type { ChatModelSettings } from "../settings.ts";
 import type { FileAttachment, Image, Video, Message, Session, ToolCallRequest } from "./types.ts";
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
-import { pt } from "../../lib/prompts.ts";
 import type { StorageEngine } from "../storage/engine.ts";
 import type { StorageRepos } from "../storage/types.ts";
 import { createListeners } from "../storage/consumer.ts";
@@ -42,7 +41,10 @@ function makeSession(init: SessionInit = {}): Session {
   return {
     id: newId(),
     title: init.title ?? i18n.t("sidebar.newSession"),
-    system: init.system ?? pt("defaultChat.system"),
+    // No baked default — the engine resolves the base system live each turn (agent → workspace → global
+    // setting → built-in default), so a later change to the global/workspace prompt takes effect. Agents
+    // still carry their own system here (init.system).
+    system: init.system ?? "",
     containerId: init.containerId ?? "",
     agentId: init.agentId,
     parentId: init.parentId,
@@ -348,8 +350,9 @@ export function pushToolResult(
   images?: Image[],
   videos?: Video[],
   childSessionIds?: string[],
+  browserWindowId?: string,
 ): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, videos, childSessionIds, createdAt: Date.now() };
+  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, videos, childSessionIds, browserWindowId, createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }

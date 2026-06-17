@@ -22,7 +22,7 @@ import { initPluginData } from "../core/plugins/data.ts";
 import { registerPluginManifests } from "../core/plugins/boot.ts";
 import { initAgents, hydrateAgents } from "../core/agents.ts";
 import { initUi } from "../core/ui.ts";
-import { initBrowser } from "../core/browser.ts";
+import { initBrowser, browserFleet } from "../core/browser.ts";
 import { initContainers, hydrateContainers } from "../core/containers.ts";
 import { hydrate as hydrateSessions, useStorage as useSessionData } from "../core/sessions/store.ts";
 import { StorageEngine } from "../core/storage/engine.ts";
@@ -79,6 +79,8 @@ export async function init(): Promise<Ctx> {
     invokePlugin: (slug, method, args) => api!.plugins.invoke(slug, method, args),
     onPluginEvent: (cb) => api!.plugins.onEvent(cb),
   };
+  // ctx.api is now installed — subscribe the fleet to the host's browser load-state pushes.
+  browserFleet().bindHostEvents();
   installEnabledPlugins(ctx);
   return ctx;
 }

@@ -84,3 +84,12 @@ export const setPluginSettings = (slug: string, settings: unknown): void => inst
 export function pluginConfig<S = unknown>(slug: string, cfg: PluginsConfig): PluginConfigEntry<S> | undefined {
   return cfg[slug] as PluginConfigEntry<S> | undefined;
 }
+
+// System-prompt guidance from every ENABLED plugin that declares one — appended to the assembled system
+// prompt as capability blocks, so the model learns a plugin's tools only while it's on. Manifest order.
+export function enabledPluginPrompts(): string[] {
+  const cfg = getPluginsConfig();
+  return pluginManifests()
+    .filter((m) => m.systemPrompt && cfg[m.slug]?.enabled)
+    .map((m) => m.systemPrompt as string);
+}

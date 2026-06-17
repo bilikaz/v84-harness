@@ -9,6 +9,9 @@ export interface PluginManifest<S = unknown> {
   name: string;
   version: string;
   defaultEnabled?: boolean; // default false — a plugin ships disabled unless it opts in
+  // Guidance appended to the system prompt while the plugin is enabled — teaches the model how to use the
+  // plugin's tools (a capability block, like the built-in browser/memory ones). Optional.
+  systemPrompt?: string;
   settingsDefaults: S;
   // Coerce persisted (untrusted) settings → a valid S, filling defaults. Mirrors config/app.ts validate().
   validateSettings(raw: unknown): S;

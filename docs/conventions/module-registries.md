@@ -47,6 +47,13 @@ provider") falls out of the lookup instead of needing guard code.
    (only-implementations-here) breaks the first time a helper is added next to them;
    the family filter is the cheap guard that makes the mistake a no-op instead of a
    crash.
+7. **Keep the glob out of the base module.** Bundlers compile an eager glob to static imports **hoisted to
+   the top of the module** — they run before the rest of the file body. If the glob lives in the same module
+   as the family's abstract base class, it imports the implementation modules (which `extends Base`) *before*
+   the `class Base` declaration has executed — a "class extends undefined" cycle at load. Put the glob in a
+   separate module (a dispatcher, or the composition root) that imports the base; the base module stays pure
+   declaration. (Resolve-by-key registries already glob at the call site; the trap is specific to the
+   enumerate-and-instantiate variant tempted to self-glob.)
 
 ## Example
 

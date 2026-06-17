@@ -39,6 +39,15 @@ bracketed decoration, compare case-insensitively. Reject ambiguity instead of
 picking, and make every miss self-healing: the error carries the valid names,
 so a blind guess costs the model the same one step as listing first.
 
+When the system mints the handle (not a human-chosen name), make it **short and
+model-holdable** — a small per-scope counter (`1`, `2`, …), not an opaque UUID.
+A model fumbles a long random id, and a fumble it can't recover often cascades:
+"no such window" → it opens a *new* one → repeat → resource sprawl. Short ids it
+can actually echo, scoped so they don't collide where the model sees them, plus
+the self-healing miss above, close that loop. Keep the opaque id internally;
+expose the short one. (Observed: random-UUID browser-window ids drove a model to
+spawn duplicate windows until per-session integer ids replaced them.)
+
 ## 4. Announce every edit to the model's context
 
 Whatever the engine quietly removes or withholds from the resubmitted

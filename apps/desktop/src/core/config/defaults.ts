@@ -11,6 +11,9 @@ export interface QualityPreset {
 }
 
 export interface ConfigApp {
+  // The user's global system prompt — the BASE block for plain-chat sessions (agents + workspaces override
+  // it; capability instructions still append). Empty = use the built-in default.
+  systemPrompt: string;
   media: {
     // Default longest-side cap (px) for image inputs when the model card
     // doesn't set its own (ModelConfig.imageMaxDim). Most VLMs are trained
@@ -67,6 +70,7 @@ export interface ConfigApp {
 }
 
 export const CONFIG_DEFAULTS: ConfigApp = {
+  systemPrompt: "",
   media: {
     imageMaxDim: 2048,
     imageMaxBytes: 50 * 1024 * 1024,

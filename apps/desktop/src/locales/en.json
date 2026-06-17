@@ -17,7 +17,12 @@
     "root": "Folder",
     "delete": "Delete",
     "tools": "Tool permissions",
-    "toolsHint": "The ceiling for tools in this workspace; an agent can restrict further, never extend."
+    "toolsHint": "The ceiling for tools in this workspace; an agent can restrict further, never extend.",
+    "tabSettings": "Settings",
+    "tabOther": "Other",
+    "systemPrompt": "System message",
+    "systemPromptHint": "Replaces the default base instructions for chats in this workspace. Tool guidance (files, browser, memory) is still added on top. Agents keep their own.",
+    "systemPromptPlaceholder": "e.g. Always answer concisely and cite file paths."
   },
   "agents": {
     "title": "Agents",
@@ -67,11 +72,11 @@
   "browser": {
     "title": "Browser windows",
     "empty": "No browser windows open.",
-    "urlPlaceholder": "Open a URL…",
-    "open": "Open",
     "minimize": "Minimize",
     "close": "Close window",
-    "closed": "window closed"
+    "loading": "Loading…",
+    "loaded": "Loaded",
+    "deletedWindow": "window closed"
   },
   "menu": {
     "settings": "Settings",
@@ -200,7 +205,6 @@
     "hidePanel": "Hide panel",
     "showPanel": "Show panel",
     "changeModel": "Change provider / model",
-    "detectModels": "Detect available models",
     "stop": "Stop",
     "compacting": "Summarizing earlier messages to free context…",
     "thinking": "Thinking…",
@@ -267,6 +271,13 @@
     "subtitle": "Diagnostics, logs, and feature flags.",
     "llmDebug": "LLM debug logging",
     "llmDebugHint": "Logs every model request/response to the console (prefixed [llm]). On by default in dev."
+  },
+  "system": {
+    "title": "System message",
+    "subtitle": "Your default instructions for the assistant in plain chats. Workspaces and agents can override it; tool guidance (files, browser, memory) is always added on top. Leave empty for the built-in default.",
+    "placeholder": "e.g. You are my engineering assistant. Be concise, prefer code over prose, and always cite file paths.",
+    "languageHint": "Use {{language}} anywhere — it's replaced with the user's current language.",
+    "defaultLabel": "Built-in default (used when this is empty):"
   },
   "plugins": {
     "title": "Plugins",
