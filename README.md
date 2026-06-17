@@ -172,7 +172,7 @@ the project's growth rather than forking off silently — improvements flow back
 
 **Commercial license.** To use it in a closed-source product/service without the AGPL's
 source-sharing obligations, a commercial license is available — contact
-**valdas.barakauskas@coffeefriend.group**. So a business contributes back either way: as code
+**valdas@vbtech.eu**. So a business contributes back either way: as code
 (pull requests / its AGPL-published changes) or financially (a commercial license).
 
 Contributions are welcome by pull request. Once outside contributions are accepted, a
