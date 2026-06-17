@@ -7,4 +7,5 @@ release/
 *.log
 *.sh
 .claude/
+.qwen/
 implementation.md
