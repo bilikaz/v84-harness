@@ -61,14 +61,12 @@ export function Sidebar() {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // The sessions of one container, flattened so a sub-agent child renders indented under its parent.
-  function sessionTree(containerId: string): { session: (typeof sessions)[number]; child: boolean }[] {
+  // Sessions of one container, grouped: each top-level session with its sub-agent children (depth 1).
+  // The children render in a bordered block beside their parent — a thread bracket, not a list-wide rail.
+  function sessionTree(containerId: string): { session: (typeof sessions)[number]; children: (typeof sessions)[number][] }[] {
     const list = sessions.filter((s) => s.containerId === containerId);
     const top = list.filter((s) => !s.parentId || !list.some((p) => p.id === s.parentId));
-    return top.flatMap((s) => [
-      { session: s, child: false },
-      ...list.filter((c) => c.parentId === s.id).map((c) => ({ session: c, child: true })),
-    ]);
+    return top.map((s) => ({ session: s, children: list.filter((c) => c.parentId === s.id) }));
   }
 
   // Inline rename handles both containers and sessions — branch on which kind the id is.
@@ -167,6 +165,29 @@ export function Sidebar() {
                 .filter((c) => c.type === type)
                 .map((c) => {
                   const selected = activeContainerId === c.id;
+                  const sessionRow = (s: (typeof sessions)[number], child: boolean, related = false, threadActive = false) => (
+                    <Row
+                      key={s.id}
+                      icon={null}
+                      label={s.title}
+                      active={activeId === s.id}
+                      related={related}
+                      threadActive={threadActive}
+                      indent={child}
+                      dot={<StatusDot streaming={streamingIds.has(s.id)} unread={!!s.unread} />}
+                      renaming={renamingId === s.id}
+                      draft={draft}
+                      onDraft={setDraft}
+                      onCommit={() => commitRename(s.id)}
+                      onCancelRename={() => setRenamingId(null)}
+                      onSelect={() => {
+                        setActive(s.id);
+                        navigate("");
+                      }}
+                      onRename={manage ? () => { setRenamingId(s.id); setDraft(s.title); } : undefined}
+                      onDelete={manage ? () => ctx.sessions.deleteSession(s.id) : undefined}
+                    />
+                  );
                   return (
                     <div key={c.id}>
                       <Row
@@ -183,29 +204,18 @@ export function Sidebar() {
                         onSettings={manage ? () => setSettingsId(c.id) : undefined}
                         onDelete={manage && containers.length > 1 ? () => removeContainer(c.id) : undefined}
                       />
-                      {/* Selected container expands to show its sessions, indented. */}
+                      {/* Selected container expands to show its sessions; sub-agent children get a thread bracket. */}
                       {selected && (
-                        <div className="ml-3 border-l border-neutral-200 pl-1">
-                          {sessionTree(c.id).map(({ session: s, child }) => (
-                            <Row
-                              key={s.id}
-                              icon={null}
-                              label={s.title}
-                              active={activeId === s.id}
-                              indent={child}
-                              dot={<StatusDot streaming={streamingIds.has(s.id)} unread={!!s.unread} />}
-                              renaming={renamingId === s.id}
-                              draft={draft}
-                              onDraft={setDraft}
-                              onCommit={() => commitRename(s.id)}
-                              onCancelRename={() => setRenamingId(null)}
-                              onSelect={() => {
-                                setActive(s.id);
-                                navigate("");
-                              }}
-                              onRename={manage ? () => { setRenamingId(s.id); setDraft(s.title); } : undefined}
-                              onDelete={manage ? () => ctx.sessions.deleteSession(s.id) : undefined}
-                            />
+                        <div className="ml-3 pl-1">
+                          {sessionTree(c.id).map(({ session: s, children }) => (
+                            <div key={s.id}>
+                              {sessionRow(s, false, children.length > 0, children.some((ch) => ch.id === activeId))}
+                              {children.length > 0 && (
+                                <div className="ml-2 border-l border-neutral-300 pl-1">
+                                  {children.map((ch) => sessionRow(ch, true))}
+                                </div>
+                              )}
+                            </div>
                           ))}
                           <button
                             type="button"
@@ -273,6 +283,8 @@ function Row(props: {
   icon: typeof FolderClosed | null;
   label: string;
   active: boolean;
+  related?: boolean; // a parent that has sub-agents — softly highlighted so it reads as a block header
+  threadActive?: boolean; // a parent whose active child makes the whole thread read as active
   indent?: boolean;
   dot?: ReactNode;
   renaming?: boolean;
@@ -285,7 +297,7 @@ function Row(props: {
   onSettings?: () => void;
   onDelete?: () => void;
 }) {
-  const { icon: Icon, label, active, indent, dot, renaming, draft, onDraft, onCommit, onCancelRename } = props;
+  const { icon: Icon, label, active, related, threadActive, indent, dot, renaming, draft, onDraft, onCommit, onCancelRename } = props;
   const { onSelect, onRename, onSettings, onDelete } = props;
   const { t } = useTranslation();
 
@@ -296,7 +308,7 @@ function Row(props: {
         onChange={(v) => onDraft?.(v)}
         onCommit={() => onCommit?.()}
         onCancel={() => onCancelRename?.()}
-        className={cn("my-1 min-w-0 bg-white px-2 py-1", indent && "ml-3")}
+        className={cn("my-1 min-w-0 bg-white px-2 py-1")}
       />
     );
   }
@@ -305,7 +317,7 @@ function Row(props: {
     <div
       className={cn(
         "group flex items-center gap-0.5 rounded-lg pr-1",
-        active ? "bg-neutral-200/70" : "hover:bg-neutral-200/40",
+        active || threadActive ? "bg-[#666]" : related ? "bg-neutral-200/70" : "hover:bg-neutral-200/40",
       )}
     >
       <button
@@ -314,7 +326,7 @@ function Row(props: {
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left text-sm",
           indent && "py-1",
-          active ? "text-neutral-900" : "text-neutral-600",
+          active || threadActive ? "text-white" : "text-neutral-600",
         )}
       >
         {dot}
