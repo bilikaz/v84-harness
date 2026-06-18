@@ -28,9 +28,11 @@ A window counts as **loaded** = document-complete **+ network-idle + a fixed gra
 - **Config, not constants.** `settleMs` (default **5000**) and `graceMs` (default **2000**) are app tunables
   ([ADR-0031](0031-config-sole-source-of-truth.md), editable in Settings → System), read on the core side
   and passed per-call to the host (`open`/`navigate`).
-- **Failed loads settle too.** A dead host (DNS failure, refused) may never fire `did-stop-loading`;
-  `did-fail-load` (main frame, non-abort) routes to the same settle, so the read returns in ~grace instead
-  of waiting out `whenLoaded`'s 20s timeout.
+- **Failed loads settle too, and say why.** A dead host (DNS failure, refused) may never fire
+  `did-stop-loading`; `did-fail-load` (main frame, non-abort) routes to the same settle, so the read returns
+  in ~grace instead of waiting out `whenLoaded`'s 20s timeout. The failure reason is recorded on the window
+  and surfaced in the read (`BrowserWindowContent.error`) as a plain message — a failed load reads back as
+  "could not load <url>: <reason>", not a blank page the agent has to puzzle over.
 - **Graceful degradation.** If the debugger can't attach (DevTools owns the webContents), settle falls back
   to the old `did-stop-loading` behaviour (then still the grace).
 

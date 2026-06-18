@@ -11,6 +11,9 @@ type ReadResult = { output: string; images?: { url: string; mime: string; name: 
 export async function readWindow(fleet: Fleet, alias: string, id: string): Promise<ReadResult | null> {
   const content = await fleet.getContent(id);
   if (!content) return null;
+  // The navigation failed at the network level (DNS/refused/timeout) — there is no page to read or
+  // screenshot. Tell the agent plainly so it doesn't puzzle over a blank result.
+  if (content.error) return { output: `browser ${alias} could not load ${content.url || "the page"}: ${content.error}.` };
   const links = content.links.length ? `\n\nLinks on this page (navigate with Browser {id: ${alias}, url}):\n${content.links.join("\n")}` : "";
   const shots = await fleet.capturePage(id);
   const images = shots.length ? shots.map((url, i) => ({ url, mime: "image/png", name: `browser-${alias}${i ? `-${i + 1}` : ""}.png` })) : undefined;

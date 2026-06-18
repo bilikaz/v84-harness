@@ -39,6 +39,7 @@ export interface BrowserWindowContent {
   title: string;
   text: string; // extracted page text
   links: string[]; // absolute hrefs on the page — navigation targets the agent can pick from
+  error?: string; // set when the last navigation failed (DNS/refused/etc.) — the page never loaded
 }
 
 // Pixel rect (in the host window's content coordinates) the overlay should occupy.

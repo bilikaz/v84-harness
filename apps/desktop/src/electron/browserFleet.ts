@@ -30,6 +30,7 @@ interface Entry {
   inflight: Set<string>; // in-flight CDP request ids — empty ⇒ network idle
   settleMs: number; // network-idle cap for the current load
   graceMs: number; // extra fixed wait after the network settles (late images, etc.)
+  error?: string; // last navigation's failure reason (DNS/refused/…), cleared when a new load starts
   quietTimer?: ReturnType<typeof setTimeout>;
   capTimer?: ReturnType<typeof setTimeout>;
   graceTimer?: ReturnType<typeof setTimeout>;
@@ -67,8 +68,11 @@ export class BrowserFleet {
     // A dead host (DNS failure, refused) may never fire did-stop-loading — treat a main-frame failure as a
     // load end so the settle resolves instead of hanging until whenLoaded's timeout. -3 is ABORTED (a normal
     // cancel/redirect), not a failure.
-    wc.on("did-fail-load", (_e, errorCode, _desc, _url, isMainFrame) => {
-      if (isMainFrame && errorCode !== -3) this.onLoadStop(id);
+    wc.on("did-fail-load", (_e, errorCode, desc, _url, isMainFrame) => {
+      if (!isMainFrame || errorCode === -3) return; // -3 ABORTED is a normal cancel/redirect
+      const entry = this.views.get(id);
+      if (entry) entry.error = failureReason(desc);
+      this.onLoadStop(id);
     });
     this.host.contentView.addChildView(view);
     view.setVisible(false);
@@ -160,7 +164,7 @@ export class BrowserFleet {
       // Absolute hrefs (a.href resolves relative ones), deduped and capped — the agent's navigation targets.
       withTimeout(wc.executeJavaScript("[...new Set([...document.querySelectorAll('a[href]')].map(a => a.href))].slice(0, 200)", true) as Promise<string[]>, READ_TIMEOUT, []),
     ]);
-    return { id, url: wc.getURL(), title: wc.getTitle(), text, links };
+    return { id, url: wc.getURL(), title: wc.getTitle(), text, links, error: entry.error };
   }
 
   active(): BrowserWindowInfo[] {
@@ -249,6 +253,7 @@ export class BrowserFleet {
     if (!entry) return;
     this.clearSettle(entry);
     entry.inflight.clear();
+    entry.error = undefined; // a fresh navigation clears the prior failure
     this.setLoading(id, true);
   }
 
@@ -380,6 +385,16 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
     const t = setTimeout(() => settle(fallback), ms);
     p.then(settle, () => settle(fallback));
   });
+}
+
+// A human-readable reason from Chromium's net error description (e.g. "ERR_NAME_NOT_RESOLVED"), so the
+// agent is told the page failed rather than puzzling over a blank read.
+function failureReason(desc: string): string {
+  if (/NAME_NOT_RESOLVED|ADDRESS_UNREACHABLE/.test(desc)) return "the host could not be resolved — the domain may not exist or is offline";
+  if (/CONNECTION_REFUSED|CONNECTION_CLOSED|CONNECTION_RESET|CONNECTION_FAILED/.test(desc)) return "the connection was refused";
+  if (/TIMED_OUT/.test(desc)) return "the connection timed out";
+  if (/CERT_|SSL/.test(desc)) return "the site's security certificate could not be verified";
+  return desc ? `the page failed to load (${desc})` : "the page failed to load";
 }
 
 // Screenshot y-offsets down the page: the top, then ~one viewport lower each shot (slight overlap so the
