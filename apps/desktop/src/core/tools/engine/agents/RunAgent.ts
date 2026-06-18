@@ -1,6 +1,6 @@
 import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.ts";
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
-import { RUN_SCHEMA, catalogAgents, resolveAgent } from "./catalog.ts";
+import { RUN_SCHEMA, aliasOf, catalogAgents, failureNote, resolveAgent } from "./catalog.ts";
 import { cap } from "../../base.ts";
 import { getSession } from "../../../sessions/store.ts";
 import { sessionBus as bus } from "../../../sessions/events.ts";
@@ -57,14 +57,13 @@ export class RunAgent extends BaseEngineTool {
         } finally {
           ec.signal.removeEventListener("abort", onAbort);
         }
-        const name = runs.length > 1 ? `${label}"${resolved.name}": ` : "";
-        if (!outcome) return `${name}the run did not start (empty task or a busy session).`;
-        if (outcome.aborted) return `${name}the sub-agent run was stopped.`;
-        if (outcome.errored) {
-          const detail = outcome.text ? `; its last output:\n${cap(outcome.text)}` : " — see its session for the error";
-          return `${name}sub-agent "${resolved.name}" failed${detail}`;
-        }
-        return `${name}${cap(outcome.text) || "(the sub-agent returned no text)"}`;
+        // The child's stable short id — what the model uses to address it later (ActiveAgents/AskAgent/ResumeAgent).
+        const alias = aliasOf(getSession(childSid) ?? ({} as never));
+        const head = runs.length > 1 ? `agent (id: ${alias}): ` : "";
+        if (!outcome) return `${head}the run did not start (empty task or a busy session).`;
+        if (outcome.aborted) return `${head}the sub-agent run was stopped.`;
+        if (outcome.errored) return `${head}${failureNote(alias, resolved.name, outcome.errorKind, outcome.text)}`;
+        return `${head}${cap(outcome.text) || "(the sub-agent returned no text)"}`;
       }),
     );
     return { output: cap(answers.join("\n\n")), childSessionIds: children.length ? children : undefined };

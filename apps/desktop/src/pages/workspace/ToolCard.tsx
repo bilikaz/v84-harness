@@ -36,8 +36,8 @@ export const ToolCard = memo(function ToolCard({
   const isAgent = call.name === "RunAgent" || call.name === "ListAgents";
   const isBrowser = call.name === "Browser" || call.name === "BrowserContent" || call.name === "BrowserDescribe" || call.name === "ActiveBrowsers";
   const summary = String(args.agent ?? args.command ?? args.path ?? args.pattern ?? args.url ?? "");
-  const inText = call.name === "Bash" ? String(args.command ?? "") : JSON.stringify(args, null, 2);
-  const Icon = call.name === "Bash" ? Terminal : isAgent ? Bot : isBrowser ? Globe : Wrench;
+  const inText = call.name === "RunScript" ? String(args.path ?? "") : JSON.stringify(args, null, 2);
+  const Icon = call.name === "RunScript" ? Terminal : isAgent ? Bot : isBrowser ? Globe : Wrench;
 
   return (
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50/70 text-sm">

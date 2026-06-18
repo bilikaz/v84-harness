@@ -19,7 +19,7 @@ function request(sessionId: string, c: ToolCall): { id: string; promise: Promise
 
 describe("approval bridge", () => {
   it("queues a pending entry and resolveApproval settles it with the verdict", async () => {
-    const a = request("s1", call("Bash"));
+    const a = request("s1", call("Delete"));
     expect(getPendingApprovals().some((p) => p.id === a.id)).toBe(true);
     resolveApproval(a.id, true);
     await expect(a.promise).resolves.toBe(true);
@@ -27,9 +27,9 @@ describe("approval bridge", () => {
   });
 
   it("denyApprovalsForSession settles ONLY that session's promises, all false", async () => {
-    const doomed1 = request("s-doomed", call("Bash"));
+    const doomed1 = request("s-doomed", call("Delete"));
     const doomed2 = request("s-doomed", call("Write"));
-    const alive = request("s-alive", call("Bash"));
+    const alive = request("s-alive", call("Delete"));
 
     denyApprovalsForSession("s-doomed");
     await expect(doomed1.promise).resolves.toBe(false);

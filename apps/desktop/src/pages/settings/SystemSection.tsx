@@ -16,9 +16,15 @@ export function SystemSection() {
   const [settleMs, setSettleMs] = useState(cfg.browser.settleMs);
   const [graceMs, setGraceMs] = useState(cfg.browser.graceMs);
   const [shots, setShots] = useState(cfg.browser.shots);
+  const [devMode, setDevMode] = useState(cfg.developerMode);
 
   function persist(): void {
     setConfigOverrides({ ...getConfigOverrides(), systemPrompt: value.trim() });
+  }
+
+  function persistDevMode(on: boolean): void {
+    setDevMode(on);
+    setConfigOverrides({ ...getConfigOverrides(), developerMode: on });
   }
 
   function persistBrowser(patch: { settleMs?: number; graceMs?: number; shots?: number }): void {
@@ -78,6 +84,15 @@ export function SystemSection() {
           onChange={(e) => setShots(e.target.valueAsNumber)}
           onBlur={() => Number.isInteger(shots) && shots > 0 && persistBrowser({ shots })}
         />
+      </Row>
+
+      <h3 className="mt-8 text-base font-semibold text-neutral-900">Developer</h3>
+      <p className="mt-1 text-sm text-neutral-500">
+        Lets the agent run JavaScript it writes, in a separate Node process. Off by default — when off the RunScript
+        tool isn’t offered at all. Each run still asks for your approval.
+      </p>
+      <Row label="Developer mode">
+        <input type="checkbox" className="h-4 w-4" checked={devMode} onChange={(e) => persistDevMode(e.target.checked)} />
       </Row>
     </div>
   );

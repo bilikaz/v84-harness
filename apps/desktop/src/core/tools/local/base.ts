@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { BaseTool } from "../base.ts";
@@ -44,6 +45,28 @@ export abstract class BaseWorkspaceTool extends BaseTool {
 
   protected expandWorkspace(command: string, cwd: string): string {
     return command.replace(/(^|[\s"'(=])\/workspace(?=\/|[\s"';:)&|<>]|$)/g, (_m, pre: string) => `${pre}${cwd}`);
+  }
+
+  // Recursively yield real file paths under dir. Symlinks (dirs and files) are skipped — never followed —
+  // so a walk can't escape the workspace or loop. Used by Find (names) and Grep (contents).
+  protected async *walk(dir: string): AsyncGenerator<string> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return; // unreadable dir — skip silently, like the shell tools did
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) yield* this.walk(full);
+      else if (e.isFile()) yield full;
+    }
+  }
+
+  // A real path under root → its /workspace-relative display form (forward slashes on every OS).
+  protected toWorkspacePath(real: string, root: string): string {
+    const rel = path.relative(root, real).split(path.sep).join("/");
+    return `${WORKSPACE_ROOT}/${rel}`;
   }
 
   protected resolvePath(virtual: string, cwd: string): string {

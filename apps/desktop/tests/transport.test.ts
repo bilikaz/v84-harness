@@ -37,7 +37,7 @@ describe("withRetry", () => {
   it("does NOT retry a 4xx client error — terminal error event", async () => {
     const make = makeOnce([], new HttpError(401, "401 Unauthorized bad key"));
     const got = await drain(withRetry(make, new AbortController().signal));
-    expect(got).toEqual([{ type: "error", message: "401 Unauthorized bad key" }]);
+    expect(got).toEqual([{ type: "error", message: "401 Unauthorized bad key", kind: "other" }]);
   });
 
   it("does NOT retry a capacity failure even as a 500 (context/OOM is deterministic in the payload) — terminal, clear message", async () => {
@@ -46,7 +46,7 @@ describe("withRetry", () => {
     const make = makeOnce([], new HttpError(500, "500 Internal Server Error: CUDA out of memory"));
     const got = await drain(withRetry(make, new AbortController().signal));
     expect(got).toHaveLength(1); // no retry events — single attempt
-    expect(got[0].type).toBe("error");
+    expect(got[0]).toMatchObject({ type: "error", kind: "capacity" }); // drives "out of memory" (not resumable)
     expect((got[0] as { message: string }).message).toContain("too large");
   });
 

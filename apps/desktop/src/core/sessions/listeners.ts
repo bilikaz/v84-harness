@@ -12,7 +12,9 @@ import {
   pushToolResult,
   pushTurn,
   resetLast,
+  resumeTail,
   addChildRun,
+  setErrorKind,
   setLastToolCalls,
   setStreaming,
   setUsage,
@@ -25,7 +27,15 @@ const offs: Array<() => void> = [
   bus.on("turn:start", (e) => pushTurn(e.sessionId, e.text, e.images, e.files, e.videos)),
   bus.on("text", (e) => appendToLast(e.sessionId, e.delta, "text")),
   bus.on("thinking", (e) => appendToLast(e.sessionId, e.delta, "thinking")),
-  bus.on("turn:error", (e) => appendToLast(e.sessionId, `⚠️ ${e.message}`, "text")),
+  bus.on("turn:error", (e) => {
+    appendToLast(e.sessionId, `⚠️ ${e.message}`, "text");
+    setErrorKind(e.sessionId, e.kind ?? "other"); // feeds the roster status + resume guidance
+  }),
+  bus.on("turn:resume", (e) => {
+    resumeTail(e.sessionId); // drop the errored ⚠️ tail, open a fresh assistant — no new user message
+    setStreaming(e.sessionId, true);
+    notify();
+  }),
 
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
   bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.videos, e.childSessionIds, e.browserWindowId)),
@@ -41,6 +51,7 @@ const offs: Array<() => void> = [
   bus.on("usage", (e) => setUsage(e.sessionId, (e.usage.inputTokens ?? 0) + (e.usage.outputTokens ?? 0))),
 
   bus.on("turn:start", (e) => {
+    setErrorKind(e.sessionId, undefined); // a fresh turn clears any prior failure state
     setStreaming(e.sessionId, true);
     notify();
   }),

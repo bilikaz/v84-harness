@@ -21,6 +21,8 @@ export function normalize(s: Partial<Session> & { messages?: Partial<Message>[] 
     containerId: s.containerId ?? "",
     agentId: s.agentId,
     parentId: s.parentId,
+    alias: s.alias,
+    errorKind: s.errorKind,
     tools: Array.isArray(s.tools) ? s.tools : [],
     usedTokens: s.usedTokens,
     unread: s.unread,

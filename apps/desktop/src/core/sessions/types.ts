@@ -1,7 +1,7 @@
 // Chat domain vocabulary — Session, Message, attachments.
 
-import type { ToolCallRequest } from "../../llm/types.ts";
-export type { ToolCallRequest };
+import type { ErrorKind, ToolCallRequest } from "../../llm/types.ts";
+export type { ToolCallRequest, ErrorKind };
 
 export type { Image, Video } from "../../llm/types.ts";
 import type { Image, Video } from "../../llm/types.ts";
@@ -51,6 +51,12 @@ export interface Session {
   containerId: string; // the container (chat/local/remote) this session lives in — never null
   agentId?: string;
   parentId?: string;
+  // A sub-agent's short, stable, per-parent handle (1, 2, 3…) assigned at spawn — what the orchestrator
+  // addresses it by (ULIDs are hallucination bait). Only set on children (sessions with a parentId).
+  alias?: number;
+  // Why this session's last turn failed, if it did — drives the roster status and the resume guidance
+  // (capacity = out-of-memory, not resumable). Cleared when a new turn starts or one succeeds.
+  errorKind?: ErrorKind;
   tools: SessionTool[];
   messages: Message[];
   usedTokens?: number;

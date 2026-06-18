@@ -6,16 +6,17 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import { ImageDescribe } from "../src/core/tools/local/imageDescribe.ts";
 import { VideoDescribe } from "../src/core/tools/local/videoDescribe.ts";
-import { createClient } from "../src/llm/index.ts";
+import { CONFIG_DEFAULTS } from "../src/core/config/defaults.ts";
+import type { Config } from "../src/core/config/index.ts";
 import type { CallTarget, ModelService } from "../src/llm/types.ts";
 
-// The describe tools resolve their recognition slot through the llm client; build one per test with the
-// media slots it should know about (the same seam generate-image-wire exercises).
-function llmWith(slots: Partial<Record<ModelService, CallTarget>>) {
-  return createClient({ resolve: (s) => slots[s] ?? null });
+// A tool reads its dependencies through a () => Config getter (ADR-0048); it derives the llm client from
+// config.llm and resolves its recognition slot there. Build a config per test carrying the media slots.
+function cfgWith(slots: Partial<Record<ModelService, CallTarget>>): () => Config {
+  return () => ({ app: CONFIG_DEFAULTS, llm: slots, plugins: {} }) as unknown as Config;
 }
-const describeImageTool = { execute: (args: Record<string, unknown>, slots: Partial<Record<ModelService, CallTarget>>) => new ImageDescribe(llmWith(slots)).run(args, root) };
-const describeVideoTool = { execute: (args: Record<string, unknown>, slots: Partial<Record<ModelService, CallTarget>>) => new VideoDescribe(llmWith(slots)).run(args, root) };
+const describeImageTool = { execute: (args: Record<string, unknown>, slots: Partial<Record<ModelService, CallTarget>>) => new ImageDescribe(cfgWith(slots)).run(args, root) };
+const describeVideoTool = { execute: (args: Record<string, unknown>, slots: Partial<Record<ModelService, CallTarget>>) => new VideoDescribe(cfgWith(slots)).run(args, root) };
 
 let root: string;
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);

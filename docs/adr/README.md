@@ -36,7 +36,7 @@ loading. Its index row below stays.
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
 | [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
 | [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | superseded by 0043 → archived |
-| [0022](0022-subagent-orchestration.md) | Sub-agent orchestration: child sessions + ListAgents/RunAgent pair | accepted |
+| [0022](0022-subagent-orchestration.md) | Sub-agent orchestration: child sessions + ListAgents/RunAgent pair | accepted (extended into a standing team by 0058) |
 | [0023](0023-agent-definition-binding-and-ceiling.md) | Agent definition: workspace binding toggle + per-agent tool ceiling | accepted (placement clause superseded by 0026) |
 | [0024](0024-agent-runs-through-composer.md) | Agent runs go through the composer (pseudo-session priming) | accepted |
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
@@ -70,6 +70,10 @@ loading. Its index row below stays.
 | [0053](0053-browser-read-readiness.md) | Browser read-readiness — "loaded" = document-complete + network-idle settle + fixed grace (refines 0051) | accepted |
 | [0054](0054-browser-capture-cdp-multishot.md) | Browser capture — CDP `fromSurface:false` (hidden/0×0 windows) + multi-shot scroll-and-shoot; `capturePage` → `string[]` (supersedes 0051's native capture) | accepted |
 | [0055](0055-browser-read-delivery.md) | Browser read delivery — `Browser` returns the page (shared `readWindow`) + per-window op lock; snapshot always shown (refines 0051) | accepted |
+| [0056](0056-portable-workspace-tools.md) | Portable workspace tools — drop Bash, pure-Node Grep, add Find/Move/Copy/Delete, Read `offset` (amends 0033) | accepted |
+| [0057](0057-developer-gated-script-execution.md) | RunScript — out-of-process, developer-gated code execution + `developerMode` flag | accepted |
+| [0058](0058-conversational-sub-agent-orchestration.md) | Conversational sub-agent orchestration — a standing team (aliases, ActiveAgents/AskAgent/ResumeAgent), typed outcomes, resume-from-history (supersedes/extends 0022) | accepted |
+| [0059](0059-builtin-general-agent.md) | Built-in universal General agent — always summonable, inherits the caller's context via its container | accepted |
 
 ## Needs review / important missing parts
 

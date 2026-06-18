@@ -106,7 +106,7 @@ export function AgentEditView({ id }: { id: string }) {
               value={agent.system}
               onChange={(e) => saveAgent(id, { system: e.target.value })}
               placeholder={t("agents.systemPlaceholder")}
-              rows={10}
+              rows={4}
               className={monoCls}
             />
           </Field>
@@ -116,7 +116,7 @@ export function AgentEditView({ id }: { id: string }) {
               value={agent.user}
               onChange={(e) => saveAgent(id, { user: e.target.value })}
               placeholder={t("agents.userPlaceholder")}
-              rows={6}
+              rows={4}
               className={monoCls}
             />
           </Field>

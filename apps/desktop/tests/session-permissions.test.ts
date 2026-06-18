@@ -31,7 +31,7 @@ function addAgent(name: string, patch: Parameters<typeof saveAgent>[1]): string 
   return id;
 }
 
-// A local-workspace container (empty policy → per-tool defaults: Read 2, Bash 1).
+// A local-workspace container (empty policy → per-tool defaults: Read 2, Delete 1).
 async function localContainer(): Promise<string> {
   const c = await createContainer({ type: "local", name: "x", placement: "local", config: { root: "/tmp/x" } });
   return c!.id;
@@ -56,13 +56,13 @@ describe("sessionToolModes", () => {
   });
 
   it("applies min(workspace policy, ceiling) for a workspace agent", async () => {
-    const cid = await localContainer(); // empty policy → per-tool defaults: Read 2, Bash 1
-    const agentId = addAgent("reviewer", { workspace: true, tools: { Write: 0, Bash: 2 } });
+    const cid = await localContainer(); // empty policy → per-tool defaults: Read 2, Delete 1
+    const agentId = addAgent("reviewer", { workspace: true, tools: { Write: 0, Delete: 2 } });
     const sid = createSession({ containerId: cid, agentId });
     const modes = await modesFor(sid);
     expect(modes.Read).toBe(2); // workspace grant, ceiling auto
     expect(modes.Write).toBe(0); // ceiling restricts
-    expect(modes.Bash).toBe(1); // ceiling can't extend the workspace's "ask"
+    expect(modes.Delete).toBe(1); // ceiling can't extend the workspace's "ask"
   });
 
   it("degrades to the plain workspace policy when the agent is deleted", async () => {

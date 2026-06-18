@@ -14,8 +14,7 @@ const PROMPTS: Tree = {
       "You have access to the user's workspace folder through your file tools. " +
       "The workspace root is `/workspace`: write paths as `/workspace/…` (or workspace-relative). A path that " +
       "leaves `/workspace` is refused — nothing outside the workspace is reachable. " +
-      "Example paths: `/workspace/src/index.ts`, `notes.md`. " +
-      "Bash runs in the same root — use relative paths or `/workspace/…`.",
+      "Example paths: `/workspace/src/index.ts`, `notes.md`.",
   },
   browser: {
     system:
