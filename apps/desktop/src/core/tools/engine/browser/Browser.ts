@@ -2,14 +2,15 @@ import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.t
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
 import { browserFleet } from "../../../browser.ts";
 import { sessionWindowsHint } from "./list.ts";
+import { readWindow } from "./read.ts";
 
 // Soft per-session ceiling so a confused model can't spawn windows endlessly — at the cap, opening is
 // refused and the existing windows are listed to reuse instead.
 const MAX_WINDOWS = 5;
 
 // The browser ACTION: open a fresh window (id "new") or navigate one of yours in place. Windows are owned
-// by the calling session and addressed by short ids (1, 2, …). Returns a short status — read with
-// BrowserContent. Gated (ask): loading arbitrary URLs is the consequential bit; the reads are not.
+// by the calling session and addressed by short ids (1, 2, …). Returns the loaded page (text + links +
+// snapshot) directly, so no follow-up read is needed. Gated (ask): loading arbitrary URLs is consequential.
 export class Browser extends BaseEngineTool {
   get schema(): ToolSpec {
     return {
@@ -20,7 +21,7 @@ export class Browser extends BaseEngineTool {
           "Open or navigate a browser window and load a URL. To follow a link or move on, REUSE a window you " +
           "already have — pass its id (e.g. 1) to navigate it in place (keeping its session/login). Pass " +
           'id:"new" only when you genuinely need a separate window. Check ActiveBrowsers for your window ids ' +
-          "rather than guessing. After it loads, read the page with BrowserContent.",
+          "rather than guessing. Returns the loaded page (text, links, snapshot) — no separate read needed.",
         parameters: {
           type: "object",
           properties: {
@@ -63,17 +64,24 @@ export class Browser extends BaseEngineTool {
       }
       const newId = await fleet.open(url, ec.sessionId);
       if (!newId) return { output: "could not open a browser window." };
-      await fleet.whenLoaded(newId);
-      const w = fleet.record(newId);
-      if (!w) return { output: `the window was closed before it finished loading.`, browserWindowId: newId };
-      return { output: `opened browser ${w.alias} at ${url} — loaded. Read it with BrowserContent {id: ${w.alias}}.`, browserWindowId: newId };
+      // Hold the window across load → read so the page is returned here — no separate BrowserContent needed.
+      const read = await fleet.withWindow(newId, async () => {
+        await fleet.whenLoaded(newId);
+        const w = fleet.record(newId);
+        return w ? readWindow(fleet, w.alias, newId) : null;
+      });
+      if (!read) return { output: `the window was closed before it finished loading.`, browserWindowId: newId };
+      return { ...read, browserWindowId: newId };
     }
 
     const w = fleet.recordByAlias(ec.sessionId, id);
     if (!w) return { output: `no browser "${id}" in this session. ${sessionWindowsHint(ec.sessionId)}` };
-    await fleet.navigate(w.id, url);
-    await fleet.whenLoaded(w.id);
-    if (!fleet.record(w.id)) return { output: `browser ${id} was closed before it finished loading.`, browserWindowId: w.id };
-    return { output: `browser ${id} navigated to ${url} — loaded. Read it with BrowserContent {id: ${id}}.`, browserWindowId: w.id };
+    const read = await fleet.withWindow(w.id, async () => {
+      await fleet.navigate(w.id, url);
+      await fleet.whenLoaded(w.id);
+      return fleet.record(w.id) ? readWindow(fleet, id, w.id) : null;
+    });
+    if (!read) return { output: `browser ${id} was closed before it finished loading.`, browserWindowId: w.id };
+    return { ...read, browserWindowId: w.id };
   }
 }

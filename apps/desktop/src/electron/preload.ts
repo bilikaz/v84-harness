@@ -33,14 +33,14 @@ const api: ElectronApi = {
     },
   },
   browser: {
-    open: (url: string) => ipcRenderer.invoke(IPC.browserOpen, url),
-    navigate: (id: string, url: string) => ipcRenderer.invoke(IPC.browserNavigate, id, url),
+    open: (url: string, settleMs?: number, graceMs?: number) => ipcRenderer.invoke(IPC.browserOpen, url, settleMs, graceMs),
+    navigate: (id: string, url: string, settleMs?: number, graceMs?: number) => ipcRenderer.invoke(IPC.browserNavigate, id, url, settleMs, graceMs),
     get: (id: string) => ipcRenderer.invoke(IPC.browserGet, id),
     active: () => ipcRenderer.invoke(IPC.browserActive),
     show: (id: string, bounds: ViewBounds) => ipcRenderer.invoke(IPC.browserShow, id, bounds),
     hide: () => ipcRenderer.invoke(IPC.browserHide),
     close: (id: string) => ipcRenderer.invoke(IPC.browserClose, id),
-    capturePage: (id: string) => ipcRenderer.invoke(IPC.browserCapture, id),
+    capturePage: (id: string, shots?: number) => ipcRenderer.invoke(IPC.browserCapture, id, shots),
     onEvent: (cb: (id: string, update: BrowserWindowUpdate) => void) => {
       const h = (_e: unknown, id: string, update: BrowserWindowUpdate): void => cb(id, update);
       ipcRenderer.on(IPC.browserEvent, h);

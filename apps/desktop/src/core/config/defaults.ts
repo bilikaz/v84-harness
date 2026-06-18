@@ -52,6 +52,16 @@ export interface ConfigApp {
   };
   // The prompt-upsampling heal loop (re-prompts until the output validates).
   upsample: { maxAttempts: number };
+  browser: {
+    // Network-idle settle cap (ms): after a page's document loads, the fleet waits for in-flight
+    // requests to quiet down (JS-rich pages fetch content after load) before reading, up to this cap.
+    settleMs: number;
+    // Extra fixed grace (ms) after the network settles, before the page counts as loaded — late assets
+    // (images especially) often arrive in this window.
+    graceMs: number;
+    // How many viewport screenshots a read/describe captures down the page (top + lower sections).
+    shots: number;
+  };
   session: {
     // Tokens kept free below the context window (headroom for the response +
     // auto-compaction summary) when the model card doesn't set its own.
@@ -100,6 +110,7 @@ export const CONFIG_DEFAULTS: ConfigApp = {
   },
   llm: { maxHealAttempts: 3 },
   upsample: { maxAttempts: 3 },
+  browser: { settleMs: 5000, graceMs: 2000, shots: 2 },
   session: {
     contextReserve: 50_000,
     reserveMinFraction: 0.1,

@@ -11,7 +11,19 @@ import { wirePluginEvents } from "./pluginServices.ts";
 import { IPC } from "./bridge.ts";
 
 const electron = createRequire(import.meta.url)("electron") as typeof import("electron");
-const { app, BrowserWindow, screen } = electron;
+const { app, BrowserWindow, screen, shell } = electron;
+
+// A link in the chat (a model-returned URL) is an http(s) navigation away from the app shell — it would
+// replace the renderer with the page and strand the user (the host window has no back button). Send those
+// to the OS browser instead. The app's own URL (dev http://localhost, prod file://) navigates in place;
+// in-app routing is hash-based and never trips will-navigate. Fleet windows are separate webContents — they
+// navigate freely. Returns true if the URL was handled externally.
+function externalize(url: string): boolean {
+  if (!/^https?:\/\//i.test(url)) return false; // app's own file:// / about: — let it navigate
+  if (process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL)) return false; // dev app origin
+  void shell.openExternal(url);
+  return true;
+}
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +58,14 @@ function createWindow(): void {
   wirePluginEvents((slug, type, payload) => win.webContents.send(IPC.pluginEvent, slug, type, payload));
   win.once("ready-to-show", () => win.show());
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(ZOOM));
+  // Keep the app shell put: open chat links in the OS browser instead of navigating the window away.
+  win.webContents.on("will-navigate", (e, url) => {
+    if (externalize(url)) e.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    externalize(url);
+    return { action: "deny" }; // never spawn a child window from the shell
+  });
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);

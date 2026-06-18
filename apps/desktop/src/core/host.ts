@@ -39,6 +39,7 @@ export interface BrowserWindowContent {
   title: string;
   text: string; // extracted page text
   links: string[]; // absolute hrefs on the page — navigation targets the agent can pick from
+  error?: string; // set when the last navigation failed (DNS/refused/etc.) — the page never loaded
 }
 
 // Pixel rect (in the host window's content coordinates) the overlay should occupy.
@@ -50,10 +51,11 @@ export interface ViewBounds {
 }
 
 export interface BrowserFleet {
-  // Opens a URL in a new (hidden) managed window; resolves to its id.
-  open(url: string): Promise<string>;
-  // Loads a new URL in an existing window (agent navigation by URL).
-  navigate(id: string, url: string): Promise<void>;
+  // Opens a URL in a new (hidden) managed window; resolves to its id. settleMs caps the network-idle wait,
+  // graceMs is the extra fixed wait after it settles.
+  open(url: string, settleMs?: number, graceMs?: number): Promise<string>;
+  // Loads a new URL in an existing window (agent navigation by URL). settleMs/graceMs as in open.
+  navigate(id: string, url: string, settleMs?: number, graceMs?: number): Promise<void>;
   // Current url/title/extracted text, or null if the window is gone (closed/unknown).
   get(id: string): Promise<BrowserWindowContent | null>;
   // The live fleet — closed windows are absent, which is the agent's "it's gone" signal.
@@ -64,9 +66,9 @@ export interface BrowserFleet {
   hide(): Promise<void>;
   // Destroy the live view, freeing its renderer (the core fleet drops the record).
   close(id: string): Promise<void>;
-  // A PNG screenshot of the page as a data URL, or null if the view is gone/blank. Used by BrowserContent
-  // (vision agents) and BrowserDescribe (the imageRec model).
-  capturePage(id: string): Promise<string | null>;
+  // PNG screenshots of the page as data URLs (top + lower sections, `shots` of them), or [] if the view is
+  // gone/blank. Used by BrowserContent (vision agents) and BrowserDescribe (the imageRec model).
+  capturePage(id: string, shots?: number): Promise<string[]>;
   // Push window changes (main → renderer) — url/title/loading on navigation, title update, load start/stop —
   // so the god-view stays current and the load dot flips live. Returns an unsubscribe fn.
   onEvent(cb: (id: string, update: BrowserWindowUpdate) => void): () => void;
