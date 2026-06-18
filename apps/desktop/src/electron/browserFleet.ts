@@ -95,8 +95,9 @@ export class BrowserFleet {
   }
 
   // PNG screenshots down the page (top + lower sections, `shots` of them) as data URLs, or [] if gone/blank.
-  // CDP renders the page even when the view is hidden/0×0; `clip` + captureBeyondViewport grab regions below
-  // the fold without scrolling. Reuses the window's persistent debugger; attaches ad-hoc only if it has none.
+  // CDP renders the page even when the view is hidden/0×0; lower sections come from scrolling the document
+  // and shooting each stop (a `clip` offset is IGNORED under fromSurface:false — see ADR-0054). Reuses the
+  // window's persistent debugger; attaches ad-hoc only if it has none.
   async capturePage(id: string, shots = SHOTS_DEFAULT): Promise<string[]> {
     const entry = this.views.get(id);
     if (!entry) return []; // genuinely closed
