@@ -22,6 +22,17 @@ describe("baseWithPrefix", () => {
     expect(baseWithPrefix("https://g.local/v1beta", "", "/v1beta")).toBe("https://g.local/v1beta");
   });
 
+  it("leaves a non-v1 version path alone instead of appending /v1", () => {
+    expect(baseWithPrefix("https://api.edenai.run/v3", "", "/v1")).toBe("https://api.edenai.run/v3");
+    expect(baseWithPrefix("https://host/v2", "", "/v1")).toBe("https://host/v2");
+    expect(baseWithPrefix("https://host/openai", "", "/v1")).toBe("https://host/openai");
+  });
+
+  it("collapses accidental double slashes in the path without touching the scheme", () => {
+    expect(baseWithPrefix("https://api.edenai.run//v3", "", "/v1")).toBe("https://api.edenai.run/v3");
+    expect(baseWithPrefix("https://api.openai.com", "", "/v1")).toBe("https://api.openai.com/v1");
+  });
+
   it("strips trailing slashes before deciding", () => {
     expect(baseWithPrefix("https://api.openai.com/", "", "/v1")).toBe("https://api.openai.com/v1");
     expect(baseWithPrefix("https://proxy.local/v1///", "", "/v1")).toBe("https://proxy.local/v1");
