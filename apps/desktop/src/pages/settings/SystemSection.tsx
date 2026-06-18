@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fieldInputFull } from "./Field.tsx";
+import { fieldInput, fieldInputFull, Row } from "./Field.tsx";
 import { defaultSystemPrompt } from "../../lib/prompts.ts";
 import { getAppConfig, getConfigOverrides, setConfigOverrides } from "../../core/config/index.ts";
 
@@ -11,10 +11,19 @@ import { getAppConfig, getConfigOverrides, setConfigOverrides } from "../../core
 // now — the section can grow later.
 export function SystemSection() {
   const { t } = useTranslation();
-  const [value, setValue] = useState(getAppConfig().systemPrompt);
+  const cfg = getAppConfig();
+  const [value, setValue] = useState(cfg.systemPrompt);
+  const [settleMs, setSettleMs] = useState(cfg.browser.settleMs);
+  const [graceMs, setGraceMs] = useState(cfg.browser.graceMs);
+  const [shots, setShots] = useState(cfg.browser.shots);
 
   function persist(): void {
     setConfigOverrides({ ...getConfigOverrides(), systemPrompt: value.trim() });
+  }
+
+  function persistBrowser(patch: { settleMs?: number; graceMs?: number; shots?: number }): void {
+    const o = getConfigOverrides();
+    setConfigOverrides({ ...o, browser: { ...o.browser, ...patch } });
   }
 
   return (
@@ -33,6 +42,43 @@ export function SystemSection() {
         <div className="mb-1 text-xs font-medium text-neutral-500">{t("system.defaultLabel")}</div>
         <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-neutral-600">{defaultSystemPrompt()}</pre>
       </div>
+
+      <h3 className="mt-8 text-base font-semibold text-neutral-900">Browser windows</h3>
+      <p className="mt-1 text-sm text-neutral-500">How the agent reads pages it opens with the Browser tool.</p>
+      <Row label="Settle wait cap (ms)">
+        <input
+          type="number"
+          min={0}
+          step={500}
+          className={fieldInput}
+          value={settleMs}
+          onChange={(e) => setSettleMs(e.target.valueAsNumber)}
+          onBlur={() => Number.isFinite(settleMs) && settleMs > 0 && persistBrowser({ settleMs })}
+        />
+      </Row>
+      <Row label="Post-load grace (ms)">
+        <input
+          type="number"
+          min={0}
+          step={500}
+          className={fieldInput}
+          value={graceMs}
+          onChange={(e) => setGraceMs(e.target.valueAsNumber)}
+          onBlur={() => Number.isFinite(graceMs) && graceMs > 0 && persistBrowser({ graceMs })}
+        />
+      </Row>
+      <Row label="Screenshots per read">
+        <input
+          type="number"
+          min={1}
+          max={6}
+          step={1}
+          className={fieldInput}
+          value={shots}
+          onChange={(e) => setShots(e.target.valueAsNumber)}
+          onBlur={() => Number.isInteger(shots) && shots > 0 && persistBrowser({ shots })}
+        />
+      </Row>
     </div>
   );
 }

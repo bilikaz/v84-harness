@@ -67,6 +67,9 @@ loading. Its index row below stays.
 | [0050](0050-engine-tool-tier.md) | Engine tool tier — driver-level tools (sub-agents + browser) discovered + gated as a tier (amends 0022) | accepted |
 | [0051](0051-browser-windows-session-owned.md) | Browser windows — session-owned, ephemeral, agent-driven (short ids, capturePage, load push, comment routing) | accepted |
 | [0052](0052-system-prompt-layering.md) | System-prompt layering — overridable base (agent→workspace→global→default) + appended capability blocks (incl. plugin systemPrompt) | accepted |
+| [0053](0053-browser-read-readiness.md) | Browser read-readiness — "loaded" = document-complete + network-idle settle + fixed grace (refines 0051) | accepted |
+| [0054](0054-browser-capture-cdp-multishot.md) | Browser capture — CDP `fromSurface:false` (hidden/0×0 windows) + multi-shot scroll-and-shoot; `capturePage` → `string[]` (supersedes 0051's native capture) | accepted |
+| [0055](0055-browser-read-delivery.md) | Browser read delivery — `Browser` returns the page (shared `readWindow`) + per-window op lock; snapshot always shown (refines 0051) | accepted |
 
 ## Needs review / important missing parts
 

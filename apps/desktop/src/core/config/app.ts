@@ -80,6 +80,7 @@ function validate(c: ConfigApp): ConfigApp {
     },
     llm: { maxHealAttempts: posInt(c.llm.maxHealAttempts, d.llm.maxHealAttempts) },
     upsample: { maxAttempts: posInt(c.upsample.maxAttempts, d.upsample.maxAttempts) },
+    browser: { settleMs: posInt(c.browser?.settleMs, d.browser.settleMs), graceMs: posInt(c.browser?.graceMs, d.browser.graceMs), shots: posInt(c.browser?.shots, d.browser.shots) },
     session: {
       contextReserve: posInt(c.session.contextReserve, d.session.contextReserve),
       reserveMinFraction: fraction(c.session.reserveMinFraction, d.session.reserveMinFraction),

@@ -55,3 +55,25 @@
    try { hits.push(await semanticLeg(q)); }
    catch (e) { if (!lexicalQuery) throw e; note = "semantic search unavailable — service down; lexical matches only"; }
    ```
+
+8. **Bound calls that can hang.** A throw is recoverable; a promise that *never
+   settles* is not — `.catch` can't fire on a non-rejection. A cross-process or
+   external call can hang forever when the far side is wedged: a renderer
+   `executeJavaScript` or a CDP command against a page stuck mid-navigation (a dead
+   host / DNS failure), an IPC `invoke` whose handler is missing. Wrap such calls in
+   a timeout that resolves a safe fallback, so the worst case is a bounded wait and a
+   degraded result, not a hung operation. Don't retry a call that *timed out* (vs.
+   one that resolved empty) — the far side is wedged; another attempt just burns the
+   timeout again.
+
+   ```ts
+   function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+     return new Promise((resolve) => {
+       let done = false;
+       const settle = (v: T) => { if (!done) { done = true; clearTimeout(t); resolve(v); } };
+       const t = setTimeout(() => settle(fallback), ms);
+       p.then(settle, () => settle(fallback));
+     });
+   }
+   const text = await withTimeout(wc.executeJavaScript(js, true) as Promise<string>, READ_TIMEOUT, "");
+   ```

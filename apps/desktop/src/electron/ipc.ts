@@ -47,14 +47,14 @@ export function registerIpc(electron: Electron): void {
 
   // Browser fleet — the WebContentsView manager is created with the host window (initBrowserFleet),
   // so resolve it lazily: these handlers register before the window exists, but only fire after.
-  ipcMain.handle(IPC.browserOpen, (_e: unknown, url: string) => getBrowserFleet()?.open(url) ?? "");
-  ipcMain.handle(IPC.browserNavigate, (_e: unknown, id: string, url: string) => void getBrowserFleet()?.navigate(id, url));
+  ipcMain.handle(IPC.browserOpen, (_e: unknown, url: string, settleMs?: number, graceMs?: number) => getBrowserFleet()?.open(url, settleMs, graceMs) ?? "");
+  ipcMain.handle(IPC.browserNavigate, (_e: unknown, id: string, url: string, settleMs?: number, graceMs?: number) => void getBrowserFleet()?.navigate(id, url, settleMs, graceMs));
   ipcMain.handle(IPC.browserGet, (_e: unknown, id: string) => getBrowserFleet()?.get(id) ?? null);
   ipcMain.handle(IPC.browserActive, () => getBrowserFleet()?.active() ?? []);
   ipcMain.handle(IPC.browserShow, (_e: unknown, id: string, bounds: ViewBounds) => void getBrowserFleet()?.show(id, bounds));
   ipcMain.handle(IPC.browserHide, () => void getBrowserFleet()?.hide());
   ipcMain.handle(IPC.browserClose, (_e: unknown, id: string) => void getBrowserFleet()?.close(id));
-  ipcMain.handle(IPC.browserCapture, (_e: unknown, id: string) => getBrowserFleet()?.capturePage(id) ?? null);
+  ipcMain.handle(IPC.browserCapture, (_e: unknown, id: string, shots?: number) => getBrowserFleet()?.capturePage(id, shots) ?? []);
 
   ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
   ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));

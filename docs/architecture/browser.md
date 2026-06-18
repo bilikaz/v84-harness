@@ -3,7 +3,10 @@
 Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.md).
 ([ADR-0051](../adr/0051-browser-windows-session-owned.md) — session-owned/ephemeral model;
 [ADR-0050](../adr/0050-engine-tool-tier.md) — the tools are engine-tier;
-[ADR-0036](../adr/0036-host-capability-surface.md) — the host capability.)
+[ADR-0036](../adr/0036-host-capability-surface.md) — the host capability;
+[ADR-0053](../adr/0053-browser-read-readiness.md) — read-readiness (network-idle + grace);
+[ADR-0054](../adr/0054-browser-capture-cdp-multishot.md) — CDP multi-shot capture;
+[ADR-0055](../adr/0055-browser-read-delivery.md) — `Browser` returns the page + per-window lock.)
 
 The fetch feature: agent-driven web browsing in managed windows. **Electron only** — a window is a
 `WebContentsView` owned in the main process; on the web host the fleet degrades to a no-op and the tools
@@ -25,21 +28,34 @@ never advertise.
 
 - **`core/browser.ts`** — the renderer fleet store (`Consumer`), the reactive runtime state over the host.
   Owns `ownerSessionId`, the per-session alias counter, `loading` state, `whenLoaded` (the `Browser` tool
-  awaits it), `record`/`recordByAlias`, `windowsForSession` (agent scope), `useWindows` (god-view),
-  `closeForSession` (session-close cleanup), and `buildForward` (the comment snapshot). `close()` removes;
-  `refresh()` reconciles with main and drops windows main no longer knows.
+  awaits it; now resolves on document + network-idle + grace, [ADR-0053](../adr/0053-browser-read-readiness.md)),
+  `withWindow(id, fn)` (the per-window op lock, [ADR-0055](../adr/0055-browser-read-delivery.md)),
+  `record`/`recordByAlias`, `windowsForSession` (agent scope), `useWindows` (god-view), `closeForSession`
+  (session-close cleanup), and `buildForward` (the comment snapshot). Reads the settle/grace/shots tunables
+  from `getAppConfig().browser` and passes them per-call to the host. `close()` removes; `refresh()`
+  reconciles with main and drops windows main no longer knows.
 - **`core/tools/engine/browser/`** — the agent tools ([ADR-0050](../adr/0050-engine-tool-tier.md)):
-  - `Browser(id, url)` — open (`id:"new"`) or navigate; awaits load; **ask**-gated; returns `browserWindowId`.
-  - `BrowserContent(id)` — live url/title/text + links, plus a screenshot when the model takes images.
-  - `BrowserDescribe(id, query?)` — screenshot → the `imageRec` model → a text page-structure description
-    (forms/buttons/layout) for a text-only agent; advertised only when an `imageRec` model is configured.
+  - `Browser(id, url)` — open (`id:"new"`) or navigate; **ask**-gated; holds the window lock across
+    navigate → load → read and **returns the loaded page** (text + links + snapshot(s)) so no follow-up read
+    is needed ([ADR-0055](../adr/0055-browser-read-delivery.md)); returns `browserWindowId`.
+  - `BrowserContent(id)` — **re-read** a window (live url/title/text + links + snapshot(s)) under the lock;
+    the snapshot is always attached (the engine withholds it from a text-only model, the UI still shows it).
+  - `BrowserDescribe(id, query?)` — screenshot(s) → the `imageRec` model → a text page-structure description
+    (forms/buttons/layout) for a text-only agent; sends all frames; advertised only when an `imageRec` model
+    is configured.
+  - `read.ts` `readWindow()` — the shared read (text + links + snapshots) used by `Browser` and `BrowserContent`.
   - `ActiveBrowsers()` — list this session's live windows.
   - `list.ts` `sessionWindowsHint(sid)` — the inline window list returned on a bad/closed id, so a wrong
     guess redirects to reuse (the `resolveAgent`-on-miss pattern). `Browser` also soft-caps opens per session.
-- **Host** (`core/host.ts` `BrowserFleet`, electron `electron/browserFleet.ts`): `open`/`navigate`/`get`/
-  `active`/`show`/`hide`/`close`/`capturePage` + an `onEvent` push. Main pushes `{url, title, loading}` on
-  navigate / title change / load start-stop over `IPC.browserEvent`, so the god-view tracks navigation live
-  and `whenLoaded` resolves. Wired across `bridge.ts` → `preload.ts` → `index.ts` → `init.ts` (`bindHostEvents`).
+- **Host** (`core/host.ts` `BrowserFleet`, electron `electron/browserFleet.ts`): `open`/`navigate` (take
+  `settleMs`/`graceMs`), `get`/`active`/`show`/`hide`/`close`, `capturePage(id, shots) → string[]` (CDP
+  off-surface, scroll-and-shoot, [ADR-0054](../adr/0054-browser-capture-cdp-multishot.md)) + an `onEvent`
+  push. Each window keeps a CDP session: `Network` events drive the network-idle settle, `Page` drives
+  capture; `did-fail-load` settles dead hosts; all read ops are time-bounded so a hung navigation can't hang
+  the read. Main pushes `{url, title, loading}` over `IPC.browserEvent`, so the god-view tracks navigation
+  live and `whenLoaded` resolves. Wired across `bridge.ts` → `preload.ts` → `index.ts` → `init.ts`
+  (`bindHostEvents`). Chat links open in the OS browser (`index.ts` `will-navigate`/`setWindowOpenHandler`),
+  not in the app shell.
 - **UI** (`pages/browser/`): `BrowserFleetPanel` (the all-sessions god-view — live windows, owner labels,
   load dot, close), `BrowserOverlay` (full-screen view + the comment box). A `Browser` tool call renders a
   `BrowserWindowLink` in its tool card (alive → opens the overlay, closed → tombstone) — the same shape as

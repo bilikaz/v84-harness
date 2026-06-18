@@ -35,14 +35,14 @@ export interface ElectronApi {
   };
   // The managed browser-window fleet (the fetch feature) — WebContentsViews owned in main.
   browser: {
-    open(url: string): Promise<string>;
-    navigate(id: string, url: string): Promise<void>;
+    open(url: string, settleMs?: number, graceMs?: number): Promise<string>;
+    navigate(id: string, url: string, settleMs?: number, graceMs?: number): Promise<void>;
     get(id: string): Promise<BrowserWindowContent | null>;
     active(): Promise<BrowserWindowInfo[]>;
     show(id: string, bounds: ViewBounds): Promise<void>;
     hide(): Promise<void>;
     close(id: string): Promise<void>;
-    capturePage(id: string): Promise<string | null>;
+    capturePage(id: string, shots?: number): Promise<string[]>;
     // Subscribe to main→renderer window-change pushes ({id, {url, title, loading}}). Returns an unsubscribe fn.
     onEvent(cb: (id: string, update: BrowserWindowUpdate) => void): () => void;
   };

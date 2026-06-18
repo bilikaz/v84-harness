@@ -10,6 +10,7 @@
 
 import { Consumer } from "./storage/consumer.ts";
 import { cap } from "./tools/base.ts";
+import { getAppConfig } from "./config/app.ts";
 import type { Ctx } from "./ctx.ts";
 import type { BrowserWindowContent, BrowserWindowInfo, BrowserWindowUpdate, ViewBounds } from "./host.ts";
 
@@ -34,6 +35,9 @@ interface FleetState {
 class BrowserFleetStore extends Consumer<FleetState> {
   // id → callbacks waiting on a load to finish (the Browser tool awaits these via whenLoaded).
   private readonly loadWaiters = new Map<string, Array<() => void>>();
+  // id → tail of the window's serialized op chain (withWindow). A step's tool calls run concurrently
+  // (engine Promise.all), so without this a read can hit a window mid-navigation.
+  private readonly locks = new Map<string, Promise<unknown>>();
   // sessionId → last per-session window number. Monotonic, never reused — "browser 2" always means the
   // same window for the life of the session, even after earlier ones close.
   private readonly aliasSeq = new Map<string, number>();
@@ -61,7 +65,7 @@ class BrowserFleetStore extends Consumer<FleetState> {
   async open(url: string, ownerSessionId: string): Promise<string | null> {
     const host = this.host;
     if (!host) return null;
-    const id = await host.open(url);
+    const id = await host.open(url, getAppConfig().browser.settleMs, getAppConfig().browser.graceMs);
     if (!id) return null;
     const n = (this.aliasSeq.get(ownerSessionId) ?? 0) + 1;
     this.aliasSeq.set(ownerSessionId, n);
@@ -114,21 +118,37 @@ class BrowserFleetStore extends Consumer<FleetState> {
 
   useViewingId = (): string | null => this.useSelect((s) => s.viewingId);
 
+  // Serialize ops on one window so they chain instead of overlapping: Browser holds it across
+  // navigate → whenLoaded → read, so a concurrent BrowserContent on the same window waits for the page
+  // to be ready rather than racing the load. The map entry is dropped once nothing is queued behind it.
+  async withWindow<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(id) ?? Promise.resolve();
+    const run = prev.then(() => fn(), () => fn());
+    const tail = run.then(() => {}, () => {});
+    this.locks.set(id, tail);
+    try {
+      return await run;
+    } finally {
+      if (this.locks.get(id) === tail) this.locks.delete(id);
+    }
+  }
+
   async navigate(id: string, url: string): Promise<void> {
     const host = this.host;
     if (!host) return;
     // Mark loading up front so whenLoaded waits for THIS navigation to settle, not a stale state.
     this.patch(id, (w) => ({ ...w, url, loading: true, updatedAt: Date.now() }));
-    await host.navigate(id, url);
+    await host.navigate(id, url, getAppConfig().browser.settleMs, getAppConfig().browser.graceMs);
   }
 
   getContent(id: string): Promise<BrowserWindowContent | null> {
     return this.host?.get(id) ?? Promise.resolve(null);
   }
 
-  // A PNG screenshot of the page (data URL), for BrowserContent (vision) and BrowserDescribe (imageRec).
-  capturePage(id: string): Promise<string | null> {
-    return this.host?.capturePage(id) ?? Promise.resolve(null);
+  // PNG screenshots of the page (data URLs, top + lower sections), for BrowserContent (vision) and
+  // BrowserDescribe (imageRec). Empty if the view is gone/blank.
+  capturePage(id: string): Promise<string[]> {
+    return this.host?.capturePage(id, getAppConfig().browser.shots) ?? Promise.resolve([]);
   }
 
   // Host push on any window change: keep url/title/dot current (so the god-view tracks navigation), and

@@ -3,19 +3,36 @@
 // overlay on demand. Live views live here; the core store owns the records + tombstones.
 //
 // One shared session partition so a login/captcha solved in one window carries to the rest.
+//
+// Each window keeps a CDP session (debugger) attached: Network events drive a network-idle settle (a
+// JS-rich page fetches its content AFTER document load, so "loaded" = document done + network quiet),
+// and Page.captureScreenshot renders the page even while the view is hidden/0×0 (a background window).
 
 import type { BrowserWindowInfo, BrowserWindowContent, BrowserWindowUpdate, ViewBounds } from "../core/host.ts";
 
 type Electron = typeof import("electron");
 type BrowserWindow = import("electron").BrowserWindow;
 type WebContentsView = import("electron").WebContentsView;
+type Debugger = import("electron").Debugger;
 
 const PARTITION = "persist:scraper";
+const SETTLE_DEFAULT = 5000; // fallback network-idle cap if the caller passes none
+const GRACE_DEFAULT = 2000; // fallback post-settle grace if the caller passes none
+const QUIET_MS = 500; // network must stay idle this long after document load to count as settled
+const SHOTS_DEFAULT = 2;
+const READ_TIMEOUT = 4000; // ceiling for a single read op (executeJavaScript / CDP command)
 
 interface Entry {
   view: WebContentsView;
   updatedAt: number;
   loading: boolean;
+  debug: boolean; // CDP attached + Network tracked (false if the debugger couldn't attach)
+  inflight: Set<string>; // in-flight CDP request ids — empty ⇒ network idle
+  settleMs: number; // network-idle cap for the current load
+  graceMs: number; // extra fixed wait after the network settles (late images, etc.)
+  quietTimer?: ReturnType<typeof setTimeout>;
+  capTimer?: ReturnType<typeof setTimeout>;
+  graceTimer?: ReturnType<typeof setTimeout>;
 }
 
 // Main → renderer window-change push (url/title/loading) so the god-view never goes stale.
@@ -31,7 +48,7 @@ export class BrowserFleet {
     private readonly emit: BrowserEmit,
   ) {}
 
-  open(url: string): string {
+  async open(url: string, settleMs = SETTLE_DEFAULT, graceMs = GRACE_DEFAULT): Promise<string> {
     const { WebContentsView } = this.electron;
     const id = crypto.randomUUID();
     // backgroundThrottling off so an off-screen window the agent reads doesn't stall (the
@@ -44,41 +61,106 @@ export class BrowserFleet {
     wc.on("did-navigate", () => this.touch(id));
     wc.on("did-navigate-in-page", () => this.touch(id));
     wc.on("page-title-updated", () => this.touch(id));
-    // Load state drives the dot (and the Browser tool's await): start loading on open, finish on stop.
-    wc.on("did-start-loading", () => this.setLoading(id, true));
-    wc.on("did-stop-loading", () => this.setLoading(id, false));
+    // Load state drives the dot + the Browser tool's await: start on load, finish once the network settles.
+    wc.on("did-start-loading", () => this.onLoadStart(id));
+    wc.on("did-stop-loading", () => this.onLoadStop(id));
+    // A dead host (DNS failure, refused) may never fire did-stop-loading — treat a main-frame failure as a
+    // load end so the settle resolves instead of hanging until whenLoaded's timeout. -3 is ABORTED (a normal
+    // cancel/redirect), not a failure.
+    wc.on("did-fail-load", (_e, errorCode, _desc, _url, isMainFrame) => {
+      if (isMainFrame && errorCode !== -3) this.onLoadStop(id);
+    });
     this.host.contentView.addChildView(view);
     view.setVisible(false);
-    this.views.set(id, { view, updatedAt: Date.now(), loading: true });
+    const entry: Entry = { view, updatedAt: Date.now(), loading: true, debug: false, inflight: new Set(), settleMs, graceMs };
+    this.views.set(id, entry);
+    // Attach + start listening BEFORE loadURL so Network tracking sees the requests. The enable commands
+    // are fire-and-forget: a fresh WebContentsView has no renderer until loadURL, so AWAITING them here
+    // would deadlock (they only resolve once the renderer exists, which loadURL below creates).
+    entry.debug = this.attachDebug(id, wc.debugger);
     void wc.loadURL(url);
     return id;
   }
 
-  async capturePage(id: string): Promise<string | null> {
+  navigate(id: string, url: string, settleMs = SETTLE_DEFAULT, graceMs = GRACE_DEFAULT): void {
     const entry = this.views.get(id);
-    if (!entry) return null;
-    const img = await entry.view.webContents.capturePage().catch(() => null);
-    return img && !img.isEmpty() ? img.toDataURL() : null;
+    if (!entry) return;
+    entry.settleMs = settleMs; // did-start-loading resets the idle tracking for this navigation
+    entry.graceMs = graceMs;
+    void entry.view.webContents.loadURL(url);
+  }
+
+  // PNG screenshots down the page (top + lower sections, `shots` of them) as data URLs, or [] if gone/blank.
+  // CDP renders the page even when the view is hidden/0×0; `clip` + captureBeyondViewport grab regions below
+  // the fold without scrolling. Reuses the window's persistent debugger; attaches ad-hoc only if it has none.
+  async capturePage(id: string, shots = SHOTS_DEFAULT): Promise<string[]> {
+    const entry = this.views.get(id);
+    if (!entry) return []; // genuinely closed
+    const wc = entry.view.webContents;
+    const dbg = wc.debugger;
+    let adhoc = false;
+    let overrode = false;
+    try {
+      if (!dbg.isAttached()) {
+        try {
+          dbg.attach("1.3");
+          adhoc = true;
+        } catch {
+          /* DevTools owns it — fall through to native */
+        }
+      }
+      if (!dbg.isAttached()) return await this.nativeShot(wc);
+      await this.cmd(dbg, "Page.enable");
+      const b = entry.view.getBounds();
+      if (!b.width || !b.height) {
+        // Never-shown window has no viewport; impose one so there is something to lay out and capture.
+        await this.cmd(dbg, "Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 0, mobile: false });
+        overrode = true;
+      }
+      const m = (await this.cmd(dbg, "Page.getLayoutMetrics")) as {
+        cssLayoutViewport?: { clientHeight: number };
+        cssContentSize?: { height: number };
+      };
+      const vh = Math.round(m.cssLayoutViewport?.clientHeight || (overrode ? 800 : b.height) || 800);
+      const ch = Math.round(m.cssContentSize?.height || vh);
+      const offsets = shotOffsets(vh, ch, Math.max(1, shots));
+      // Scroll the document and capture the viewport at each stop — fromSurface:false renders the renderer's
+      // current (scrolled) view, so this is what actually moves down the page (a clip offset is ignored).
+      const origY = (await withTimeout(wc.executeJavaScript("window.scrollY", true) as Promise<number>, READ_TIMEOUT, 0)) || 0;
+      const out: string[] = [];
+      for (let i = 0; i < offsets.length; i++) {
+        await withTimeout(wc.executeJavaScript(`window.scrollTo(0, ${offsets[i]})`, true) as Promise<unknown>, READ_TIMEOUT, undefined);
+        const data = await this.shoot(dbg, i === 0, offsets[i] > 0); // retry first (paint gap); let scrolls paint
+        if (data) out.push(`data:image/png;base64,${data}`);
+      }
+      if (offsets.length > 1) await withTimeout(wc.executeJavaScript(`window.scrollTo(0, ${origY})`, true) as Promise<unknown>, READ_TIMEOUT, undefined); // restore
+      return out.length ? out : await this.nativeShot(wc);
+    } catch {
+      return await this.nativeShot(wc);
+    } finally {
+      if (overrode) await this.cmd(dbg, "Emulation.clearDeviceMetricsOverride");
+      if (adhoc && dbg.isAttached()) {
+        try {
+          dbg.detach();
+        } catch {
+          /* already gone */
+        }
+      }
+    }
   }
 
   async get(id: string): Promise<BrowserWindowContent | null> {
     const entry = this.views.get(id);
     if (!entry) return null;
     const wc = entry.view.webContents;
-    const text = (await wc
-      .executeJavaScript("document.body ? document.body.innerText : ''", true)
-      .catch(() => "")) as string;
-    // Absolute hrefs (a.href resolves relative ones), deduped and capped — the agent's navigation targets.
-    const links = (await wc
-      .executeJavaScript("[...new Set([...document.querySelectorAll('a[href]')].map(a => a.href))].slice(0, 200)", true)
-      .catch(() => [])) as string[];
+    // executeJavaScript can hang forever on a page stuck mid-navigation (DNS fail / dead host) — bound both,
+    // and run them together so a dead host pays one timeout, not two in series.
+    const [text, links] = await Promise.all([
+      withTimeout(wc.executeJavaScript("document.body ? document.body.innerText : ''", true) as Promise<string>, READ_TIMEOUT, ""),
+      // Absolute hrefs (a.href resolves relative ones), deduped and capped — the agent's navigation targets.
+      withTimeout(wc.executeJavaScript("[...new Set([...document.querySelectorAll('a[href]')].map(a => a.href))].slice(0, 200)", true) as Promise<string[]>, READ_TIMEOUT, []),
+    ]);
     return { id, url: wc.getURL(), title: wc.getTitle(), text, links };
-  }
-
-  navigate(id: string, url: string): void {
-    const entry = this.views.get(id);
-    if (!entry) return;
-    void entry.view.webContents.loadURL(url);
   }
 
   active(): BrowserWindowInfo[] {
@@ -118,10 +200,145 @@ export class BrowserFleet {
   close(id: string): void {
     const entry = this.views.get(id);
     if (!entry) return;
+    this.clearSettle(entry);
+    const dbg = entry.view.webContents.debugger;
+    if (dbg.isAttached()) {
+      try {
+        dbg.detach();
+      } catch {
+        /* already gone */
+      }
+    }
     if (this.visibleId === id) this.visibleId = null;
     this.host.contentView.removeChildView(entry.view);
     entry.view.webContents.close();
     this.views.delete(id);
+  }
+
+  // Attach the CDP session and start tracking in-flight requests (for network-idle). Best-effort: returns
+  // false if the debugger can't attach (e.g. DevTools already owns this webContents). The enable commands
+  // are fired without awaiting — they apply once the renderer exists (created by the caller's loadURL).
+  private attachDebug(id: string, dbg: Debugger): boolean {
+    try {
+      if (!dbg.isAttached()) dbg.attach("1.3");
+    } catch {
+      return false;
+    }
+    dbg.on("message", (_e, method, params: { requestId?: string; redirectResponse?: unknown }) => {
+      const entry = this.views.get(id);
+      if (!entry || !params?.requestId) return;
+      if (method === "Network.requestWillBeSent") {
+        if (params.redirectResponse) return; // a redirect continuation reuses the id — not a new request
+        entry.inflight.add(params.requestId);
+        if (entry.quietTimer) {
+          clearTimeout(entry.quietTimer); // network busy again — restart the quiet window
+          entry.quietTimer = undefined;
+        }
+      } else if (method === "Network.loadingFinished" || method === "Network.loadingFailed") {
+        entry.inflight.delete(params.requestId);
+        this.onMaybeIdle(id);
+      }
+    });
+    void dbg.sendCommand("Page.enable").catch(() => {});
+    void dbg.sendCommand("Network.enable").catch(() => {});
+    return true;
+  }
+
+  private onLoadStart(id: string): void {
+    const entry = this.views.get(id);
+    if (!entry) return;
+    this.clearSettle(entry);
+    entry.inflight.clear();
+    this.setLoading(id, true);
+  }
+
+  private onLoadStop(id: string): void {
+    const entry = this.views.get(id);
+    if (!entry) return;
+    if (!entry.debug) {
+      this.beginGrace(id); // no network tracking — fall back to document-complete, then the grace
+      return;
+    }
+    // Document done, but JS-rich pages fetch content now. Hold loading until the network goes quiet
+    // (QUIET_MS with nothing in flight) or the cap elapses, whichever comes first.
+    this.clearSettle(entry);
+    entry.capTimer = setTimeout(() => this.finishSettle(id), entry.settleMs);
+    this.onMaybeIdle(id); // already quiet? start the quiet window now
+  }
+
+  private onMaybeIdle(id: string): void {
+    const entry = this.views.get(id);
+    if (!entry || !entry.loading || !entry.capTimer) return; // only during the settle phase
+    if (entry.inflight.size > 0 || entry.quietTimer) return;
+    entry.quietTimer = setTimeout(() => this.finishSettle(id), QUIET_MS);
+  }
+
+  // Network settled — now a flat grace (late assets, especially images, often land in this window) before
+  // the page counts as loaded. A new navigation cancels it via clearSettle.
+  private finishSettle(id: string): void {
+    const entry = this.views.get(id);
+    if (!entry) return;
+    this.clearSettle(entry);
+    this.beginGrace(id);
+  }
+
+  private beginGrace(id: string): void {
+    const entry = this.views.get(id);
+    if (!entry) return;
+    if (entry.graceMs <= 0) {
+      this.setLoading(id, false);
+      return;
+    }
+    entry.graceTimer = setTimeout(() => {
+      const e = this.views.get(id);
+      if (!e) return;
+      e.graceTimer = undefined;
+      this.setLoading(id, false);
+    }, entry.graceMs);
+  }
+
+  private clearSettle(entry: Entry): void {
+    if (entry.quietTimer) {
+      clearTimeout(entry.quietTimer);
+      entry.quietTimer = undefined;
+    }
+    if (entry.capTimer) {
+      clearTimeout(entry.capTimer);
+      entry.capTimer = undefined;
+    }
+    if (entry.graceTimer) {
+      clearTimeout(entry.graceTimer);
+      entry.graceTimer = undefined;
+    }
+  }
+
+  // A CDP command, never-throw and time-bounded — a hung renderer (dead host) would otherwise hang forever.
+  private cmd(dbg: Debugger, method: string, params?: object): Promise<Record<string, unknown>> {
+    return withTimeout(dbg.sendCommand(method, params).catch(() => ({})) as Promise<Record<string, unknown>>, READ_TIMEOUT, {});
+  }
+
+  // One screenshot of the current (scrolled) viewport. Retries the first band — a client-rendered page can
+  // paint a beat after load, so the initial capture can come back empty. `scrolled` waits a beat first so the
+  // scroll has painted before the shot.
+  private async shoot(dbg: Debugger, retry: boolean, scrolled: boolean): Promise<string | undefined> {
+    if (scrolled) await new Promise((r) => setTimeout(r, 150));
+    const attempts = retry ? 4 : 1;
+    for (let a = 0; a < attempts; a++) {
+      if (a) await new Promise((r) => setTimeout(r, 200));
+      const r = (await withTimeout(
+        dbg.sendCommand("Page.captureScreenshot", { format: "png", fromSurface: false }).catch(() => ({ data: undefined })),
+        READ_TIMEOUT,
+        { data: undefined, timedOut: true },
+      )) as { data?: string; timedOut?: boolean };
+      if (r.data) return r.data;
+      if (r.timedOut) break; // hung renderer (dead host) — retrying just burns another timeout
+    }
+    return undefined;
+  }
+
+  private async nativeShot(wc: import("electron").WebContents): Promise<string[]> {
+    const img = await wc.capturePage().catch(() => null);
+    return img && !img.isEmpty() ? [img.toDataURL()] : [];
   }
 
   private touch(id: string): void {
@@ -146,6 +363,38 @@ export class BrowserFleet {
     const wc = entry.view.webContents;
     this.emit(id, { url: wc.getURL(), title: wc.getTitle(), loading: entry.loading });
   }
+}
+
+// Resolve with `fallback` if `p` doesn't settle within ms. A page stuck in a never-completing navigation
+// (DNS failure, hung connection) has no live frame, so executeJavaScript / CDP commands can hang FOREVER —
+// never resolving, so .catch can't save them. This is the hard ceiling that keeps a read from hanging.
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let done = false;
+    const settle = (v: T): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      resolve(v);
+    };
+    const t = setTimeout(() => settle(fallback), ms);
+    p.then(settle, () => settle(fallback));
+  });
+}
+
+// Screenshot y-offsets down the page: the top, then ~one viewport lower each shot (slight overlap so the
+// seam isn't lost), capped at the page bottom. A barely-scrollable page is just the top.
+function shotOffsets(vh: number, ch: number, shots: number): number[] {
+  const maxY = Math.max(0, ch - vh);
+  const offsets = [0];
+  if (maxY <= vh * 0.3 || shots <= 1) return offsets;
+  const step = Math.round(vh * 0.9);
+  for (let i = 1; i < shots; i++) {
+    const y = Math.min(i * step, maxY);
+    offsets.push(y);
+    if (y >= maxY) break; // reached the bottom — no point repeating it
+  }
+  return offsets;
 }
 
 // Module singleton — created once the host window exists (initBrowserFleet), resolved

@@ -9,8 +9,9 @@ import { sessionWindowsHint } from "./list.ts";
 // interactive. A text-only agent "sees" the page's logic, not just its scraped text. Mirrors ImageDescribe,
 // pointed at a live window instead of a file. Advertised only when an imageRec model is configured.
 const SYSTEM =
-  "You are a precise web-page analysis assistant. You receive ONE screenshot of a web page and an " +
-  "instruction from an automated agent that cannot see it — your answer is its only view. Describe the " +
+  "You are a precise web-page analysis assistant. You receive one or more screenshots of a web page (taken " +
+  "from the top down — the top of the page first, then lower sections) and an instruction from an automated " +
+  "agent that cannot see it — your answer is its only view. Treat the screenshots as one continuous page. Describe the " +
   "page's STRUCTURE and how to act on it: forms and their fields (with labels), buttons and links, " +
   "navigation, and overall layout. Say what is interactive and how a user would accomplish the main task. " +
   "Transcribe key visible text faithfully and give approximate positions (e.g. 'top-right'). Never invent " +
@@ -57,8 +58,8 @@ export class BrowserDescribe extends BaseEngineTool {
     if (!id) return { output: `BrowserDescribe needs an id. ${sessionWindowsHint(ec.sessionId)}` };
     const w = fleet.recordByAlias(ec.sessionId, id);
     if (!w) return { output: `no browser "${id}" in this session. ${sessionWindowsHint(ec.sessionId)}` };
-    const shot = await fleet.capturePage(w.id);
-    if (!shot) return { output: `browser ${id} could not be captured — it may have been closed. ${sessionWindowsHint(ec.sessionId)}` };
+    const shots = await fleet.withWindow(w.id, () => fleet.capturePage(w.id));
+    if (!shots.length) return { output: `browser ${id}: capture failed — the page may still be rendering. Try again, or use BrowserContent for its text. ${sessionWindowsHint(ec.sessionId)}` };
     const query =
       typeof args.query === "string" && args.query.trim()
         ? args.query.trim()
@@ -68,11 +69,11 @@ export class BrowserDescribe extends BaseEngineTool {
       handler: textHandler(),
       system: SYSTEM,
       signal: ec.signal,
-      messages: [{ role: "user", content: query, images: [{ url: shot, mime: "image/png" }] }],
+      messages: [{ role: "user", content: query, images: shots.map((url) => ({ url, mime: "image/png" })) }],
     });
     return {
       output: answer || "(the image model returned an empty answer)",
-      images: [{ url: shot, mime: "image/png", name: `browser-${id}.png` }],
+      images: shots.map((url, i) => ({ url, mime: "image/png", name: `browser-${id}${i ? `-${i + 1}` : ""}.png` })),
     };
   }
 }
