@@ -46,7 +46,17 @@ A model fumbles a long random id, and a fumble it can't recover often cascades:
 can actually echo, scoped so they don't collide where the model sees them, plus
 the self-healing miss above, close that loop. Keep the opaque id internally;
 expose the short one. (Observed: random-UUID browser-window ids drove a model to
-spawn duplicate windows until per-session integer ids replaced them.)
+spawn duplicate windows until per-session integer ids replaced them; the same
+short-alias scheme then addresses long-lived sub-agent runs.)
+
+Self-healing extends past misses to **failures**: when an operation fails, the
+result should name the **recovery action**, not just the error — and warn off the
+wrong one. A model handed "X failed: <message>" guesses what to do next; a model
+handed "X failed — do Y to continue (don't do Z, it will re-fail)" acts. Make the
+result the affordance: print the exact next call, and when a failure is *not*
+recoverable the obvious way, say so explicitly. (Observed: a sub-agent that lost
+its connection should be told to resume it; one that ran out of context must be
+told NOT to resume — continuing re-sends the same oversized prompt and re-fails.)
 
 ## 4. Announce every edit to the model's context
 

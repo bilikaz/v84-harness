@@ -1,5 +1,5 @@
 import { scope } from "../../lib/bus.ts";
-import type { StreamUsage, ToolCallRequest } from "../../llm/types.ts";
+import type { ErrorKind, StreamUsage, ToolCallRequest } from "../../llm/types.ts";
 import type { FileAttachment, Image, Video } from "./types.ts";
 
 // The session domain's events, registered on the bus via declaration merging.
@@ -29,6 +29,11 @@ export interface UsageReport {
 export interface TurnError {
   sessionId: string;
   message: string;
+  kind?: ErrorKind; // why it failed — drives roster status + resume guidance (default "other" when absent)
+}
+// Re-open a stalled turn to continue from its existing history — no new user message (see store.resumeTail).
+export interface TurnResume {
+  sessionId: string;
 }
 export interface MessageDone {
   sessionId: string;
@@ -88,6 +93,7 @@ export interface StreamRetry {
 declare module "../../lib/bus.ts" {
   interface BusEvents {
     "session:turn:start": TurnStart;
+    "session:turn:resume": TurnResume;
     "session:text": TextDelta;
     "session:thinking": ThinkingDelta;
     "session:thinking:done": ThinkingDone;

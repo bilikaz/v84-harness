@@ -59,6 +59,7 @@ function validate(c: ConfigApp): ConfigApp {
   const d = CONFIG_DEFAULTS;
   return {
     systemPrompt: typeof c.systemPrompt === "string" ? c.systemPrompt : d.systemPrompt,
+    developerMode: typeof c.developerMode === "boolean" ? c.developerMode : d.developerMode,
     media: {
       imageMaxDim: posInt(c.media.imageMaxDim, d.media.imageMaxDim),
       imageMaxBytes: posInt(c.media.imageMaxBytes, d.media.imageMaxBytes),

@@ -1,11 +1,19 @@
 import { agentsForContext, type Agent } from "../../../agents.ts";
+import { contextLimit, getSessions, getStreamingIds } from "../../../sessions/store.ts";
+import { resolveMain } from "../../../settings.ts";
+import type { ErrorKind, Session } from "../../../sessions/types.ts";
+import { cap } from "../../base.ts";
 import type { ToolSpec } from "../../types.ts";
 
-// Sub-agent catalog + name resolution + the stable schema pair. Helpers shared by the ListAgents /
-// RunAgent engine tools (and exercised directly by tests). Stable schemas so provider prompt caches hold.
+// Sub-agent catalog + name resolution + the stable schemas, plus the live-team helpers (roster, aliases,
+// status, memory). Shared by the orchestration engine tools (and exercised directly by tests). Stable
+// schemas so provider prompt caches hold.
 
 export const LIST_AGENTS = "ListAgents";
 export const RUN_AGENT = "RunAgent";
+export const ACTIVE_AGENTS = "ActiveAgents";
+export const ASK_AGENT = "AskAgent";
+export const RESUME_AGENT = "ResumeAgent";
 
 export const LIST_SCHEMA: ToolSpec = {
   type: "function",
@@ -53,8 +61,172 @@ export const RUN_SCHEMA: ToolSpec = {
   },
 };
 
+export const ACTIVE_SCHEMA: ToolSpec = {
+  type: "function",
+  function: {
+    name: ACTIVE_AGENTS,
+    description:
+      "List the sub-agents you have running this session — their short id (1, 2, …), status, and how full each " +
+      "one's memory is. Use it before AskAgent/ResumeAgent to see who is available and which are near their limit.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  },
+};
+
+export const ASK_SCHEMA: ToolSpec = {
+  type: "function",
+  function: {
+    name: ASK_AGENT,
+    description:
+      "Send a follow-up message to sub-agents you already started, by their short id — they answer from their " +
+      "existing context (reusing what they already did). Talk to several at once by passing several runs. For " +
+      "delegating more work or asking questions; to merely revive a crashed run, use ResumeAgent instead.",
+    parameters: {
+      type: "object",
+      properties: {
+        runs: {
+          type: "array",
+          minItems: 1,
+          description: "The agents to message, all at once.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "integer", description: "The agent's short id from ActiveAgents / a run result (1, 2, …)." },
+              message: { type: "string", description: "What to ask or tell this agent. Self-contained — it only sees its own conversation." },
+            },
+            required: ["id", "message"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["runs"],
+      additionalProperties: false,
+    },
+  },
+};
+
+export const RESUME_SCHEMA: ToolSpec = {
+  type: "function",
+  function: {
+    name: RESUME_AGENT,
+    description:
+      "Resume sub-agents whose run FAILED or was interrupted (e.g. lost connection) — each continues from exactly " +
+      "where it stopped, with all its work preserved. No message is sent: it just finishes its task. Address each " +
+      "by its short id; resume several at once. Do NOT use this for an out-of-memory failure (it would re-fail) or " +
+      "to send new instructions (use AskAgent).",
+    parameters: {
+      type: "object",
+      properties: {
+        runs: {
+          type: "array",
+          minItems: 1,
+          description: "The agents to resume, all at once.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "integer", description: "The agent's short id from the failure message (1, 2, …)." },
+            },
+            required: ["id"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["runs"],
+      additionalProperties: false,
+    },
+  },
+};
+
+// ── live team (roster, aliases, status, memory) ───────────────────────────────
+
+// A parent's child sub-agents, ordered by their stored short alias (1, 2, 3… in spawn order).
+export function childrenOf(parentSid: string): Session[] {
+  return getSessions()
+    .filter((s) => s.parentId === parentSid)
+    .sort((a, b) => (a.alias ?? 0) - (b.alias ?? 0));
+}
+
+// A child's short alias (0 if unset — only children carry one).
+export function aliasOf(s: Session): number {
+  return s.alias ?? 0;
+}
+
+// Resolve a short id (1, 2, …) to the child — lenient about quotes/spaces the model may add.
+export function resolveChild(parentSid: string, id: unknown): Session | undefined {
+  const n = Number(String(id).replace(/['"\s]/g, ""));
+  if (!Number.isInteger(n) || n < 1) return undefined;
+  return childrenOf(parentSid).find((s) => (s.alias ?? 0) === n);
+}
+
+// A sub-agent's current state, derived live: streaming → working; a stored errorKind → failed/out-of-memory.
+export function agentStatus(s: Session): "working" | "out of memory" | "failed" | "idle" {
+  if (getStreamingIds().has(s.id)) return "working";
+  if (s.errorKind === "capacity") return "out of memory";
+  if (s.errorKind) return "failed";
+  return "idle";
+}
+
+// Context occupancy as a percent (0–100), or null when the window is unknown — the roster's memory gauge.
+export function memoryPct(s: Session): number | null {
+  const cfg = resolveMain();
+  const limit = cfg ? contextLimit(cfg) : 0;
+  if (!limit) return null;
+  return Math.min(100, Math.round(((s.usedTokens ?? 0) / limit) * 100));
+}
+
+// The roster line for one agent: id, name, status, memory, and the task it was given (a label, NOT its
+// response — the orchestrator already has responses in its transcript; echoing them would duplicate/bloat).
+function rosterLine(s: Session): string {
+  const mem = memoryPct(s);
+  return `- ${s.alias} "${s.title || "(untitled)"}" — ${agentStatus(s)}${mem === null ? "" : ` — memory ${mem}%`}`;
+}
+
+// The orchestrator's live team, or a hint that it has none. Shown by ActiveAgents and on a bad id.
+export function rosterHint(parentSid: string): string {
+  const kids = childrenOf(parentSid);
+  if (!kids.length) return "You have no sub-agents running — start some with RunAgent.";
+  return "Your sub-agents:\n" + kids.map(rosterLine).join("\n");
+}
+
+// A failed run's result — names the cause AND the exact next call, so the orchestrator acts without
+// deliberation. Capacity (out-of-memory) is NOT resumable (re-prefills the overflow); everything else is.
+export function failureNote(alias: number, name: string, kind: ErrorKind | undefined, lastText: string): string {
+  const tail = lastText ? ` Its last output:\n${cap(lastText)}` : "";
+  if (kind === "capacity") {
+    return (
+      `sub-agent ${alias} ("${name}") ran out of memory (context full) — do NOT ResumeAgent it (it would re-fail). ` +
+      `Ask it to summarize what it has with AskAgent {"runs":[{"id":${alias},"message":"summarize your findings so far"}]}, ` +
+      `or start a fresh run with RunAgent.${tail}`
+    );
+  }
+  return (
+    `sub-agent ${alias} ("${name}") failed (connection lost) — its work is saved. ` +
+    `Resume it with ResumeAgent {"runs":[{"id":${alias}}]} to continue from where it stopped.${tail}`
+  );
+}
+
+// The built-in General agent — always summonable so an orchestrator can delegate ad-hoc work with no setup.
+// It inherits the CALLER's context for free: spawned into the parent's container with this empty system + no
+// tool ceiling, and getAgent("general") is undefined, so capabilityContext is container-driven — the child
+// gets the workspace's file tools when there's a workspace, the live base system either way. The `workspace`
+// flag just mirrors the context so it lists everywhere.
+export const GENERAL_AGENT_ID = "general";
+function generalAgent(hasWorkspace: boolean): Agent {
+  return {
+    id: GENERAL_AGENT_ID,
+    name: "General agent",
+    description: "A general-purpose helper with your own tools and context — give it any task to do on your behalf.",
+    system: "",
+    user: "",
+    workspace: hasWorkspace,
+    tools: {},
+  };
+}
+
 export function catalogAgents(hasWorkspace: boolean): Agent[] {
-  return agentsForContext(hasWorkspace).filter((a) => a.name.trim());
+  const stored = agentsForContext(hasWorkspace).filter((a) => a.name.trim());
+  // Inject the built-in General agent unless the user already defined one by that name (theirs wins, no clash).
+  const hasGeneral = stored.some((a) => normalizeName(a.name) === "general agent");
+  return hasGeneral ? stored : [generalAgent(hasWorkspace), ...stored];
 }
 
 export function agentToolSchemas(hasWorkspace: boolean): ToolSpec[] {

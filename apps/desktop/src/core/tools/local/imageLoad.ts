@@ -56,7 +56,7 @@ export class ImageLoad extends BaseWorkspaceTool {
       const media: Image = { url: dataUrl, mime, name: path.basename(real) };
       return { ok: true, output: `Loaded ${p} (${fmtMB(st.size)} ${mime}) — attached above for your review.`, images: [media] };
     } catch (e) {
-      return { ok: false, output: `ImageLoad failed for "${p}": ${errorMessage(e)}. Try List or Bash to check the path.` };
+      return { ok: false, output: `ImageLoad failed for "${p}": ${errorMessage(e)}. Try List to check the path.` };
     }
   }
 }

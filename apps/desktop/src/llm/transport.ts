@@ -84,6 +84,9 @@ export async function* withRetry(
       if (attempt >= MAX_TRANSPORT_RETRIES || !isRetryable(e)) {
         yield {
           type: "error",
+          // Capacity = context full / OOM (terminal, not resumable). A retryable-class failure that exhausted
+          // its budget (5xx/429/dropped connection) is transport (resumable). A non-retryable 4xx is "other".
+          kind: isCapacityError(e) ? "capacity" : isRetryable(e) ? "transport" : "other",
           message: isCapacityError(e)
             ? `The conversation is too large for the model — it exceeded the context window or the server ran out of memory. Shorten the message, remove attachments, or start a new chat. (${msg})`
             : msg,

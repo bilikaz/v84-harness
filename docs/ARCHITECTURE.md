@@ -108,6 +108,7 @@ Deep dives, one per subsystem — read the one for the area you're touching
 |----------|--------|
 | [architecture/state.md](architecture/state.md) | Reactive `Consumer` pattern + hooks; the typed event bus |
 | [architecture/sessions.md](architecture/sessions.md) | Sessions engine module shape; the turn loop; sub-agents; media resend window |
+| [architecture/agents.md](architecture/agents.md) | Agents: definitions + ceiling; the standing team (aliases, roster, AskAgent/ResumeAgent); typed outcomes; resume-from-history; the built-in General agent |
 | [architecture/tools.md](architecture/tools.md) | Tool system: general / workspace / account registry tiers + the engine tier (driver-level tools); virtual root; caps |
 | [architecture/browser.md](architecture/browser.md) | Browser fleet: session-owned/ephemeral windows, the agent tools, host capturePage + load push, the god-view + comment flow |
 | [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, LLMConfig, Provider classes, response handlers, heal |

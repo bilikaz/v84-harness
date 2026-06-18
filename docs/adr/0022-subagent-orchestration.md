@@ -1,6 +1,6 @@
 # ADR-0022: Sub-agent orchestration — child sessions + the ListAgents/RunAgent pair
 
-Status: accepted
+Status: accepted (fire-and-collect extended into a standing team by [ADR-0058](0058-conversational-sub-agent-orchestration.md); tool location moved to the engine tier by [ADR-0050](0050-engine-tool-tier.md))
 Date: 2026-06-10
 
 ## Context

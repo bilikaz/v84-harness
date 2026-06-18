@@ -240,6 +240,9 @@ export function setActive(id: string): void {
 export function createSession(init: SessionInit = {}, opts: { activate?: boolean } = {}): string {
   const containerId = init.containerId ?? getActiveContainerId() ?? "";
   const s = makeSession({ ...init, containerId });
+  // A child gets a stable short alias (1, 2, 3…) within its parent, assigned in spawn order. Children are
+  // created sequentially, so count+1 is the next handle — survives reload (it's persisted on the row).
+  if (init.parentId) s.alias = sessions.filter((x) => x.parentId === init.parentId).length + 1;
   sessions = [s, ...sessions];
   if (opts.activate !== false) activeId = s.id;
   persistSessionMeta(s.id);
@@ -402,6 +405,26 @@ export function resetLast(sid: string): void {
 export function pushAssistant(sid: string): void {
   const msg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
+  notify();
+}
+
+// Stamp (or clear) why a session's last turn failed — feeds the roster status and resume guidance.
+export function setErrorKind(sid: string, kind: Session["errorKind"]): void {
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, errorKind: kind } : s));
+  notify();
+}
+
+// Open a RESUME turn: drop the trailing errored assistant message (the "⚠️ …" one) so the history ends at
+// the already-gathered tool results, then push a fresh assistant to stream into. The model continues from
+// where it stalled — no new user message, so it finishes the task instead of answering a re-prompt.
+export function resumeTail(sid: string): void {
+  sessions = sessions.map((s) => {
+    if (s.id !== sid) return s;
+    const messages = s.messages.slice();
+    if (messages[messages.length - 1]?.role === "assistant") messages.pop();
+    messages.push({ id: crypto.randomUUID(), role: "assistant", text: "", createdAt: Date.now() });
+    return { ...s, messages, errorKind: undefined };
+  });
   notify();
 }
 

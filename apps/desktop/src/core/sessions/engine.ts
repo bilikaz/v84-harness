@@ -1,4 +1,4 @@
-import type { ToolCallRequest, ToolSpec } from "../../llm/types.ts";
+import type { ErrorKind, ToolCallRequest, ToolSpec } from "../../llm/types.ts";
 import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
 import { llmLog } from "../../llm/debug.ts";
 import type { Attachments, Image, Video, Session } from "./types.ts";
@@ -35,11 +35,13 @@ import { compact as compactSession } from "./compaction.ts";
 // Validator for the model's final (no-tool) turn: throw to reject — the engine injects a correction and retries.
 export type OutputValidator = (text: string) => void;
 
-// How a turn ended; `text` is the final answer — partial if aborted.
+// How a turn ended; `text` is the final answer — partial if aborted. `errorKind` is set when errored —
+// it tells the orchestrator what to do next (capacity = don't resume; transport = resumable).
 export interface TurnResult {
   text: string;
   errored: boolean;
   aborted: boolean;
+  errorKind?: ErrorKind;
 }
 
 export interface SendOptions extends Attachments {
@@ -150,18 +152,33 @@ export class SessionEngine {
   private async runTurn(sid: string, userText: string, opts: SendOptions): Promise<TurnResult> {
     const firstExchange = (getSession(sid)?.messages.length ?? 0) === 0;
     const autoName = opts.autoName !== false;
-
     // Forwarded context is a hidden user message that must precede the visible turn the model reads.
     if (opts.context) bus.emit("context", { sessionId: sid, text: opts.context });
     // turn:start must append the user + assistant placeholder BEFORE history is read.
     bus.emit("turn:start", { sessionId: sid, text: userText, images: opts.images, videos: opts.videos, files: opts.files });
+    return this.drive(sid, opts, { firstExchange, autoName, userText });
+  }
 
+  // Resume a stalled turn: continue from the EXISTING history with no new user message, so the model
+  // finishes the task instead of answering a re-prompt (the "Understood" failure). Drops the errored ⚠️
+  // tail so history ends at the already-gathered tool results. Null if the session is gone or busy.
+  async resume(sid: string): Promise<TurnResult | null> {
+    if (!getSession(sid) || getStreamingIds().has(sid)) return null;
+    await ensureLoaded(sid);
+    bus.emit("turn:resume", { sessionId: sid });
+    return this.drive(sid, {}, { firstExchange: false, autoName: false, userText: "" });
+  }
+
+  // The shared turn body: setup → step loop → finalize. Both runTurn (after pushing the user turn) and
+  // resume (after re-opening the tail) call it — the only difference is how the turn was opened above.
+  private async drive(sid: string, opts: SendOptions, meta: { firstExchange: boolean; autoName: boolean; userText: string }): Promise<TurnResult> {
+    const { firstExchange, autoName, userText } = meta;
     const cfg = resolveMain();
     if (!cfg) {
-      bus.emit("turn:error", { sessionId: sid, message: "no chat model is configured — pick a provider and model in Settings." });
+      bus.emit("turn:error", { sessionId: sid, message: "no chat model is configured — pick a provider and model in Settings.", kind: "other" });
       bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: true, firstExchange, autoName, userText });
       bus.emit("turn:end", { sessionId: sid, errored: true });
-      return { text: "", errored: true, aborted: false };
+      return { text: "", errored: true, aborted: false, errorKind: "other" };
     }
 
     const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
@@ -189,6 +206,7 @@ export class SessionEngine {
     let finalText = "";
     let finalThinking = "";
     let errored = false;
+    let errorKind: ErrorKind | undefined;
     let healAttempts = 0;
 
     const maxSteps = getAppConfig().session.maxSteps;
@@ -228,8 +246,9 @@ export class SessionEngine {
           system,
           tools: toolSpecs,
           signal: controller.signal,
-          handler: this.chatStepHandler(sid, () => {
+          handler: this.chatStepHandler(sid, (kind) => {
             errored = true;
+            errorKind = kind;
           }),
         });
         finalText = text;
@@ -248,9 +267,11 @@ export class SessionEngine {
                 continue;
               }
               errored = true;
+              errorKind = "other";
               bus.emit("turn:error", {
                 sessionId: sid,
                 message: `output validation failed after ${healAttempts} heal attempt(s): ${errorMessage(e)}`,
+                kind: "other",
               });
             }
           }
@@ -326,27 +347,30 @@ export class SessionEngine {
       // Step budget spent: emit an error — silent truncation reads as a finished answer.
       if (step >= maxSteps && !errored && !controller.signal.aborted) {
         errored = true;
+        errorKind = "other";
         bus.emit("turn:error", {
           sessionId: sid,
           message: `tool loop stopped after ${maxSteps} steps without a final answer — the task may be looping or too complex for one turn.`,
+          kind: "other",
         });
       }
     } catch (e) {
       // A user Stop aborts the controller → the stream throws here; that's a clean stop, not an error.
       if (!controller.signal.aborted) {
         errored = true;
-        bus.emit("turn:error", { sessionId: sid, message: errorMessage(e) });
+        errorKind = "other";
+        bus.emit("turn:error", { sessionId: sid, message: errorMessage(e), kind: "other" });
       }
     } finally {
       this.inflight.delete(sid);
       bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, userText });
       bus.emit("turn:end", { sessionId: sid, errored });
     }
-    return { text: finalText, errored, aborted: controller.signal.aborted };
+    return { text: finalText, errored, aborted: controller.signal.aborted, errorKind: errored ? errorKind : undefined };
   }
 
-  // Streams one chat step's events onto the session bus; `onError` flags a terminal stream error (already emitted) so the turn loop stops.
-  private chatStepHandler(sid: string, onError: () => void): ResponseHandler<{ text: string; thinking: string; calls: ToolCallRequest[] }> {
+  // Streams one chat step's events onto the session bus; `onError` flags a terminal stream error (already emitted) so the turn loop stops, with its kind.
+  private chatStepHandler(sid: string, onError: (kind: ErrorKind) => void): ResponseHandler<{ text: string; thinking: string; calls: ToolCallRequest[] }> {
     return {
       async handle(interaction) {
         if (interaction.kind !== "chat") throw new Error("the chat step expects a chat interaction.");
@@ -377,8 +401,8 @@ export class SessionEngine {
           } else if (evt.type === "usage") {
             bus.emit("usage", { sessionId: sid, usage: evt.usage });
           } else if (evt.type === "error") {
-            onError();
-            bus.emit("turn:error", { sessionId: sid, message: evt.message });
+            onError(evt.kind);
+            bus.emit("turn:error", { sessionId: sid, message: evt.message, kind: evt.kind });
             break;
           }
         }

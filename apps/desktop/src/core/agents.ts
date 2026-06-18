@@ -53,7 +53,7 @@ const SEED: Agent[] = [
       "If everything looks good, say so briefly instead of inventing problems.",
     user: "Review the code in this workspace. Start from `/`, focus on what looks most load-bearing.",
     workspace: true,
-    tools: { ...AGENT_TOOLS_DEFAULT, Write: 0, Edit: 0, CreateFolder: 0, Bash: 0 },
+    tools: { ...AGENT_TOOLS_DEFAULT, Write: 0, Edit: 0, CreateFolder: 0, Move: 0, Copy: 0, Delete: 0, RunScript: 0 },
   },
 ];
 

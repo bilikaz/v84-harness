@@ -247,7 +247,7 @@
     "instructionsHint": "Neprivalomas nuolatinis sisteminis nurodymas šios darbo srities agentams.",
     "instructionsPlaceholder": "pvz., tai pnpm monorepo; prieš baigiant paleisk typecheck.",
     "tools": "Įrankiai",
-    "toolsHint": "Failų įrankiai apriboti šiuo aplanku; tik Bash gali išeiti už jo ribų, todėl pagal numatytuosius nustatymus klausia.",
+    "toolsHint": "Failų įrankiai apriboti šiuo aplanku; ardantieji, pvz. Delete, klausia prieš veiksmą.",
     "modeOff": "Išjungta",
     "modeOffHint": "agentui nepateikiamas",
     "modeAsk": "Klausti",

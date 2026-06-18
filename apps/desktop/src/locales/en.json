@@ -247,7 +247,7 @@
     "instructionsHint": "Optional standing system prompt for agents in this workspace.",
     "instructionsPlaceholder": "e.g. This is a pnpm monorepo; run typecheck before finishing.",
     "tools": "Tools",
-    "toolsHint": "File tools are confined to this folder; only Bash can step outside, so it asks by default.",
+    "toolsHint": "File tools are confined to this folder; destructive ones like Delete ask before acting.",
     "modeOff": "Off",
     "modeOffHint": "withheld from the agent",
     "modeAsk": "Ask",

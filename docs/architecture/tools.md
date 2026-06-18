@@ -14,7 +14,7 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   tool module may also export plain **helpers** alongside the class — see registry. Four cheap per-tool checks: `canRun()` (capability),
   `isPermissioned()` (is it gated? `BaseWorkspaceTool` → `true`), `needsWorkspace()`
   (requires a workspace folder; `BaseWorkspaceTool` → `true`), and `defaultPermission()`
-  (default policy mode; `Bash` → ask, rest → allow). `OUTPUT_CAP` / `cap()` live in
+  (default policy mode; the destructive/code tools `Delete` + `RunScript` → ask, rest → allow). `OUTPUT_CAP` / `cap()` live in
   `tools/base.ts`; the vocabulary in `tools/types.ts`.
 - **`registry.ts`** (`ToolRegistry`) is the registry engine: a folder of eager-globbed
   modules → pre-instantiated tools by name → resolve (find → `canRun` → parse → run). It
@@ -29,11 +29,17 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
     without a browser) is permissioned, **default ask** — it can authenticate and act anywhere, so the
     human approves each call. `needsWorkspace()=false`, so it stays available in chat (not masked off like
     fs tools). On electron it runs in main (no CORS); on the web host it's subject to the browser's CORS.
-  - **`local/`** — gated by the per-workspace policy (`0|1|2`): `Read`, `List`,
-    `Grep`, `Write`, `Edit`, `CreateFolder`, `Bash`, `ImageLoad`, `VideoLoad`,
-    `ImageDescribe`, `VideoDescribe`. Need Node (fs/shell), so globbed only into electron main and
-    absent from the web bundle. A tool here needs Node but not necessarily a workspace folder — it can
-    override `needsWorkspace() = false` (e.g. a plugin's MySQL tool).
+  - **`local/`** — gated by the per-workspace policy (`0|1|2`): `Read` (paged via `offset`), `List`,
+    `Find`, `Grep`, `Write`, `Edit`, `CreateFolder`, `Move`, `Copy`, `Delete`, `RunScript`, `ImageLoad`,
+    `VideoLoad`, `ImageDescribe`, `VideoDescribe`. Need Node, so globbed only into electron main and
+    absent from the web bundle. **Portable by construction** ([ADR-0056](../adr/0056-portable-workspace-tools.md)):
+    every file tool is pure `node:fs` (no shelling out to `grep`/`bash`), so they behave identically on
+    Windows/Mac/Linux — there is no free-form shell. `RunScript` is the one code-execution tool: it runs a
+    workspace `.js` in a **separate** Node process (the app's bundled runtime via `ELECTRON_RUN_AS_NODE`,
+    never eval'd into the harness), and is **developer-gated** — `canRun()` reads `config.app.developerMode`,
+    so it isn't advertised, listed, or runnable unless the user turns developer mode on
+    ([ADR-0057](../adr/0057-developer-gated-script-execution.md)). A tool here needs Node but not necessarily a
+    workspace folder — it can override `needsWorkspace() = false` (e.g. a plugin's MySQL tool).
   - **`account/`** — the memory tools (`SaveMemory`, `SearchMemory`, `GetMemory`,
     `EditMemory`, `DeleteMemory`): permissionless, but `canRun()` gates them on a
     **connected account** (`BaseAccountTool` → `isConnected()`). They call the
@@ -69,10 +75,11 @@ Lives in `core/tools/engine/`:
   advertises `engineToolSchemas(ec)` alongside the registry schemas and routes `isEngineTool` calls through
   `runEngineTool`. The glob is HERE, not in `base.ts`: Vite hoists eager globs above class declarations, so
   globbing in the contract file imports the tools before `BaseEngineTool` exists.
-- **Members**: `agents/` — `ListAgents` / `RunAgent` (the sub-agent pair, [ADR-0022](../adr/0022-subagent-orchestration.md),
-  relocated here; `RunAgent` spawns via `ec.engine`). `browser/` — `Browser` / `BrowserContent` /
-  `BrowserDescribe` / `ActiveBrowsers` ([browser.md](browser.md)). Both families are `childSafe = false`
-  (top-level only, depth-1).
+- **Members**: `agents/` — the orchestration family `ListAgents` / `RunAgent` / `ActiveAgents` / `AskAgent` /
+  `ResumeAgent` (a standing, alias-addressed sub-agent team, [agents.md](agents.md),
+  [ADR-0058](../adr/0058-conversational-sub-agent-orchestration.md); they spawn/continue sessions via
+  `ec.engine`). `browser/` — `Browser` / `BrowserContent` / `BrowserDescribe` / `ActiveBrowsers`
+  ([browser.md](browser.md)). Both families are `childSafe = false` (top-level only, depth-1).
 
 This is where driver-level tools are **finally permission-gated** — previously they were dispatched
 ad-hoc, before the policy path, with no gate.

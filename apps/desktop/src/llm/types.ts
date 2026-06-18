@@ -74,13 +74,17 @@ export interface ToolSpec {
   function: { name: string; description: string; parameters: unknown };
 }
 
+// Why a turn failed — drives recovery: "capacity" (context full / OOM) is NOT resumable (re-prefills the
+// same oversized prompt), "transport" (connection lost) IS, "other" is anything else.
+export type ErrorKind = "capacity" | "transport" | "other";
+
 export type StreamEvent =
   | { type: "text"; delta: string }
   | { type: "thinking"; delta: string }
   | { type: "tool_call"; call: ToolCallRequest }
   | { type: "usage"; usage: StreamUsage }
   | { type: "retry"; message: string }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; kind: ErrorKind }
   | { type: "done" };
 
 export type ProviderKind = TextProviderKind | "generate";
