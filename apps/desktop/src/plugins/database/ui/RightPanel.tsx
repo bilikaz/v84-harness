@@ -6,20 +6,20 @@ import { useCtx } from "../../../renderer/ctx.tsx";
 import { cn } from "../../../lib/cn.ts";
 import { usePluginsConfig } from "../../../core/plugins/config.ts";
 import { invokePluginService } from "../../../core/plugins/service.ts";
-import { MYSQL_SLUG, type MysqlConnection, type MysqlSettings } from "../types.ts";
+import { DATABASE_SLUG, type DbConnection, type DbSettings } from "../types.ts";
 
 const btn = "shrink-0 rounded-md border border-neutral-200 px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-50";
 
-// Right-rail card (shown when the MySQL plugin is enabled): the configured connections with live
+// Right-rail card (shown when the Database plugin is enabled): the configured connections with live
 // connect / disconnect. A connection with no saved password prompts for one inline — used to open the
 // session pool (never persisted). Connection management is the plugin's SERVICE (not agent tools): all
 // calls go over ctx.api.invokePlugin. Live status is read via the service's status method, refreshed after
 // each action.
-export function MysqlConnectionsPanel() {
+export function DatabaseConnectionsPanel() {
   const { t } = useTranslation();
   const ctx = useCtx();
   const cfg = usePluginsConfig();
-  const conns = (cfg[MYSQL_SLUG]?.settings as MysqlSettings | undefined)?.connections ?? [];
+  const conns = (cfg[DATABASE_SLUG]?.settings as DbSettings | undefined)?.connections ?? [];
 
   const [live, setLive] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function MysqlConnectionsPanel() {
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
-    const r = await invokePluginService<string[]>(ctx, MYSQL_SLUG, "status");
+    const r = await invokePluginService<string[]>(ctx, DATABASE_SLUG, "status");
     if (r.ok) setLive(r.value);
   }, [ctx]);
 
@@ -37,16 +37,16 @@ export function MysqlConnectionsPanel() {
   useEffect(() => {
     void refresh();
     return ctx.api.onPluginEvent?.((slug, type, payload) => {
-      if (slug === MYSQL_SLUG && type === "connections") setLive(payload as string[]);
+      if (slug === DATABASE_SLUG && type === "connections") setLive(payload as string[]);
     });
   }, [ctx, refresh]);
 
   if (conns.length === 0) return null;
 
-  async function connect(c: MysqlConnection, pw?: string): Promise<void> {
+  async function connect(c: DbConnection, pw?: string): Promise<void> {
     setBusy(c.name);
     setError("");
-    const r = await invokePluginService(ctx, MYSQL_SLUG, "connect", c, pw);
+    const r = await invokePluginService(ctx, DATABASE_SLUG, "connect", c, pw);
     setBusy(null);
     if (r.ok) {
       setPrompting(null);
@@ -58,11 +58,11 @@ export function MysqlConnectionsPanel() {
   }
   async function disconnect(name: string): Promise<void> {
     setBusy(name);
-    await invokePluginService(ctx, MYSQL_SLUG, "disconnect", name);
+    await invokePluginService(ctx, DATABASE_SLUG, "disconnect", name);
     setBusy(null);
     await refresh();
   }
-  function onConnect(c: MysqlConnection): void {
+  function onConnect(c: DbConnection): void {
     setError("");
     if (c.password) void connect(c);
     else {
@@ -74,7 +74,7 @@ export function MysqlConnectionsPanel() {
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4">
       <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
-        <Database size={14} /> {t("plugins.mysql.title")}
+        <Database size={14} /> {t("plugins.database.title")}
       </h3>
       {conns.map((c) => {
         const connected = live.includes(c.name);
@@ -83,13 +83,14 @@ export function MysqlConnectionsPanel() {
             <div className="flex items-center gap-2">
               <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", connected ? "bg-green-500" : "bg-neutral-300")} />
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-700">{c.name}</span>
+              <span className="shrink-0 text-[10px] uppercase tracking-wide text-neutral-400">{c.engine}</span>
               {connected ? (
                 <button type="button" className={btn} disabled={busy === c.name} onClick={() => void disconnect(c.name)}>
-                  {t("plugins.mysql.disconnect")}
+                  {t("plugins.database.disconnect")}
                 </button>
               ) : (
                 <button type="button" className={btn} disabled={busy === c.name} onClick={() => onConnect(c)}>
-                  {t("plugins.mysql.connect")}
+                  {t("plugins.database.connect")}
                 </button>
               )}
             </div>
@@ -103,11 +104,11 @@ export function MysqlConnectionsPanel() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void connect(c, password);
                   }}
-                  placeholder={t("plugins.mysql.password")}
+                  placeholder={t("plugins.database.password")}
                   className="min-w-0 flex-1 rounded-md border border-neutral-200 px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
                 />
                 <button type="button" className={btn} disabled={busy === c.name} onClick={() => void connect(c, password)}>
-                  {t("plugins.mysql.connect")}
+                  {t("plugins.database.connect")}
                 </button>
               </div>
             )}

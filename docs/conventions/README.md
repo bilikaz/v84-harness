@@ -12,6 +12,7 @@ This repo's instance-specific documentation lives in
 | --- | --- |
 | [naming.md](naming.md) | Name modules and types by role, not implementation; the bells test gates every name |
 | [module-registries.md](module-registries.md) | The folder layout IS the registry: one module per implementation, canonical export, resolve by path |
+| [pluggable-backends.md](pluggable-backends.md) | One feature + a per-record backend discriminant + an adapter per backend behind a neutral type; cross-target code imports no backend lib |
 | [base-classes.md](base-classes.md) | Family plumbing as protected base members; one constructor shape + `init()` hook; wire per-call state at construction |
 | [canonical-shapes.md](canonical-shapes.md) | One concept, one shape, end to end — stores hold it; shape-sniffing unions mean the canonical shape is missing |
 | [types-placement.md](types-placement.md) | `types.ts` holds vocabulary (promotion test: 2+ importers / boundary / family); `shared.ts` holds cross-cutting helpers; everything else colocates |

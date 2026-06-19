@@ -125,33 +125,45 @@ tool invocations, and matches the tool contract (a tool is constructed once and 
 There is **no `plugins` table** — first-party plugins have no installed-registration row; config owns
 enable + settings and the manifest owns identity + version ([ADR-0047](../adr/0047-first-party-in-tree-plugins.md)).
 
-## Reference plugin — MySQL (`plugins/mysql/`)
+## Reference plugin — Database (`plugins/database/`)
 
-Exercises the whole surface: connect to MySQL servers and run queries.
+Exercises the whole surface: connect to SQL servers and run queries. **Two engines, one plugin** —
+MySQL and Postgres — with the engine carried on each connection, not split into separate plugins (see
+[conventions/pluggable-backends.md](../conventions/pluggable-backends.md)).
 
-- **manifest** — slug `mysql`; settings are named connections `{ name, host, port, user, password?,
-  database }` (password optional), validated on store. Declares a `systemPrompt` — the worked example of a
-  plugin **capability block** (see below).
-- **service** — connection pools keyed by name. One `resolve()` reuses the live pool or establishes +
-  validates a new one (so every failure surfaces with its message: missing password, server unreachable,
-  access denied), and tears a failed pool down. `rpc` = `connect` / `disconnect` / `status`;
-  `subscribe` emits the live connection names on every change; `uninstall` disconnects all pools.
-- **agent tools** (`tools/local/`, `needsWorkspace()=false`): `MysqlConnections` (list configured
-  connections — discovery), `MysqlQuery` (run any SQL, **permissioned → ask**, results row-capped at 50),
-  `MysqlTestConnection` (liveness check). Read/write is **not** split — classifying SQL gives no real
-  safety; the boundary is the connecting DB user's privileges plus the per-query approval.
-- **UI** — a settings-menu section (collapsible connection cards + a Test probe) and a right-rail
-  connections card with connect/disconnect and an inline password prompt when a connection has no saved
-  password. The card subscribes to service events, so an agent query's auto-connect flips the status dot
-  live. (Contributes to `settings` + `right-panel` regions only — no left-rail block.)
-- **helpers** — `tools/helpers/format.ts` (row formatter), kept out of the tier folders.
-- **system prompt** — `manifest.systemPrompt` teaches the model the Mysql tools (discover via
-  `MysqlConnections`, `LIMIT` your queries, the privilege/approval safety boundary). It's a **capability
-  block**: `enabledPluginPrompts()` collects it and the turn loop appends it to the system prompt **while
-  the plugin is enabled** — the same shape as the built-in browser/memory blocks
-  ([ADR-0052](../adr/0052-system-prompt-layering.md)).
+- **manifest** — slug `database`; settings are named connections `{ name, engine, host, port, user,
+  password?, database?, ssl? }` (`engine` is `"mysql" | "postgres"`, password optional), validated on
+  store — `engine` defaults to `mysql`, `port` to that engine's default. Declares a `systemPrompt` — the
+  worked example of a plugin **capability block** (see below). Renderer-bundled, so it imports **no DB
+  driver** — per-engine default ports live as plain data in `types.ts`.
+- **drivers** (`drivers/`) — one adapter per engine behind a neutral interface. `DbDriver.open()` creates
+  a pool that an `OpenConn` exposes as `query` / `probe` / `end`; `mysql.ts` wraps `mysql2`, `postgres.ts`
+  wraps `pg`, each mapping its native result onto a neutral `QueryResult` so the rest of the plugin never
+  branches on engine. `drivers/index.ts` is the `engine → driver` map (adding an engine = new file + one
+  entry + one union member). SSL on → lenient TLS (accepts self-signed).
+- **service** — connection pools keyed by name (engine-agnostic `OpenConn` handles; the driver owns the
+  native pool, so this file imports no DB library). One `resolve()` reuses the live pool or establishes +
+  validates a new one via `drivers[engine]` (so every failure surfaces with its message: missing password,
+  server unreachable, access denied), and tears a failed pool down. `rpc` = `connect` / `disconnect` /
+  `status`; `subscribe` emits the live connection names on every change; `uninstall` disconnects all pools.
+- **agent tools** (`tools/local/`, `needsWorkspace()=false`): `DatabaseConnections` (list configured
+  connections — discovery, reports each connection's **engine** so the model writes the right dialect),
+  `DatabaseQuery` (run any SQL, **permissioned → ask**, results row-capped at 50), `DatabaseTestConnection`
+  (liveness check). Read/write is **not** split — classifying SQL gives no real safety; the boundary is the
+  connecting DB user's privileges plus the per-query approval.
+- **UI** — a settings-menu section (collapsible connection cards with an engine dropdown + SSL toggle + a
+  Test probe) and a right-rail connections card with connect/disconnect, an engine label per row, and an
+  inline password prompt when a connection has no saved password. The card subscribes to service events, so
+  an agent query's auto-connect flips the status dot live. (Contributes to `settings` + `right-panel`
+  regions only — no left-rail block.)
+- **helpers** — `tools/helpers/format.ts` (engine-neutral row formatter), kept out of the tier folders.
+- **system prompt** — `manifest.systemPrompt` teaches the model the Database tools (discover via
+  `DatabaseConnections`, write SQL in the connection's engine dialect, `LIMIT` your queries, the
+  privilege/approval safety boundary). It's a **capability block**: `enabledPluginPrompts()` collects it
+  and the turn loop appends it to the system prompt **while the plugin is enabled** — the same shape as the
+  built-in browser/memory blocks ([ADR-0052](../adr/0052-system-prompt-layering.md)).
 
-Tool names are **PascalCase, prefixed by the plugin** (`MysqlQuery`, not `mysql_query`) — consistent
+Tool names are **PascalCase, prefixed by the plugin** (`DatabaseQuery`, not `database_query`) — consistent
 with core tools and namespaced against collisions.
 
 ## Writing a new plugin

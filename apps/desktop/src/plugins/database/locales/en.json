@@ -1,0 +1,22 @@
+{
+  "title": "Database",
+  "connectionsHint": "Configure MySQL and Postgres connections. The agent runs queries against them via the DatabaseQuery tool (each query asks for approval).",
+  "name": "Name",
+  "engine": "Engine",
+  "mysql": "MySQL",
+  "postgres": "Postgres",
+  "host": "Host",
+  "port": "Port",
+  "user": "User",
+  "password": "Password (optional)",
+  "database": "Database",
+  "ssl": "SSL",
+  "sslHint": "Encrypt the connection (accepts self-signed)",
+  "addConnection": "Add connection",
+  "empty": "No connections yet.",
+  "test": "Test connection",
+  "connected": "Connected",
+  "connect": "Connect",
+  "disconnect": "Disconnect",
+  "testUnavailable": "Database connections run in the desktop app only."
+}

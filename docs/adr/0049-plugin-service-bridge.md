@@ -46,8 +46,8 @@ and the UI still renders.
   never tools; the agent's surface stays the actual capabilities (query/test).
 - The UI is live: a status dot driven by `subscribe` flips when an agent query auto-connects, with no
   polling.
-- Plugins get setup/teardown: disabling a plugin tears its live resources down (the MySQL service closes
-  all pools), not just hides its UI.
+- Plugins get setup/teardown: disabling a plugin tears its live resources down (the database plugin's
+  service closes all pools), not just hides its UI.
 - One generic mechanism serves every plugin; a new plugin's service drops in with `rpc`/`subscribe`/
   `install`/`uninstall` and is wired automatically by the glob.
 - A second main→renderer push consumer is now cheap (the channel exists); the bridge's "revisit when it
