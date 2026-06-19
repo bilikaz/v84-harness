@@ -1,0 +1,22 @@
+{
+  "title": "Duomenų bazė",
+  "connectionsHint": "Sukonfigūruokite MySQL ir Postgres prisijungimus. Agentas vykdo užklausas per DatabaseQuery įrankį (kiekvienai užklausai prašoma patvirtinimo).",
+  "name": "Pavadinimas",
+  "engine": "Variklis",
+  "mysql": "MySQL",
+  "postgres": "Postgres",
+  "host": "Serveris",
+  "port": "Prievadas",
+  "user": "Vartotojas",
+  "password": "Slaptažodis (nebūtinas)",
+  "database": "Duomenų bazė",
+  "ssl": "SSL",
+  "sslHint": "Šifruoti prisijungimą (priima savaime pasirašytus)",
+  "addConnection": "Pridėti prisijungimą",
+  "empty": "Prisijungimų dar nėra.",
+  "test": "Tikrinti prisijungimą",
+  "connected": "Prisijungta",
+  "connect": "Prisijungti",
+  "disconnect": "Atsijungti",
+  "testUnavailable": "Duomenų bazės prisijungimai veikia tik darbalaukio programoje."
+}

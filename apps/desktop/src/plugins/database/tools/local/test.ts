@@ -1,17 +1,17 @@
 import { type ToolResult, type ToolSpec } from "../../../../core/tools/types.ts";
 import { errorMessage } from "../../../../lib/errors.ts";
-import { BaseMysqlTool } from "./base.ts";
+import { BaseDatabaseTool } from "./base.ts";
 import { ping } from "../../service.ts";
 
-// Open (or reuse) a connection and ping it. Permissionless — it changes nothing. The agent can call it to
+// Open (or reuse) a connection and probe it. Permissionless — it changes nothing. The agent can call it to
 // check a connection is alive; the settings "Test connection" button also invokes it via ctx.tools.run.
-export class MysqlTestConnection extends BaseMysqlTool {
+export class DatabaseTestConnection extends BaseDatabaseTool {
   get schema(): ToolSpec {
     return {
       type: "function",
       function: {
-        name: "MysqlTestConnection",
-        description: "Test a configured MySQL connection by opening it and pinging the server. Pass the connection name.",
+        name: "DatabaseTestConnection",
+        description: "Test a configured database connection by opening it and pinging the server. Pass the connection name.",
         parameters: {
           type: "object",
           additionalProperties: false,

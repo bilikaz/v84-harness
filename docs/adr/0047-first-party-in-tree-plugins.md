@@ -43,8 +43,8 @@ the key under `config.plugins.<slug>`. No minted id.
   power/dev feature. Web parity is a non-goal — Node-backed services + `local`/`remote` tools are
   desktop-only; on web a plugin still gets config, UI, `general`/`account` tools, and `pluginData`.
 
-The reference plugin is `plugins/mysql/`; the full surface and author guide are in
-[architecture/plugins.md](../architecture/plugins.md).
+The reference plugin is `plugins/database/` (since generalized from MySQL-only to MySQL + Postgres); the
+full surface and author guide are in [architecture/plugins.md](../architecture/plugins.md).
 
 ## Consequences
 

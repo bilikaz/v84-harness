@@ -1,4 +1,4 @@
-import type { QueryResult } from "../../service.ts";
+import type { QueryResult } from "../../drivers/types.ts";
 
 // Cap rows handed back to the model — large result sets bloat context and rarely help. The model is told
 // to page with LIMIT/OFFSET when it needs more. (Output is also capped again by OUTPUT_CAP.)
