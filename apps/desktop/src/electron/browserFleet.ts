@@ -42,6 +42,26 @@ export type BrowserEmit = (id: string, update: BrowserWindowUpdate) => void;
 export class BrowserFleet {
   private readonly views = new Map<string, Entry>();
   private visibleId: string | null = null;
+  private shotHost: BrowserWindow | null = null; // WIN: invisible parent that gives background views a real surface to capture
+
+  // WIN: a hidden/0×0 WebContentsView has no surface, and fromSurface:false renders surfacelessly only on
+  // Linux — on Windows it reads the host window's surface (the app UI) or nothing. So during capture we
+  // reparent the background view into this off-screen, fully-transparent, no-taskbar window: Windows still
+  // composites it (real pixels), but the user never sees it. Created lazily, reused for the app's lifetime.
+  private ensureShotHost(): BrowserWindow | null {
+    if (this.shotHost && !this.shotHost.isDestroyed()) return this.shotHost;
+    try {
+      const { BrowserWindow } = this.electron;
+      const w = new BrowserWindow({ width: 1280, height: 800, frame: false, skipTaskbar: true, show: false });
+      w.setOpacity(0); // invisible before it ever paints
+      w.setPosition(-32000, -32000); // and parked off every monitor, belt-and-suspenders
+      w.showInactive(); // shown (so it composites a surface) without stealing focus
+      this.shotHost = w;
+      return w;
+    } catch {
+      return null;
+    }
+  }
 
   constructor(
     private readonly electron: Electron,
@@ -105,6 +125,15 @@ export class BrowserFleet {
     const dbg = wc.debugger;
     let adhoc = false;
     let overrode = false;
+    // WIN: a background view (not the visible overlay) has no usable surface on the host window. Move it into
+    // the off-screen invisible shotHost and give it real bounds so Windows composites it, then move it back.
+    const shot = process.platform === "win32" && this.visibleId !== id ? this.ensureShotHost() : null;
+    if (shot) {
+      this.host.contentView.removeChildView(entry.view);
+      shot.contentView.addChildView(entry.view);
+      entry.view.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
+      entry.view.setVisible(true);
+    }
     try {
       if (!dbg.isAttached()) {
         try {
@@ -144,6 +173,16 @@ export class BrowserFleet {
       return await this.nativeShot(wc);
     } finally {
       if (overrode) await this.cmd(dbg, "Emulation.clearDeviceMetricsOverride");
+      if (shot) {
+        try {
+          shot.contentView.removeChildView(entry.view);
+          this.host.contentView.addChildView(entry.view);
+          entry.view.setVisible(false);
+          entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+        } catch {
+          /* view/window may have closed mid-capture — nothing to restore */
+        }
+      }
       if (adhoc && dbg.isAttached()) {
         try {
           dbg.detach();
