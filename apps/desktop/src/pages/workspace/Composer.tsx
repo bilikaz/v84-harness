@@ -15,6 +15,8 @@ export function Composer(props: {
   seed?: string;
   disabled?: boolean; // blocks send (context full, compacting, missing workspace)
   streaming?: boolean;
+  lock?: boolean; // hard-lock the input itself (a running sub-agent: stop it to guide it)
+  lockNote?: string; // placeholder shown while locked
   onStop?: () => void;
   onSubmit: (text: string, atts: Attachments) => void;
 }) {
@@ -133,12 +135,13 @@ export function Composer(props: {
         <textarea
           ref={inputRef}
           rows={1}
-          value={input}
+          value={props.lock ? "" : input}
+          disabled={props.lock}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder={t("session.placeholder")}
-          className="max-h-24 w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400"
+          placeholder={props.lock ? props.lockNote ?? t("session.placeholder") : t("session.placeholder")}
+          className="max-h-24 w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:bg-transparent"
         />
         <input ref={fileRef} type="file" multiple hidden onChange={onPickFiles} />
         <div className="mt-2 flex items-center gap-2">

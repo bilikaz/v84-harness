@@ -39,22 +39,6 @@ const SEED: Agent[] = [
     workspace: false,
     tools: { ...AGENT_TOOLS_DEFAULT },
   },
-  {
-    id: "code-reviewer",
-    name: "Code reviewer",
-    description:
-      "Reviews code in the workspace: explores the relevant files and reports findings by severity with file:line references. " +
-      "Input: what to review (paths, a feature, or 'everything').",
-    system:
-      "# Code reviewer\n\nYou are a meticulous senior engineer reviewing code in the user's workspace. " +
-      "Explore with List/Grep, Read the relevant files, and review for correctness, security, and maintainability. " +
-      "You cannot modify files — you only read and report. " +
-      "Reply with findings grouped by severity (critical / warning / nit), each citing file:line and a one-line fix suggestion. " +
-      "If everything looks good, say so briefly instead of inventing problems.",
-    user: "Review the code in this workspace. Start from `/`, focus on what looks most load-bearing.",
-    workspace: true,
-    tools: { ...AGENT_TOOLS_DEFAULT, Write: 0, Edit: 0, CreateFolder: 0, Move: 0, Copy: 0, Delete: 0, RunScript: 0 },
-  },
 ];
 
 function normalize(p: Partial<Agent>): Agent {

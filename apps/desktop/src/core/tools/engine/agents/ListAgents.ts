@@ -1,6 +1,6 @@
 import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.ts";
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
-import { LIST_SCHEMA, catalogAgents, listAgentsOutput } from "./catalog.ts";
+import { LIST_SCHEMA, catalogAgents, listAgentsOutput } from "../../helpers/agents/catalog.ts";
 
 // Discovery half of the sub-agent pair: what an orchestrator may run. Top-level only; advertised only
 // when the context has a runnable agent catalog.

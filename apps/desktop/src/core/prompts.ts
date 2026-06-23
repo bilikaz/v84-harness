@@ -1,4 +1,9 @@
-import i18n, { LANGUAGES } from "./i18n.ts";
+import i18n, { LANGUAGES } from "../lib/i18n.ts";
+
+// The one place every NON-tool prompt in core lives — system blocks, the auto-naming and compaction
+// prompts, the async-delivery notice. Tool prompts stay inside their tool (its description/output is part
+// of the tool's contract), and an agent's `system` is part of its definition; everything else is here so
+// prompts are greppable in one file instead of scattered through core.
 
 type Vars = Record<string, string>;
 type Tree = { [k: string]: string | Tree };
@@ -40,6 +45,14 @@ const PROMPTS: Tree = {
       "Generate a concise 3-6 word title for THIS conversation. Do not add conversation word in it" +
       "Reply with ONLY the title — no quotes, no trailing punctuation.",
   },
+  compact: {
+    system: "You compress conversations into faithful, self-contained summaries.",
+    instruction:
+      "Summarize the entire conversation above into a compact but COMPLETE summary that can replace the full " +
+      "history. Preserve: the user's goals and constraints, key decisions and their rationale, important facts, " +
+      "file/code state and paths touched, tool results that still matter, and any open tasks or next steps. Use " +
+      "clear sections. Omit nothing the assistant would need to continue seamlessly. Output only the summary.",
+  },
 };
 
 function resolve(key: string): string | undefined {
@@ -70,4 +83,14 @@ export function pt(key: string, vars?: Vars): string {
 // The built-in default base prompt, RAW (with {{language}} visible) — shown in Settings as the reference.
 export function defaultSystemPrompt(): string {
   return resolve("defaultChat.system") ?? "";
+}
+
+// The runtime notice that wakes a parent when async sub-agents finish — names them by short id and the exact
+// call to read them. Framed as a [runtime] event (not the user's voice), and an actionable instruction so
+// the parent fetches regardless of how it reads the role.
+export function deliveryNudge(aliases: number[]): string {
+  const one = aliases.length === 1;
+  const list = aliases.map((n) => `#${n}`).join(", ");
+  const call = one ? `getAgentContent(${aliases[0]})` : `getAgentContent([${aliases.join(", ")}])`;
+  return `[runtime] Sub-agent${one ? "" : "s"} ${list} ${one ? "has" : "have"} finished. Call ${call} to read ${one ? "its result" : "their results"}.`;
 }

@@ -35,6 +35,14 @@ export interface TurnError {
 export interface TurnResume {
   sessionId: string;
 }
+// Synthetic delivery (async sub-agents): fabricate an assistant getAgentContent call + its result into the
+// parent's history, then a fresh assistant placeholder, so the model wakes having "received" the result.
+export interface TurnDeliver {
+  sessionId: string;
+  call: ToolCallRequest;
+  output: string;
+  childSessionIds?: string[];
+}
 export interface MessageDone {
   sessionId: string;
   text: string;
@@ -47,6 +55,7 @@ export interface MessageDone {
 export interface TurnEnd {
   sessionId: string;
   errored: boolean;
+  aborted: boolean; // user-stopped / cascade-aborted — a child's aborted turn is NOT delivered to its parent
 }
 export interface ToolCalls {
   sessionId: string;
@@ -94,6 +103,7 @@ declare module "../../lib/bus.ts" {
   interface BusEvents {
     "session:turn:start": TurnStart;
     "session:turn:resume": TurnResume;
+    "session:turn:deliver": TurnDeliver;
     "session:text": TextDelta;
     "session:thinking": ThinkingDelta;
     "session:thinking:done": ThinkingDone;

@@ -36,6 +36,17 @@ const offs: Array<() => void> = [
     setStreaming(e.sessionId, true);
     notify();
   }),
+  bus.on("turn:deliver", (e) => {
+    // Fabricate the synthetic getAgentContent exchange: assistant(tool_call) → tool(result) → empty
+    // assistant placeholder for the model's continuation. Then stream into that placeholder.
+    setErrorKind(e.sessionId, undefined);
+    pushAssistant(e.sessionId);
+    setLastToolCalls(e.sessionId, [e.call]);
+    pushToolResult(e.sessionId, e.call.id, e.output, undefined, undefined, e.childSessionIds);
+    pushAssistant(e.sessionId);
+    setStreaming(e.sessionId, true);
+    notify();
+  }),
 
   bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)),
   bus.on("tool:result", (e) => pushToolResult(e.sessionId, e.toolCallId, e.output, e.images, e.videos, e.childSessionIds, e.browserWindowId)),

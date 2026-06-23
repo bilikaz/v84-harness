@@ -8,12 +8,13 @@ import {
   aliasOf,
   catalogAgents,
   childrenOf,
+  isChildPending,
   listAgentsOutput,
   resolveAgent,
   resolveChild,
   rosterHint,
-} from "../src/core/tools/engine/agents/catalog.ts";
-import { createSession } from "../src/core/sessions/store.ts";
+} from "../src/core/tools/helpers/agents/catalog.ts";
+import { createSession, getUserPausedIds, setStreaming, setUserPaused } from "../src/core/sessions/store.ts";
 import { initTestCtx } from "./ctx.ts";
 
 // The agents store is a ctx-injected consumer (ADR-0037) — build a fresh one and
@@ -122,8 +123,9 @@ describe("resolveAgent", () => {
   });
 });
 
-// Team addressing: a parent's children carry stored short aliases (1, 2, 3…), assigned at spawn, so the
-// orchestrator addresses them by number — never a ULID — across AskAgent/ResumeAgent/ActiveAgents.
+// Team addressing: a parent's children carry a short handle (#1, #2, …) baked into their title at spawn, so
+// the orchestrator addresses them by number — never a ULID — across AskAgent/ResumeAgent/ActiveAgents. The
+// handle rides in the title (which persists + shows in the sidebar), and aliasOf parses it back out.
 describe("child aliases (team addressing)", () => {
   // Unique parent id per call → the module-level sessions store can accumulate across tests harmlessly.
   function parentWithKids(n: number): { parent: string; kids: string[] } {
@@ -132,18 +134,18 @@ describe("child aliases (team addressing)", () => {
     return { parent, kids };
   }
 
-  it("assigns aliases 1..N in spawn order and round-trips id ↔ alias", () => {
+  it("bakes #1..#N into the title in spawn order and round-trips id ↔ handle", () => {
     const { parent } = parentWithKids(3);
     const ordered = childrenOf(parent);
-    expect(ordered.map((s) => s.title)).toEqual(["Kid 1", "Kid 2", "Kid 3"]); // alias order = spawn order
+    expect(ordered.map((s) => s.title)).toEqual(["Kid 1 #1", "Kid 2 #2", "Kid 3 #3"]); // handle order = spawn order
     ordered.forEach((s, i) => expect(aliasOf(s)).toBe(i + 1));
   });
 
   it("resolves an id back to the child, leniently (number, string, quoted)", () => {
     const { parent } = parentWithKids(3);
-    expect(resolveChild(parent, 2)?.title).toBe("Kid 2");
-    expect(resolveChild(parent, "2")?.title).toBe("Kid 2");
-    expect(resolveChild(parent, ' "2" ')?.title).toBe("Kid 2");
+    expect(resolveChild(parent, 2)?.title).toBe("Kid 2 #2");
+    expect(resolveChild(parent, "2")?.title).toBe("Kid 2 #2");
+    expect(resolveChild(parent, ' "2" ')?.title).toBe("Kid 2 #2");
   });
 
   it("returns undefined for out-of-range or non-numeric ids", () => {
@@ -164,8 +166,40 @@ describe("child aliases (team addressing)", () => {
   it("rosterHint lists the team by id with status, or says there are none", () => {
     const { parent } = parentWithKids(2);
     const hint = rosterHint(parent);
-    expect(hint).toContain(`1 "Kid 1" — idle`);
-    expect(hint).toContain(`2 "Kid 2" — idle`);
+    expect(hint).toContain(`Kid 1 #1 — idle`);
+    expect(hint).toContain(`Kid 2 #2 — idle`);
     expect(rosterHint(createSession({ title: "Lonely" }))).toMatch(/no sub-agents running/);
+  });
+});
+
+// Async orchestration state model: a child is "pending" (not readable) while running OR user-paused; only
+// a terminal child carries a readable result. (getAgentContent erases on pending; delivery skips paused.)
+describe("child pending state (async orchestration)", () => {
+  beforeEach(resetLibrary);
+
+  it("is pending while streaming, and while user-paused, else not", () => {
+    const parent = createSession({ title: "Parent" });
+    const kid = createSession({ title: "Kid", parentId: parent });
+    const child = () => childrenOf(parent)[0];
+
+    expect(isChildPending(child())).toBe(false); // freshly spawned, idle terminal
+
+    setStreaming(kid, true);
+    expect(isChildPending(child())).toBe(true); // running
+    setStreaming(kid, false);
+    expect(isChildPending(child())).toBe(false);
+
+    setUserPaused(kid, true);
+    expect(isChildPending(child())).toBe(true); // user-paused (a pause, not done)
+    setUserPaused(kid, false);
+    expect(isChildPending(child())).toBe(false);
+  });
+
+  it("a turn start (streaming on) clears a user pause — the child is running again", () => {
+    const kid = createSession({ title: "Kid", parentId: createSession({ title: "Parent" }) });
+    setUserPaused(kid, true);
+    expect(getUserPausedIds().has(kid)).toBe(true);
+    setStreaming(kid, true); // resume / new message
+    expect(getUserPausedIds().has(kid)).toBe(false);
   });
 });

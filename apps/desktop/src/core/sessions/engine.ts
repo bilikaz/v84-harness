@@ -10,8 +10,9 @@ import { getAgent, type Agent } from "../agents.ts";
 import { getActiveContainerId, getContainer, type Container } from "../containers.ts";
 import { isConnected } from "../account.ts";
 import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
-import { pt, fill } from "../../lib/prompts.ts";
+import { pt, fill, deliveryNudge } from "../prompts.ts";
 import { engineToolSchemas, isEngineTool, runEngineTool } from "../tools/engine/dispatch.ts";
+import { GET_AGENT_CONTENT, aliasOf, collectAgentContent, lastAgentText } from "../tools/helpers/agents/catalog.ts";
 import type { EngineCtx } from "../tools/engine/base.ts";
 import { browserFleet } from "../browser.ts";
 import { enabledPluginPrompts } from "../plugins/config.ts";
@@ -25,6 +26,8 @@ import {
   getSessions,
   getStreamingIds,
   isFull,
+  removeToolCall,
+  setUserPaused,
   toChatMessages,
 } from "./store.ts";
 import { errorMessage } from "../../lib/errors.ts";
@@ -56,6 +59,10 @@ export interface SendOptions extends Attachments {
 // Constructed once per host (init) and carried on ctx.sessions; the renderer reaches it via useCtx().sessions.
 export class SessionEngine {
   private readonly inflight = new Map<string, AbortController>();
+  // Async sub-agent delivery: children finish out-of-band, so each finished child is queued here per
+  // parent (childSid → short alias) and pushed on the parent's next idle turn — never mid-print.
+  private readonly deliveries = new Map<string, Map<string, number>>();
+  private tracedConfig = false; // log the live config once (first turn) — the first thing to sanity-check
 
   constructor(private readonly ctx: Ctx) {
     // The session store's data engine + hydration are injected/orchestrated by init() AFTER
@@ -66,9 +73,18 @@ export class SessionEngine {
     });
     // Compact once a turn ends and the session has grown past its context budget.
     bus.on("turn:end", (e) => {
+      // A parent that just went idle can now receive any sub-agent results that finished while it was busy.
+      this.pumpDeliveries(e.sessionId);
+      const s = getSession(e.sessionId);
+      // A child whose turn just FINISHED delivers its result up to its parent — but ONLY in async mode.
+      // Sync mode delivers via awaitSettled's own turn:end subscription instead; pushing here too would
+      // double-deliver. Skip aborts (a user pause / cascade) — only a terminal success/error is delivered.
+      if (s?.parentId && getAppConfig().session.asyncAgents) {
+        llmLog.debug("agent:child-end", { childSid: e.sessionId, parentSid: s.parentId, errored: e.errored, aborted: e.aborted });
+        if (!e.aborted) this.onChildSettled(s.parentId, e.sessionId, aliasOf(s));
+      }
       if (e.errored) return;
       const cfg = resolveMain();
-      const s = getSession(e.sessionId);
       if (cfg && s && isFull(cfg, s)) void this.compact(e.sessionId);
     });
   }
@@ -77,6 +93,98 @@ export class SessionEngine {
   stopTurn(sid: string): void {
     this.inflight.get(sid)?.abort();
     denyApprovalsForSession(sid);
+  }
+
+  // Per-child user stop: a PAUSE, not a failure. Marks the child user-paused (resume ownership stays
+  // with the user — the parent's ResumeAgent won't touch it, and getAgentContent treats it as "not
+  // done"), then aborts its in-flight turn. Distinct from deleteSession, which removes the child.
+  stopChild(sid: string): void {
+    setUserPaused(sid, true);
+    this.stopTurn(sid);
+  }
+
+  // Async delivery — a child reached a terminal SUCCESS or ERROR. A user pause/abort (outcome.aborted)
+  // or a refused start (null) is invisible to the parent, so it queues nothing. Otherwise the child is
+  // queued for its parent and the parent is pumped (delivers now if idle, else on its next turn:end).
+  // A child reached a terminal SUCCESS or ERROR (the turn:end handler already filtered out aborts and
+  // inline-awaited turns) — queue it for its parent and pump (delivers now if idle, else on turn:end).
+  private onChildSettled(parentSid: string, childSid: string, alias: number): void {
+    llmLog.debug("agent:settled", { parentSid, childSid, alias });
+    this.enqueueDelivery(parentSid, childSid, alias);
+    this.pumpDeliveries(parentSid);
+  }
+
+  // Block until a child reaches a TERMINAL, non-aborted end (success or error), then return its final result
+  // read from history. This is sync delivery: it rides through any number of user pause→guide→resume cycles —
+  // an aborted turn:end is a PAUSE, so we keep waiting (the raw turn Promise can't, it resolves on first
+  // abort). `dispatch` (the started turn's Promise) is a liveness guard: if it resolves null the turn never
+  // started (busy/full) and no turn:end will come, so resolve null rather than hang. On the PARENT's abort,
+  // stop the child and resolve aborted.
+  awaitSettled(childSid: string, signal: AbortSignal, dispatch: Promise<TurnResult | null>): Promise<TurnResult | null> {
+    return new Promise<TurnResult | null>((resolve) => {
+      const finish = (r: TurnResult | null): void => {
+        offEnd();
+        signal.removeEventListener("abort", onAbort);
+        resolve(r);
+      };
+      const offEnd = bus.on("turn:end", (e) => {
+        if (e.sessionId !== childSid || e.aborted) return; // not ours, or a pause — keep waiting
+        finish({ text: lastAgentText(childSid), errored: e.errored, aborted: false, errorKind: e.errored ? getSession(childSid)?.errorKind : undefined });
+      });
+      const onAbort = (): void => {
+        this.stopTurn(childSid);
+        finish({ text: lastAgentText(childSid), errored: false, aborted: true });
+      };
+      // A refused dispatch (null) never emits turn:end — don't hang. A non-null result is a single turn
+      // ending (possibly a pause); ignore it and let the turn:end subscription decide (it rides pauses).
+      void dispatch.then((r) => { if (r === null) finish(null); }).catch(() => finish(null));
+      if (signal.aborted) return void onAbort();
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  private enqueueDelivery(parentSid: string, childSid: string, alias: number): void {
+    const q = this.deliveries.get(parentSid) ?? new Map<string, number>();
+    q.set(childSid, alias);
+    this.deliveries.set(parentSid, q);
+  }
+
+  // Drain a parent's finished-child queue into ONE wake-turn — but only while the parent is idle, so a
+  // turn mid-print is never interrupted (deliveries stack and arrive together). Re-fires on turn:end.
+  private pumpDeliveries(parentSid: string): void {
+    const q = this.deliveries.get(parentSid);
+    if (!q?.size) return;
+    if (!getSession(parentSid)) {
+      this.deliveries.delete(parentSid); // parent gone — drop its queue
+      return;
+    }
+    if (getStreamingIds().has(parentSid)) return; // busy — retained; turn:end will pump again
+    const entries = [...q];
+    this.deliveries.delete(parentSid);
+    void this.deliver(parentSid, entries).catch(() => {});
+  }
+
+  // One delivery. Synthetic (default): a getAgentContent call+result fabricated into history so the model
+  // wakes having "received" the result with no extra round-trip. Nudge: a runtime notice the model acts on.
+  // On a busy/gone race during the read, re-queue (turn:end re-pumps); if the provider rejects the
+  // fabricated history, fall back to a nudge. (Validate the synthetic path on the live endpoint — ADR.)
+  private async deliver(parentSid: string, entries: [string, number][]): Promise<void> {
+    const aliases = entries.map(([, n]) => n).filter((n) => n > 0).sort((a, b) => a - b);
+    if (!aliases.length) return;
+    llmLog.debug("agent:deliver", { parentSid, mode: getAppConfig().session.asyncDelivery, aliases });
+    if (getAppConfig().session.asyncDelivery === "nudge") {
+      await this.sendTo(parentSid, deliveryNudge(aliases), { autoName: false });
+      return;
+    }
+    const { output, childIds } = await collectAgentContent(parentSid, aliases);
+    if (!getSession(parentSid) || getStreamingIds().has(parentSid)) {
+      for (const [cid, n] of entries) this.enqueueDelivery(parentSid, cid, n); // raced busy/gone — turn:end re-pumps
+      return;
+    }
+    const call: ToolCallRequest = { id: crypto.randomUUID(), name: GET_AGENT_CONTENT, arguments: JSON.stringify({ ids: aliases }), cwd: "" };
+    bus.emit("turn:deliver", { sessionId: parentSid, call, output, childSessionIds: childIds.length ? childIds : undefined });
+    const result = await this.drive(parentSid, {}, { firstExchange: false, autoName: false, userText: "" });
+    if (result.errored) await this.sendTo(parentSid, deliveryNudge(aliases), { autoName: false }); // provider rejected the fabricated history
   }
 
   compact(sid: string): Promise<void> {
@@ -146,6 +254,7 @@ export class SessionEngine {
       },
       { activate },
     );
+    llmLog.debug("agent:create", { sid, parentId, agent: agent.name, containerId: getSession(sid)?.containerId, title: getSession(sid)?.title });
     return { sid, result: this.sendTo(sid, task, { ...sendOpts, autoName: false }) };
   }
 
@@ -173,11 +282,16 @@ export class SessionEngine {
   // resume (after re-opening the tail) call it — the only difference is how the turn was opened above.
   private async drive(sid: string, opts: SendOptions, meta: { firstExchange: boolean; autoName: boolean; userText: string }): Promise<TurnResult> {
     const { firstExchange, autoName, userText } = meta;
+    // First thing to sanity-check: the live config (is async on? which delivery? connected?). Logged once.
+    if (!this.tracedConfig) {
+      this.tracedConfig = true;
+      llmLog.debug("config", { session: getAppConfig().session, connected: isConnected() });
+    }
     const cfg = resolveMain();
     if (!cfg) {
       bus.emit("turn:error", { sessionId: sid, message: "no chat model is configured — pick a provider and model in Settings.", kind: "other" });
       bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: true, firstExchange, autoName, userText });
-      bus.emit("turn:end", { sessionId: sid, errored: true });
+      bus.emit("turn:end", { sessionId: sid, errored: true, aborted: false });
       return { text: "", errored: true, aborted: false, errorKind: "other" };
     }
 
@@ -279,14 +393,28 @@ export class SessionEngine {
         }
         // Run all calls concurrently — results link back via toolCallId, so completion order doesn't matter.
         bus.emit("tool:calls", { sessionId: sid, calls });
+        llmLog.debug("tool:calls", {
+          sessionId: sid,
+          isChild,
+          step,
+          calls: calls.map((c) => ({ id: c.id, name: c.name, engine: isEngineTool(c.name), args: c.arguments })),
+        });
         const fedImages: Image[] = []; // tool-produced images to show the vision agent this step
         const fedVideo: Video[] = []; // tool-produced video — fed back only when the model takes video input
+        let erased = false; // an engine tool asked to erase its call and end the turn (premature getAgentContent)
         await Promise.all(
           calls.map(async (call) => {
             // The engine tool tier (sub-agent pair, browser fleet) is driver-level — it needs the live
             // engine/ctx, not the registry. One gated dispatch; the engine emits its result + feeds images.
             if (isEngineTool(call.name)) {
               const res = await runEngineTool(call, ec);
+              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "engine", erase: !!res.eraseTurn, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId, output: logTrunc(res.output) });
+              // Erase: scrub the call from history and end the turn — no tool:result, looks like it never happened.
+              if (res.eraseTurn) {
+                erased = true;
+                removeToolCall(sid, call.id);
+                return;
+              }
               const images = await this.downscaleToolImages(res.images, effectiveImageMaxDim(cfg.imageMaxDim));
               bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: res.output, images, videos: res.videos, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId });
               if (images?.length) fedImages.push(...images);
@@ -298,15 +426,18 @@ export class SessionEngine {
               const why = !ws
                 ? `tool "${call.name}" needs a workspace folder — open one for this session to use it.`
                 : `tool "${call.name}" is disabled for this session.`;
+              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "blocked", output: why });
               bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: why });
               return;
             }
             if (mode === 1 && !(await requestApproval(sid, call))) {
+              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "denied" });
               bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: `the user denied the ${call.name} call.` });
               return;
             }
             // The user may have hit Stop while the approval sat in the queue.
             if (controller.signal.aborted) {
+              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "cancelled" });
               bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: "cancelled by the user." });
               return;
             }
@@ -325,6 +456,7 @@ export class SessionEngine {
               controller.signal.removeEventListener("abort", onAbort);
             }
             const output = result.output;
+            llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "registry", ok: result.ok, output: logTrunc(output) });
             const images = await this.downscaleToolImages(result.images, effectiveImageMaxDim(cfg.imageMaxDim));
             const videos = result.videos?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
             bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, videos });
@@ -332,6 +464,8 @@ export class SessionEngine {
             if (videos?.length) fedVideo.push(...videos);
           }),
         );
+        // A premature getAgentContent erased its own call — end the turn cleanly (no result to react to).
+        if (erased) break;
         // Feed back only what the model's declared inputs accept — otherwise the endpoint rejects the turn.
         const feedImages = cfg.input?.image !== false ? fedImages : [];
         const feedVideo = cfg.input?.video === true ? fedVideo : [];
@@ -364,7 +498,7 @@ export class SessionEngine {
     } finally {
       this.inflight.delete(sid);
       bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, userText });
-      bus.emit("turn:end", { sessionId: sid, errored });
+      bus.emit("turn:end", { sessionId: sid, errored, aborted: controller.signal.aborted });
     }
     return { text: finalText, errored, aborted: controller.signal.aborted, errorKind: errored ? errorKind : undefined };
   }
@@ -423,6 +557,12 @@ export class SessionEngine {
       }),
     );
   }
+}
+
+// Cap a tool result for the debug log — full outputs (file dumps, page text) would swamp the console.
+function logTrunc(s: string | undefined, max = 800): string {
+  if (!s) return "";
+  return s.length > max ? `${s.slice(0, max)}… (+${s.length - max} chars)` : s;
 }
 
 // The STRICTER context selection: a chat-only agent is masked (no fs workspace). Only `local`

@@ -1,13 +1,13 @@
 import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.ts";
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
-import { RESUME_SCHEMA, aliasOf, childrenOf, failureNote, resolveChild, rosterHint } from "./catalog.ts";
-import { cap } from "../../base.ts";
-import { sessionBus as bus } from "../../../sessions/events.ts";
-import type { TurnResult } from "../../../sessions/engine.ts";
+import { RESUME_SCHEMA, aliasOf, childrenOf, resolveChild, rosterHint } from "../../helpers/agents/catalog.ts";
+import { fanOut, type Planned } from "../../helpers/agents/fanout.ts";
+import { getStreamingIds, getUserPausedIds } from "../../../sessions/store.ts";
 
 // Recovery: bare-continue crashed/stalled sub-agents by their short id — NO message, so each finishes its
 // task instead of answering a re-prompt ("Understood"). Reuses the preserved history (continues from the
-// gathered tool results). Top-level only; advertised only when this session has children.
+// gathered tool results). Top-level only; advertised only when this session has children. The dispatch/format
+// loop is shared via fanOut; this tool is just the planner.
 export class ResumeAgent extends BaseEngineTool {
   get schema(): ToolSpec {
     return RESUME_SCHEMA;
@@ -36,30 +36,18 @@ export class ResumeAgent extends BaseEngineTool {
     const runs = raw as Record<string, unknown>[];
     if (!runs.length) return { output: `ResumeAgent needs runs: [{id}, …] — the id is the short number from the failure message.\n${rosterHint(sid)}` };
 
-    const resumed: string[] = [];
-    const answers = await Promise.all(
-      runs.map(async (run) => {
-        const label = runs.length > 1 ? `agent (id: ${String(run.id)}): ` : "";
-        const child = resolveChild(sid, run.id);
-        if (!child) return `${label}no sub-agent #${String(run.id)} to resume. ${rosterHint(sid)}`;
-        const alias = aliasOf(child);
-        resumed.push(child.id);
-        bus.emit("tool:child", { sessionId: sid, toolCallId: call.id, childSessionId: child.id });
-        const onAbort = (): void => ec.engine.stopTurn(child.id);
-        ec.signal.addEventListener("abort", onAbort, { once: true });
-        let outcome: TurnResult | null;
-        try {
-          outcome = await ec.engine.resume(child.id);
-        } finally {
-          ec.signal.removeEventListener("abort", onAbort);
-        }
-        const head = runs.length > 1 ? `agent (id: ${alias}): ` : "";
-        if (!outcome) return `${head}could not resume — agent ${alias} may already be running.`;
-        if (outcome.aborted) return `${head}the resumed run was stopped.`;
-        if (outcome.errored) return `${head}${failureNote(alias, child.title, outcome.errorKind, outcome.text)}`;
-        return `${head}${cap(outcome.text) || "(the sub-agent returned no text)"}`;
-      }),
-    );
-    return { output: cap(answers.join("\n\n")), childSessionIds: resumed.length ? resumed : undefined };
+    return fanOut(ec, call, runs, "resumed", (run) => this.plan(run, ec));
+  }
+
+  // Plan one run: resolve the child by short id, then bare-continue it. A child the USER paused is theirs to
+  // continue — the parent must not yank it back mid-guidance; one already running has nothing to resume.
+  private plan(run: Record<string, unknown>, ec: EngineCtx): Planned {
+    const sid = ec.sessionId;
+    const child = resolveChild(sid, run.id);
+    if (!child) return { error: `no sub-agent #${String(run.id)} to resume. ${rosterHint(sid)}` };
+    const alias = aliasOf(child);
+    if (getUserPausedIds().has(child.id)) return { error: `agent ${alias} was paused by the user and is theirs to continue — leave it to them.` };
+    if (getStreamingIds().has(child.id)) return { error: `agent ${alias} is already running — nothing to resume.` };
+    return { childSid: child.id, alias, name: child.title, dispatch: ec.engine.resume(child.id) };
   }
 }

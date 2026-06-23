@@ -1,6 +1,6 @@
 import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.ts";
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
-import { ACTIVE_SCHEMA, childrenOf, rosterHint } from "./catalog.ts";
+import { ACTIVE_SCHEMA, childrenOf, rosterHint } from "../../helpers/agents/catalog.ts";
 
 // The orchestrator's live team: each sub-agent's short id, status, and memory %. Pure metadata — never the
 // agents' responses (those are already in this conversation; echoing them would duplicate and bloat). Top-level

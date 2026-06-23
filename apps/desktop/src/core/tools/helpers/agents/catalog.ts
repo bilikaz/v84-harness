@@ -1,5 +1,5 @@
 import { agentsForContext, type Agent } from "../../../agents.ts";
-import { contextLimit, getSessions, getStreamingIds } from "../../../sessions/store.ts";
+import { contextLimit, ensureLoaded, getSession, getSessions, getStreamingIds, getUserPausedIds } from "../../../sessions/store.ts";
 import { resolveMain } from "../../../settings.ts";
 import type { ErrorKind, Session } from "../../../sessions/types.ts";
 import { cap } from "../../base.ts";
@@ -14,6 +14,7 @@ export const RUN_AGENT = "RunAgent";
 export const ACTIVE_AGENTS = "ActiveAgents";
 export const ASK_AGENT = "AskAgent";
 export const RESUME_AGENT = "ResumeAgent";
+export const GET_AGENT_CONTENT = "getAgentContent";
 
 export const LIST_SCHEMA: ToolSpec = {
   type: "function",
@@ -136,25 +137,81 @@ export const RESUME_SCHEMA: ToolSpec = {
   },
 };
 
+export const GET_CONTENT_SCHEMA: ToolSpec = {
+  type: "function",
+  function: {
+    name: GET_AGENT_CONTENT,
+    description:
+      "Read the final output of sub-agents that have FINISHED, by their short id (1, 2, …) — one or several at " +
+      "once. Returns each agent's result, or its failure note. Only call it for agents you have been told are " +
+      "finished; an agent still running cannot be read this way (you will be informed when it is done).",
+    parameters: {
+      type: "object",
+      properties: {
+        ids: {
+          type: "array",
+          minItems: 1,
+          description: "The finished agents to read, by short id (1, 2, …).",
+          items: { type: "integer", description: "A finished agent's short id." },
+        },
+      },
+      required: ["ids"],
+      additionalProperties: false,
+    },
+  },
+};
+
 // ── live team (roster, aliases, status, memory) ───────────────────────────────
 
-// A parent's child sub-agents, ordered by their stored short alias (1, 2, 3… in spawn order).
+// A child is "pending" — not yet readable — while it is streaming (running) or the user has paused
+// it. Both mean "not done": only a finished/failed/stopped terminal carries a readable result.
+export function isChildPending(s: Session): boolean {
+  return getStreamingIds().has(s.id) || getUserPausedIds().has(s.id);
+}
+
+// Read finished children's final output (their last assistant text), or a failure note for an
+// errored/out-of-memory one — keyed by short id. Shared by the getAgentContent tool and the engine's
+// synthetic delivery. Callers handle the still-pending case (the tool erases; delivery only passes
+// terminal ids). Loads each child's history first so the last-text read sees real content.
+export async function collectAgentContent(parentSid: string, ids: unknown[]): Promise<{ output: string; childIds: string[] }> {
+  const resolved = ids.map((id) => ({ id, child: resolveChild(parentSid, id) }));
+  const childIds = resolved.filter((r) => r.child).map((r) => r.child!.id);
+  await Promise.all(childIds.map((cid) => ensureLoaded(cid)));
+  const answers = resolved.map(({ id, child }) => {
+    if (!child) return `agent (id: ${String(id)}): no sub-agent #${String(id)}.`;
+    const alias = aliasOf(child);
+    if (child.errorKind) return `agent (id: ${alias}): ${failureNote(alias, child.title, child.errorKind, lastAgentText(child.id))}`;
+    return `agent (id: ${alias}): ${cap(lastAgentText(child.id)) || "(the sub-agent returned no text)"}`;
+  });
+  return { output: cap(answers.join("\n\n")), childIds };
+}
+
+// A sub-agent's final answer — its last assistant message's text.
+export function lastAgentText(sid: string): string {
+  const msgs = getSession(sid)?.messages ?? [];
+  for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "assistant") return msgs[i].text ?? "";
+  return "";
+}
+
+// A parent's child sub-agents, ordered by their short handle (#1, #2, … in spawn order).
 export function childrenOf(parentSid: string): Session[] {
   return getSessions()
     .filter((s) => s.parentId === parentSid)
-    .sort((a, b) => (a.alias ?? 0) - (b.alias ?? 0));
+    .sort((a, b) => aliasOf(a) - aliasOf(b));
 }
 
-// A child's short alias (0 if unset — only children carry one).
+// A child's short handle, parsed from the trailing "#n" of its title (0 if none — only children carry one,
+// and pre-existing children spawned before this scheme have no "#n" and stay unaddressable).
 export function aliasOf(s: Session): number {
-  return s.alias ?? 0;
+  const m = /#(\d+)\s*$/.exec(s.title);
+  return m ? Number(m[1]) : 0;
 }
 
 // Resolve a short id (1, 2, …) to the child — lenient about quotes/spaces the model may add.
 export function resolveChild(parentSid: string, id: unknown): Session | undefined {
   const n = Number(String(id).replace(/['"\s]/g, ""));
   if (!Number.isInteger(n) || n < 1) return undefined;
-  return childrenOf(parentSid).find((s) => (s.alias ?? 0) === n);
+  return childrenOf(parentSid).find((s) => aliasOf(s) === n);
 }
 
 // A sub-agent's current state, derived live: streaming → working; a stored errorKind → failed/out-of-memory.
@@ -177,7 +234,7 @@ export function memoryPct(s: Session): number | null {
 // response — the orchestrator already has responses in its transcript; echoing them would duplicate/bloat).
 function rosterLine(s: Session): string {
   const mem = memoryPct(s);
-  return `- ${s.alias} "${s.title || "(untitled)"}" — ${agentStatus(s)}${mem === null ? "" : ` — memory ${mem}%`}`;
+  return `- ${s.title || "(untitled)"} — ${agentStatus(s)}${mem === null ? "" : ` — memory ${mem}%`}`;
 }
 
 // The orchestrator's live team, or a hint that it has none. Shown by ActiveAgents and on a bad id.

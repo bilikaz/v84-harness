@@ -4,6 +4,7 @@ import { resolveMain } from "../settings.ts";
 import type { Ctx } from "../ctx.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
+import { pt } from "../prompts.ts";
 import { getAppConfig } from "../config/index.ts";
 import {
   contextLimit,
@@ -17,13 +18,6 @@ import {
 } from "./store.ts";
 
 const log = rootLog.child("session.compaction");
-
-const COMPACT_SYSTEM = "You compress conversations into faithful, self-contained summaries.";
-const COMPACT_INSTRUCTION =
-  "Summarize the entire conversation above into a compact but COMPLETE summary that can replace the full " +
-  "history. Preserve: the user's goals and constraints, key decisions and their rationale, important facts, " +
-  "file/code state and paths touched, tool results that still matter, and any open tasks or next steps. Use " +
-  "clear sections. Omit nothing the assistant would need to continue seamlessly. Output only the summary.";
 
 export async function compact(ctx: Ctx, sid: string): Promise<void> {
   const session = getSession(sid);
@@ -39,7 +33,7 @@ export async function compact(ctx: Ctx, sid: string): Promise<void> {
     const messages: ChatMessage[] = [
       // Same input-capability filter as the turn loop — the endpoint would 400 on media it can't take.
       ...toChatMessages(session.messages, cfg.input ?? {}),
-      { role: "user", content: COMPACT_INSTRUCTION },
+      { role: "user", content: pt("compact.instruction") },
     ];
     // OUTPUT gets the full reserved headroom, NOT the user's tiny maxTokens.
     const reserve = cfg.model.contextLength
@@ -48,7 +42,7 @@ export async function compact(ctx: Ctx, sid: string): Promise<void> {
     const { text, usage } = await ctx.llm.call({
       service: "main",
       messages,
-      system: COMPACT_SYSTEM,
+      system: pt("compact.system"),
       signal: controller.signal,
       params: { reasoningEffort: "low", thinkingBudget: getAppConfig().session.compactThinkingBudget, maxTokens: reserve },
       handler: bufferedTextHandler(),

@@ -13,6 +13,12 @@ import { IPC } from "./bridge.ts";
 const electron = createRequire(import.meta.url)("electron") as typeof import("electron");
 const { app, BrowserWindow, screen, shell } = electron;
 
+// Force HTTP/2/1.1 — disable HTTP/3 (QUIC) for ALL of Chromium's networking (LLM fetches + fleet windows).
+// QUIC (over UDP) resets long, slow-trickling streaming responses on net::ERR_QUIC_PROTOCOL_ERROR — exactly
+// what the chat/completions SSE stream is under concurrent load; TCP/h2 tolerates the idle gaps. Must be set
+// before the app's network stack starts, so it lives at module top.
+app.commandLine.appendSwitch("disable-quic");
+
 // A link in the chat (a model-returned URL) is an http(s) navigation away from the app shell — it would
 // replace the renderer with the page and strand the user (the host window has no back button). Send those
 // to the OS browser instead. The app's own URL (dev http://localhost, prod file://) navigates in place;

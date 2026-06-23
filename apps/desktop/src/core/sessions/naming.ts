@@ -4,7 +4,7 @@ import { getAppConfig } from "../config/index.ts";
 import type { Ctx } from "../ctx.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { rootLog } from "../../lib/logger/index.ts";
-import { pt } from "../../lib/prompts.ts";
+import { pt } from "../prompts.ts";
 import { getSession, setTitle, toChatMessages } from "./store.ts";
 
 const log = rootLog.child("session.naming");

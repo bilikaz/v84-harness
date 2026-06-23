@@ -72,8 +72,10 @@ loading. Its index row below stays.
 | [0055](0055-browser-read-delivery.md) | Browser read delivery — `Browser` returns the page (shared `readWindow`) + per-window op lock; snapshot always shown (refines 0051) | accepted |
 | [0056](0056-portable-workspace-tools.md) | Portable workspace tools — drop Bash, pure-Node Grep, add Find/Move/Copy/Delete, Read `offset` (amends 0033) | accepted |
 | [0057](0057-developer-gated-script-execution.md) | RunScript — out-of-process, developer-gated code execution + `developerMode` flag | accepted |
-| [0058](0058-conversational-sub-agent-orchestration.md) | Conversational sub-agent orchestration — a standing team (aliases, ActiveAgents/AskAgent/ResumeAgent), typed outcomes, resume-from-history (supersedes/extends 0022) | accepted |
+| [0058](0058-conversational-sub-agent-orchestration.md) | Conversational sub-agent orchestration — a standing team (aliases, ActiveAgents/AskAgent/ResumeAgent), typed outcomes, resume-from-history (supersedes/extends 0022) | accepted (async delivery added by 0060; alias clause superseded by 0061) |
 | [0059](0059-builtin-general-agent.md) | Built-in universal General agent — always summonable, inherits the caller's context via its container | accepted |
+| [0060](0060-async-subagent-delivery.md) | Async sub-agent orchestration + the settle-event delivery model (`asyncAgents`, `awaitSettled`, `getAgentContent`, user-drivable children, shared `fanOut`) | accepted |
+| [0061](0061-subagent-alias-from-title.md) | Sub-agent alias from the title `#n` suffix (supersedes 0058's stored-alias clause) | accepted |
 
 ## Needs review / important missing parts
 
@@ -89,6 +91,7 @@ it from this list.
 | Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 18 IPC channels now (was 6 when "revisit if it grows" was written; +2 for the plugin bridge [ADR-0049](0049-plugin-service-bridge.md), +2 for the browser fleet's `capturePage`/`browserEvent` [ADR-0051](0051-browser-windows-session-owned.md)); a missing handler still hangs the invoke silently. A startup ping would catch it. |
 | Plugin service lifecycle/dispose depth | [ADR-0049](0049-plugin-service-bridge.md) | `install`/`uninstall` exist, but there's no teardown on app quit (process death is relied on) and no per-window scoping; fine for single-window desktop, revisit if a plugin holds resources that need graceful release. |
 | Tests/typecheck not in CI | conventions/testing.md | `.github/workflows/review.yml` runs the reviewer gate only; nothing runs `pnpm typecheck` / `pnpm test` on push. |
+| Local-LLM prefill/eviction kills long & resumed runs | [ADR-0058](0058-conversational-sub-agent-orchestration.md), [ADR-0060](0060-async-subagent-delivery.md), [/TODO.md](../../TODO.md) | Resume re-prefills the full saved context; concurrent sub-agents overrun a local server's KV cache so runs get evicted and re-prefilled (or the stream resets). No concurrency cap or context bound yet — needs a design pass. |
 
 Resolved since first written: reasoning config beyond OpenAI-compatible
 (ADR-0006 — effort now maps to all three providers), the `lib/` → `core/`

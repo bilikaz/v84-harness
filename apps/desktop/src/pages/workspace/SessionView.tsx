@@ -211,30 +211,42 @@ export function SessionView() {
 
       <div className="px-6 pb-6">
         {isChildRun ? (
-          // Deleting removes only this run log — the answer survives in the parent's tool result.
-          <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-2">
-            <span className="px-1 text-xs text-neutral-500">{t("agents.childRun")}</span>
-            {parent && (
+          // A sub-agent run is user-drivable: while it runs the input is LOCKED (stop it to guide it); once
+          // stopped/finished, send a message to continue it. Its result still flows up to the parent on
+          // finish. Deleting removes only this run log — a delivered answer survives in the parent.
+          <div className="mx-auto max-w-3xl">
+            <Composer
+              disabled={compacting || full}
+              streaming={streaming}
+              lock={streaming}
+              lockNote="Running — stop it to send guidance"
+              onStop={() => ctx.sessions.stopChild(session.id)}
+              onSubmit={submit}
+            />
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <span className="px-1 text-xs text-neutral-500">{t("agents.childRun")}</span>
+              {parent && (
+                <button
+                  type="button"
+                  onClick={() => setActive(parent.id)}
+                  className="rounded-2xl border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                >
+                  {t("agents.toParent", { title: parent.title })}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setActive(parent.id)}
-                className="rounded-2xl border border-neutral-200 bg-white px-4 py-2.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100"
+                onClick={() => {
+                  // Capture parent id before the delete switches the active session.
+                  const pid = parent?.id;
+                  ctx.sessions.deleteSession(session.id);
+                  if (pid) setActive(pid);
+                }}
+                className="flex items-center gap-1.5 rounded-2xl border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
               >
-                {t("agents.toParent", { title: parent.title })}
+                <Trash2 size={12} /> {t("agents.deleteRun")}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                // Capture parent id before the delete switches the active session.
-                const pid = parent?.id;
-                ctx.sessions.deleteSession(session.id);
-                if (pid) setActive(pid);
-              }}
-              className="flex items-center gap-1.5 rounded-2xl border border-red-200 bg-white px-4 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50"
-            >
-              <Trash2 size={12} /> {t("agents.deleteRun")}
-            </button>
+            </div>
           </div>
         ) : (
           <>
