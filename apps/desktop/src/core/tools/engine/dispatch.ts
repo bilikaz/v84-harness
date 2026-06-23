@@ -8,7 +8,8 @@ import type { ToolSpec, ToolCallRequest } from "../types.ts";
 import { requestApproval } from "../../approvals.ts";
 
 // Eager-glob the tier's tool files (one folder per family) and instantiate the concrete BaseEngineTool
-// subclasses. Sibling helper exports (e.g. agents/catalog.ts) are skipped, like the registry.
+// subclasses. Non-tool exports are skipped (the instanceof filter); shared helpers live outside the glob,
+// under tools/helpers/.
 const modules = import.meta.glob<Record<string, unknown>>("./*/*.ts", { eager: true });
 const engineTools = new Map<string, BaseEngineTool>();
 for (const mod of Object.values(modules)) {

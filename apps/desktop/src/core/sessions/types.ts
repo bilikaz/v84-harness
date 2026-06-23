@@ -51,9 +51,6 @@ export interface Session {
   containerId: string; // the container (chat/local/remote) this session lives in — never null
   agentId?: string;
   parentId?: string;
-  // A sub-agent's short, stable, per-parent handle (1, 2, 3…) assigned at spawn — what the orchestrator
-  // addresses it by (ULIDs are hallucination bait). Only set on children (sessions with a parentId).
-  alias?: number;
   // Why this session's last turn failed, if it did — drives the roster status and the resume guidance
   // (capacity = out-of-memory, not resumable). Cleared when a new turn starts or one succeeds.
   errorKind?: ErrorKind;

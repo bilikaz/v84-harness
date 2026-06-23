@@ -1,41 +1,55 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fieldInput, fieldInputFull, Row } from "./Field.tsx";
-import { defaultSystemPrompt } from "../../lib/prompts.ts";
+import { fieldInput, fieldInputFull, Row, Switch } from "./Field.tsx";
+import { defaultSystemPrompt } from "../../core/prompts.ts";
 import { getAppConfig, getConfigOverrides, setConfigOverrides } from "../../core/config/index.ts";
+import { llmDebugEnabled, setLlmDebug } from "../../llm/debug.ts";
 
-// The user's global system message — the BASE block for plain chats. Agents (their baked system) and
-// workspaces (their own message) override it; the tool-guidance blocks (files / browser / memory) still
-// append on top. Saved into config.app overrides (synced, follows the connection). Just the prompt for
-// now — the section can grow later.
+// The general "Settings" section: two tabs — the user's global system message ("User message"), and the
+// app tunables ("Configuration": browser reading, async sub-agents, developer mode, LLM debug logging).
+// All persist into config.app overrides (synced, follows the connection), except LLM debug (a local flag).
 export function SystemSection() {
+  const [tab, setTab] = useState<"message" | "config">("message");
+
+  return (
+    <div className="max-w-2xl">
+      <h2 className="text-lg font-semibold text-neutral-900">Settings</h2>
+      <p className="mt-1 text-sm text-neutral-500">Your assistant's default instructions, and how the harness behaves.</p>
+
+      <div className="mt-4 flex gap-1 border-b border-neutral-200">
+        {([
+          ["message", "User message"],
+          ["config", "Configuration"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`-mb-px rounded-t-md border-b-2 px-3 py-1.5 text-sm ${
+              tab === id ? "border-neutral-800 font-medium text-neutral-900" : "border-transparent text-neutral-500 hover:text-neutral-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "message" ? <UserMessageTab /> : <ConfigurationTab />}
+    </div>
+  );
+}
+
+function UserMessageTab() {
   const { t } = useTranslation();
-  const cfg = getAppConfig();
-  const [value, setValue] = useState(cfg.systemPrompt);
-  const [settleMs, setSettleMs] = useState(cfg.browser.settleMs);
-  const [graceMs, setGraceMs] = useState(cfg.browser.graceMs);
-  const [shots, setShots] = useState(cfg.browser.shots);
-  const [devMode, setDevMode] = useState(cfg.developerMode);
+  const [value, setValue] = useState(getAppConfig().systemPrompt);
 
   function persist(): void {
     setConfigOverrides({ ...getConfigOverrides(), systemPrompt: value.trim() });
   }
 
-  function persistDevMode(on: boolean): void {
-    setDevMode(on);
-    setConfigOverrides({ ...getConfigOverrides(), developerMode: on });
-  }
-
-  function persistBrowser(patch: { settleMs?: number; graceMs?: number; shots?: number }): void {
-    const o = getConfigOverrides();
-    setConfigOverrides({ ...o, browser: { ...o.browser, ...patch } });
-  }
-
   return (
-    <div className="max-w-2xl">
-      <h2 className="text-lg font-semibold text-neutral-900">{t("system.title")}</h2>
-      <p className="mt-1 text-sm text-neutral-500">{t("system.subtitle")}</p>
+    <div className="mt-4">
+      <p className="text-sm text-neutral-500">{t("system.subtitle")}</p>
       <textarea
         className={fieldInputFull + " mt-3 min-h-[300px] resize-y font-mono text-xs leading-relaxed"}
         value={value}
@@ -48,6 +62,63 @@ export function SystemSection() {
         <div className="mb-1 text-xs font-medium text-neutral-500">{t("system.defaultLabel")}</div>
         <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-neutral-600">{defaultSystemPrompt()}</pre>
       </div>
+    </div>
+  );
+}
+
+function ConfigurationTab() {
+  const { t } = useTranslation();
+  const cfg = getAppConfig();
+  const [settleMs, setSettleMs] = useState(cfg.browser.settleMs);
+  const [graceMs, setGraceMs] = useState(cfg.browser.graceMs);
+  const [shots, setShots] = useState(cfg.browser.shots);
+  const [asyncAgents, setAsyncAgents] = useState(cfg.session.asyncAgents);
+  const [delivery, setDelivery] = useState(cfg.session.asyncDelivery);
+  const [devMode, setDevMode] = useState(cfg.developerMode);
+  const [debug, setDebug] = useState(llmDebugEnabled());
+
+  function persistBrowser(patch: { settleMs?: number; graceMs?: number; shots?: number }): void {
+    const o = getConfigOverrides();
+    setConfigOverrides({ ...o, browser: { ...o.browser, ...patch } });
+  }
+  function persistAsync(on: boolean): void {
+    setAsyncAgents(on);
+    const o = getConfigOverrides();
+    setConfigOverrides({ ...o, session: { ...o.session, asyncAgents: on } });
+  }
+  function persistDelivery(mode: "synthetic" | "nudge"): void {
+    setDelivery(mode);
+    const o = getConfigOverrides();
+    setConfigOverrides({ ...o, session: { ...o.session, asyncDelivery: mode } });
+  }
+  function persistDevMode(on: boolean): void {
+    setDevMode(on);
+    setConfigOverrides({ ...getConfigOverrides(), developerMode: on });
+  }
+  function toggleDebug(): void {
+    const next = !debug;
+    setDebug(next);
+    setLlmDebug(next);
+  }
+
+  return (
+    <div className="mt-4">
+      <h3 className="text-base font-semibold text-neutral-900">Sub-agents</h3>
+      <p className="mt-1 text-sm text-neutral-500">
+        When on, RunAgent returns immediately and you're told each sub-agent's result as it finishes, instead of the
+        turn blocking until every one is done. Off = the classic wait-for-all behaviour.
+      </p>
+      <Row label="Async sub-agents">
+        <Switch on={asyncAgents} onToggle={() => persistAsync(!asyncAgents)} />
+      </Row>
+      {asyncAgents && (
+        <Row label="Result delivery">
+          <select className={fieldInput} value={delivery} onChange={(e) => persistDelivery(e.target.value as "synthetic" | "nudge")}>
+            <option value="synthetic">Synthetic call (no extra round-trip)</option>
+            <option value="nudge">Nudge (agent fetches it)</option>
+          </select>
+        </Row>
+      )}
 
       <h3 className="mt-8 text-base font-semibold text-neutral-900">Browser windows</h3>
       <p className="mt-1 text-sm text-neutral-500">How the agent reads pages it opens with the Browser tool.</p>
@@ -89,11 +160,16 @@ export function SystemSection() {
       <h3 className="mt-8 text-base font-semibold text-neutral-900">Developer</h3>
       <p className="mt-1 text-sm text-neutral-500">
         Lets the agent run JavaScript it writes, in a separate Node process. Off by default — when off the RunScript
-        tool isn’t offered at all. Each run still asks for your approval.
+        tool isn't offered at all. Each run still asks for your approval.
       </p>
       <Row label="Developer mode">
-        <input type="checkbox" className="h-4 w-4" checked={devMode} onChange={(e) => persistDevMode(e.target.checked)} />
+        <Switch on={devMode} onToggle={() => persistDevMode(!devMode)} />
       </Row>
+
+      <Row label={t("developer.llmDebug")}>
+        <Switch on={debug} onToggle={toggleDebug} />
+      </Row>
+      <p className="pb-2 text-xs text-neutral-400">{t("developer.llmDebugHint")}</p>
     </div>
   );
 }

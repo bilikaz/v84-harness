@@ -26,6 +26,9 @@ export interface EngineToolResult {
   videos?: Video[];
   childSessionIds?: string[]; // spawned child sessions, for the tool-card links
   browserWindowId?: string; // a browser window this call opened/navigated, for the tool-card link
+  // Erase this call and end the turn — no tool:result, the tool_call is scrubbed from history so it looks
+  // like it never happened (getAgentContent on a not-yet-finished agent: don't poll, you'll be told).
+  eraseTurn?: boolean;
 }
 
 export abstract class BaseEngineTool {

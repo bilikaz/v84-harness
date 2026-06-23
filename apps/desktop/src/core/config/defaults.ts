@@ -79,6 +79,15 @@ export interface ConfigApp {
     titleMaxTokens: number;
     // Auto-compaction thinking budget — a summary doesn't need deep reasoning.
     compactThinkingBudget: number;
+    // Async sub-agent orchestration: when on, RunAgent returns immediately and
+    // the parent is pushed each child's result as it finishes (instead of
+    // blocking the turn until all children are done). Off = the classic
+    // await-all-children behaviour.
+    asyncAgents: boolean;
+    // How a finished child's result reaches the parent (async mode only):
+    // "synthetic" fabricates a getAgentContent call+result into history (no extra
+    // round-trip); "nudge" injects a notice and lets the model call it.
+    asyncDelivery: "synthetic" | "nudge";
   };
 }
 
@@ -121,5 +130,7 @@ export const CONFIG_DEFAULTS: ConfigApp = {
     maxSteps: 50,
     titleMaxTokens: 4096,
     compactThinkingBudget: 2048,
+    asyncAgents: false,
+    asyncDelivery: "nudge",
   },
 };

@@ -62,6 +62,10 @@ let activeId: string = placeholder.id;
 // A fresh Set on every change so useSyncExternalStore re-renders.
 let streamingIds: Set<string> = new Set();
 let compactingIds: Set<string> = new Set();
+// Sub-agent children the USER stopped (a pause, not a failure) — distinct from agent-stalled
+// (errorKind). Resume ownership follows the stopper: the parent's ResumeAgent won't touch these,
+// and getAgentContent treats them as "not done yet" (per the async orchestration design).
+let userPausedIds: Set<string> = new Set();
 let hydrated = false;
 
 const reg = createListeners();
@@ -211,6 +215,17 @@ export function setStreaming(sid: string, on: boolean): void {
   streamingIds = new Set(streamingIds);
   if (on) streamingIds.add(sid);
   else streamingIds.delete(sid);
+  // Any turn start clears a user pause — the child is running again (resume / new message).
+  if (on && userPausedIds.has(sid)) setUserPaused(sid, false);
+}
+
+export function getUserPausedIds(): ReadonlySet<string> {
+  return userPausedIds;
+}
+export function setUserPaused(sid: string, on: boolean): void {
+  userPausedIds = new Set(userPausedIds);
+  if (on) userPausedIds.add(sid);
+  else userPausedIds.delete(sid);
 }
 
 export function getCompactingIds(): ReadonlySet<string> {
@@ -240,9 +255,10 @@ export function setActive(id: string): void {
 export function createSession(init: SessionInit = {}, opts: { activate?: boolean } = {}): string {
   const containerId = init.containerId ?? getActiveContainerId() ?? "";
   const s = makeSession({ ...init, containerId });
-  // A child gets a stable short alias (1, 2, 3…) within its parent, assigned in spawn order. Children are
-  // created sequentially, so count+1 is the next handle — survives reload (it's persisted on the row).
-  if (init.parentId) s.alias = sessions.filter((x) => x.parentId === init.parentId).length + 1;
+  // A child gets a stable short handle (#1, #2, …) within its parent, baked into its title in spawn order.
+  // The title persists (and shows in the sidebar), so the handle survives reload with no separate field —
+  // the roster/AskAgent/ResumeAgent parse it back out (catalog.aliasOf).
+  if (init.parentId) s.title = `${s.title} #${sessions.filter((x) => x.parentId === init.parentId).length + 1}`;
   sessions = [s, ...sessions];
   if (opts.activate !== false) activeId = s.id;
   persistSessionMeta(s.id);
@@ -338,6 +354,26 @@ export function setLastToolCalls(sid: string, calls: ToolCallRequest[]): void {
     const messages = s.messages.slice();
     const i = messages.length - 1;
     messages[i] = { ...messages[i], toolCalls: calls };
+    return { ...s, messages };
+  });
+  notify();
+}
+
+// Scrub a single tool_call (by id) from the assistant message that bears it — for an "erased" engine call
+// (a premature getAgentContent): no tool result is appended, and the call is dropped so history looks like
+// it never happened. If the assistant message is left empty (no other calls, no text), drop it entirely.
+export function removeToolCall(sid: string, callId: string): void {
+  sessions = sessions.map((s) => {
+    if (s.id !== sid) return s;
+    const messages = s.messages.slice();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m.toolCalls?.some((c) => c.id === callId)) continue;
+      const toolCalls = m.toolCalls.filter((c) => c.id !== callId);
+      if (!toolCalls.length && !m.text && !m.images?.length && !m.videos?.length) messages.splice(i, 1);
+      else messages[i] = { ...m, toolCalls: toolCalls.length ? toolCalls : undefined };
+      break;
+    }
     return { ...s, messages };
   });
   notify();

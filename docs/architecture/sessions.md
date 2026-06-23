@@ -8,8 +8,7 @@ The reference module shape for `core/` features:
 |------|----------------|
 | `store.ts` | State, selectors, mutations; decides WHEN to persist; the media resend window |
 | `persistence.ts` | Pure session-meta shapes: `SessionMeta`/`SessionsIndex` + the `toMeta`/`normalize` coercions (durable IO lives in `StorageEngine`, [architecture/storage.md](storage.md)) |
-| `engine.ts` | The `SessionEngine` class — orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution, effective tool policy, naming/compaction wiring |
-| `agentTools.ts` | The ListAgents/RunAgent pair: stable schemas, catalog text, name resolution (ADR-0022) |
+| `engine.ts` | The `SessionEngine` class — orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution + delivery (`awaitSettled`, the async push queue), effective tool policy, naming/compaction wiring |
 | `events.ts` | Bus event interfaces + declaration merge + scoped bus |
 | `listeners.ts` | Bus → store reactions (transcript building, streaming flags, persistence) |
 | `hooks.ts` | React bindings only |
@@ -73,14 +72,18 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   same `ctx.tools.filter(…)` pass) exposes the same computation to the UI;
   `unlinkAgent` (store) severs the link one-way,
   converting the session to plain workspace/chat permissions.
-- Sub-agents: `ListAgents` returns the catalog as data; one
-  `RunAgent {runs: […]}` call spawns all its child sessions concurrently and
-  returns their combined answers; the ToolCard links to the live runs
-  ([ADR-0022](../adr/0022-subagent-orchestration.md)). A worker's answer lives
-  as a tool-result message in the PARENT's transcript — deleting child sessions
-  (per-run, or all of a parent's via the right-panel cleanup button) costs only
-  the child transcripts; mid-flight deletes stop the run first and the parent's
-  RunAgent call settles as "stopped".
+- Sub-agents: one `RunAgent {runs: […]}` call spawns all its child sessions
+  concurrently; the ToolCard links to the live runs
+  ([ADR-0022](../adr/0022-subagent-orchestration.md)). Delivery is one settle
+  signal, two transports ([ADR-0060](../adr/0060-async-subagent-delivery.md),
+  full picture in [agents.md](agents.md)): blocking mode waits on
+  `engine.awaitSettled` (rides a child's user pause→resume, returns the final
+  answer inline); async mode (`config.session.asyncAgents`) acks at once and the
+  engine pushes each result on the parent's next idle turn. Either way the
+  answer lands as a tool-result message in the PARENT's transcript — deleting
+  child sessions (per-run, or all of a parent's via the right-panel cleanup
+  button) costs only the child transcripts; mid-flight deletes stop the run first
+  and the call settles as "stopped".
 - **System prompt = overridable base + appended capability blocks**, resolved live
   each turn ([ADR-0052](../adr/0052-system-prompt-layering.md)). The BASE is the
   first match of: the agent's baked `session.system` → the session's container

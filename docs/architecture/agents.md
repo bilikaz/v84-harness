@@ -6,7 +6,9 @@ lives. Decisions: [ADR-0022](../adr/0022-subagent-orchestration.md) (child sessi
 [ADR-0023](../adr/0023-agent-definition-binding-and-ceiling.md) (definition + ceiling),
 [ADR-0050](../adr/0050-engine-tool-tier.md) (the engine tool tier),
 [ADR-0058](../adr/0058-conversational-sub-agent-orchestration.md) (the standing team),
-[ADR-0059](../adr/0059-builtin-general-agent.md) (the built-in General agent).
+[ADR-0059](../adr/0059-builtin-general-agent.md) (the built-in General agent),
+[ADR-0060](../adr/0060-async-subagent-delivery.md) (async dispatch + the settle-event delivery model),
+[ADR-0061](../adr/0061-subagent-alias-from-title.md) (alias from the title `#n` suffix).
 
 ## What an agent is
 
@@ -19,9 +21,10 @@ agent's `agentId` — so the agent's output contract and ceiling apply to every 
 ## Running agents as a team (the engine tool tier)
 
 The orchestration tools live in `core/tools/engine/agents/` — driver-level tools ([ADR-0050](../adr/0050-engine-tool-tier.md)),
-not registry tools, because they need the live engine to spawn/continue sessions. `catalog.ts` holds the
-shared schemas + helpers; one file per tool. All are **depth-1** (`childSafe = false`) — a sub-agent can't
-orchestrate its own team. The five:
+not registry tools, because they need the live engine to spawn/continue sessions. One file per tool, each a
+thin **planner**; the shared dispatch/format loop and the resolution helpers live under `tools/helpers/agents/`
+(`fanout.ts` + `catalog.ts`), per the "non-tool code lives in `tools/helpers/`" rule ([tools.md](tools.md)). All
+are **depth-1** (`childSafe = false`) — a sub-agent can't orchestrate its own team. The six:
 
 | Tool | Shape | Role |
 |------|-------|------|
@@ -30,15 +33,34 @@ orchestrate its own team. The five:
 | `ActiveAgents` | `{}` | The live roster: each running agent's short id, status, memory %. |
 | `AskAgent` | `{runs:[{id, message}]}` | Send a follow-up to a running agent — it answers from its existing context. |
 | `ResumeAgent` | `{runs:[{id}]}` | Bare-continue a crashed/stalled run — no message (see Resume). |
+| `getAgentContent` | `{ids:[…]}` | Read finished children's output by short id; erases its own call if asked about a still-pending one (async delivery, below). |
 
 `RunAgent`/`ListAgents` are advertised whenever the catalog is non-empty (always — see General agent below);
-`ActiveAgents`/`AskAgent`/`ResumeAgent` advertise only once the session has children to address.
+`ActiveAgents`/`AskAgent`/`ResumeAgent`/`getAgentContent` advertise only once the session has children to address.
 
-## Addressing: stored short aliases
+## Dispatch: blocking or async, one settle signal ([ADR-0060](../adr/0060-async-subagent-delivery.md))
 
-Sub-agents are addressed by a **stored per-parent alias** (`1`, `2`, `3`…), assigned at spawn in
-`createSession` (`Session.alias`, persisted) and resolved leniently (`resolveChild`, strips quotes/spaces; a
-bad id returns the roster inline). ULIDs never reach the model — they're hallucination bait
+`RunAgent`/`AskAgent`/`ResumeAgent` share one `fanOut` loop; `session.asyncAgents` (default off) picks the
+transport, but both consume the **same** signal — a child's terminal, non-aborted `turn:end` (a user pause is
+*not* a delivery).
+
+- **Blocking (default).** `fanOut` waits on the **settle event** via `engine.awaitSettled`, not the raw turn
+  Promise — so a child's pause→guide→resume cycle is invisible to the parent, which receives only the *final*
+  result. The dispatch turn returns the answers inline, tagged `agent (id: N): …` when there's more than one.
+- **Async.** Each tool returns an ack at once and never blocks. When a child settles, the engine queues it and
+  delivers on the parent's next *idle* turn (never mid-print): `session.asyncDelivery` = `nudge` (a notice; the
+  model then calls `getAgentContent`) or `synthetic` (a `getAgentContent` call+result fabricated into history,
+  falling back to `nudge` if the provider rejects it). The parent reads finished agents with `getAgentContent`
+  and must not poll — `getAgentContent` on a still-pending child **erases its own call** and ends the turn.
+
+## Addressing: alias from the title `#n` suffix ([ADR-0061](../adr/0061-subagent-alias-from-title.md))
+
+Sub-agents are addressed by a per-parent short id (`1`, `2`, `3`…) **derived from the title**, not a stored
+field: `createSession` appends ` #n` to a child's title at spawn, and `aliasOf` parses the trailing `#n`.
+Resolution is lenient (`resolveChild`, strips quotes/spaces; a bad id returns the roster inline). Because the
+title is already persisted, the id survives restart with no migration, and it's visible in the sidebar — the
+handle the model uses and the label the user sees are the same string. Children spawned before this scheme have
+no `#n` and stay unaddressable (`aliasOf` → 0). ULIDs never reach the model — they're hallucination bait
 ([llm-interfaces.md](../conventions/llm-interfaces.md) rule 3, same pattern as browser-window aliases).
 Replies are tagged `agent (id: N): …`.
 
@@ -84,5 +106,9 @@ exactly its own tools.
 ## Lifetime & UI
 
 Children are real sessions ([ADR-0022](../adr/0022-subagent-orchestration.md)): persisted, streamed, stop/heal
-for free, rendered as read-only windows under the parent (control lives in the parent — stopping cascades,
-deleting cascade-deletes). The roster is the parent's children for the life of the session.
+for free, rendered under the parent (deleting a parent cascade-deletes; stopping a parent cascades). A child's
+window is **user-drivable** ([ADR-0060](../adr/0060-async-subagent-delivery.md)): the user can open it and hit
+its own stop button — `engine.stopChild`, a **pause** (`store.userPausedIds`), not a failure. A user-paused
+child is the user's to continue (the parent's `ResumeAgent` refuses it; the roster/`getAgentContent` treat it
+as "not done"), and the pause is never reported to the parent — which then receives the *final* result once the
+child resumes and settles. The roster is the parent's children for the life of the session.

@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useCtx } from "../../../renderer/ctx.tsx";
 import { useDetection } from "../../../lib/hooks.ts";
 import { usePluginsConfig, setPluginSettings } from "../../../core/plugins/config.ts";
-import { Row, DetectButton, fieldInputFull } from "../../../pages/settings/Field.tsx";
+import { Row, DetectButton, Switch, fieldInputFull } from "../../../pages/settings/Field.tsx";
 import { DATABASE_SLUG, ENGINE_DEFAULT_PORT, type DbConnection, type DbEngine, type DbSettings } from "../types.ts";
 
 const FIELD = "w-80";
@@ -98,10 +98,10 @@ function ConnectionCard({ conn, open, onToggle, onPatch, onRemove }: {
             </div>
           </Row>
           <Row label={t("plugins.database.ssl")}>
-            <label className={`${FIELD} flex items-center gap-2 text-sm text-neutral-600`}>
-              <input type="checkbox" checked={conn.ssl ?? false} onChange={(e) => onPatch({ ssl: e.target.checked })} className="h-4 w-4" />
+            <div className={`${FIELD} flex items-center gap-2 text-sm text-neutral-600`}>
+              <Switch on={conn.ssl ?? false} onToggle={() => onPatch({ ssl: !(conn.ssl ?? false) })} />
               {t("plugins.database.sslHint")}
-            </label>
+            </div>
           </Row>
 
           <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
