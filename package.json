@@ -9,6 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
+    "postinstall": "node -e \"require('electron')\"",
     "typecheck": "pnpm -r typecheck",
     "dev:desktop": "pnpm --filter @v84-harness/desktop dev",
     "dev:desktop:electron": "pnpm --filter @v84-harness/desktop dev:electron",
