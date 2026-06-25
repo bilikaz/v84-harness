@@ -183,6 +183,7 @@ ADR-0011); they are not restated below.
   preload as `.mjs` ESM, renderer reusing the web config). `"type": "module"`
   throughout; CJS-only Electron is loaded in preload via `createRequire`.
 - Packaging: electron-builder; Windows artifacts are built on a Windows host
-  (`pnpm dist:win`), not cross-built from WSL.
+  (`pnpm dist:win`) and macOS dmgs on a macOS host (`pnpm dist:mac`, arm64 + x64,
+  unsigned/ad-hoc), neither cross-built from WSL.
 - `backgroundThrottling: false` on the BrowserWindow — long renderer work (video
   generation polling) must survive the window being backgrounded.

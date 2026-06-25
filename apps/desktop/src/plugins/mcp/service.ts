@@ -140,16 +140,24 @@ async function connect(server: McpServer, override?: McpSecretOverride): Promise
   if (!registrar) throw new Error("MCP tool registrar not bound");
   await disconnect(server.name);
   const client = await openConnectedClient(server, override);
-  const { tools } = await client.listTools();
   const names: string[] = [];
-  for (const t of tools) {
-    const schema: ToolSpec = {
-      type: "function",
-      function: { name: mcpToolName(server.name, t.name), description: t.description ?? "", parameters: t.inputSchema ?? { type: "object" } },
-    };
-    const desc: McpToolDescriptor = { server: server.name, tool: t.name, schema, call: (args, signal) => callTool(client, t.name, args, signal) };
-    registrar.register(new McpTool(registrar.config, desc), MCP_SLUG);
-    names.push(t.name);
+  try {
+    // Discovery + registration AFTER a live connection — if either throws, the client is connected but not
+    // yet in `live`, so unwind here (unregister partial tools, close the client) or it leaks unreachable.
+    const { tools } = await client.listTools();
+    for (const t of tools) {
+      const schema: ToolSpec = {
+        type: "function",
+        function: { name: mcpToolName(server.name, t.name), description: t.description ?? "", parameters: t.inputSchema ?? { type: "object" } },
+      };
+      const desc: McpToolDescriptor = { server: server.name, tool: t.name, schema, call: (args, signal) => callTool(client, t.name, args, signal) };
+      registrar.register(new McpTool(registrar.config, desc), MCP_SLUG);
+      names.push(t.name);
+    }
+  } catch (e) {
+    for (const t of names) registrar.unregister(mcpToolName(server.name, t));
+    await client.close().catch(() => undefined);
+    throw e;
   }
   live.set(server.name, { client, tools: names });
   notify();

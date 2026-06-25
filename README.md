@@ -82,6 +82,7 @@ default assistant instructions under **System message**.
 
 ```bash
 pnpm dist:win    # package on a Windows host (electron-builder)
+pnpm dist:mac    # package on a macOS host (electron-builder)
 ```
 
 <details>
@@ -113,6 +114,41 @@ installer**.
   `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"`.
 - Artifacts are **unsigned** — SmartScreen shows "unknown publisher" on first run
   (*More info → Run anyway*). Real signing needs a certificate.
+
+</details>
+
+<details>
+<summary>macOS packaging notes & gotchas</summary>
+
+Run packaging on a **macOS host** — dmg creation and code-signing are macOS-only
+and cannot be cross-built from WSL/Linux. Apple Silicon or Intel both work.
+
+```bash
+node -v                                       # Node >= 24 required
+corepack enable
+corepack prepare pnpm@10.33.0 --activate
+pnpm install                                  # downloads the Electron binary
+pnpm --filter @v84-harness/desktop dist:mac
+```
+
+Output → `apps/desktop/release/`: a **`.dmg`** for each architecture (`-arm64` and
+`-x64` in the filename). The `.icns` is generated from `build/icon.png` (512×512).
+
+- **No native rebuild** — `build.npmRebuild: false` (no native modules), so the
+  cross-arch (arm64 + x64) build is safe from one host.
+- **Builds are unsigned** (`mac.identity: null`) — electron-builder ad-hoc signs so
+  the app launches locally, but Gatekeeper blocks it on other Macs with *"app is
+  damaged and can't be opened"*. To open: **right-click → Open** (then *Open* in the
+  dialog), or strip the quarantine flag once:
+
+  ```bash
+  xattr -cr "/Applications/V84 Harness.app"
+  ```
+
+- **Real distribution needs a Developer ID certificate + notarization** (Apple
+  Developer account). When that's set up, drop `identity: null`, add
+  `hardenedRuntime: true` + an entitlements file, and pass notarytool credentials
+  via env — not wired up yet.
 
 </details>
 

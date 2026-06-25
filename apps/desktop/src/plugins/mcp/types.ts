@@ -47,13 +47,16 @@ export interface McpSettings {
 }
 
 // PascalCase a free-form name (snake_case / kebab / spaces / dots) — splits on any non-alphanumeric and
-// capitalises each part, preserving internal caps (so an already-camelCase word keeps them).
+// capitalises each part, preserving internal caps (so an already-camelCase word keeps them). Falls back to
+// "X" when a name has no alphanumerics at all, so we never emit an empty segment (MCP__Tool) that could
+// collide with another all-symbol name on the same registry key.
 function pascal(s: string): string {
-  return s
+  const out = s
     .split(/[^a-zA-Z0-9]+/)
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join("");
+  return out || "X";
 }
 
 // The model-facing name for an MCP tool: MCP_<Server>_<Tool>, both segments PascalCased to match the
