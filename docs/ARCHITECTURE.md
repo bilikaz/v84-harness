@@ -86,7 +86,7 @@ Layering rules:
 | `tests/` | Vitest suites for pure logic (path confinement, provider URLs, data-URL parsing) |
 | `tests-live/` | Live engine suites against a real LLM endpoint (own config; not part of `pnpm test`) |
 | `src/pages/` | Feature UIs; each feature self-registers via `register.tsx` |
-| `src/plugins/` | First-party, in-tree plugins (`<slug>/`: manifest, `service.ts`, `tools/`, `ui/`, `locales/`) — a feature as one toggleable folder ([architecture/plugins.md](architecture/plugins.md)) |
+| `src/plugins/` | First-party, in-tree plugins (`<slug>/`: manifest, `service.ts`, `tools/`, `ui/`, `locales/`) — a feature as one toggleable folder ([architecture/plugins.md](architecture/plugins.md)). Reference plugins: `database/` (SQL) and `mcp/` (MCP client — [architecture/mcp.md](architecture/mcp.md), the first to register tools at runtime) |
 | `src/components/` | Reusable presentational components (Modal, Markdown, InlineEdit, …) |
 | `src/locales/` | i18n resources (`en.json`, `lt.json`) — must stay key-for-key in parity |
 
@@ -114,7 +114,8 @@ Deep dives, one per subsystem — read the one for the area you're touching
 | [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, LLMConfig, Provider classes, response handlers, heal |
 | [architecture/ui.md](architecture/ui.md) | Contribution registry/regions, routing, agents UX, UI patterns, i18n |
 | [architecture/storage.md](architecture/storage.md) | Durable persistence: per-entity `StorageRepos`, the provider swap (`repos()` vs `localRepos()`), tables, shapes, accessor surface |
-| [architecture/plugins.md](architecture/plugins.md) | The plugin system: in-tree `<slug>/` folders, the full surface, the service bridge (RPC + events + lifecycle), the MySQL reference plugin |
+| [architecture/plugins.md](architecture/plugins.md) | The plugin system: in-tree `<slug>/` folders, the full surface, the service bridge (RPC + events + lifecycle + tool registrar), the reference plugins |
+| [architecture/mcp.md](architecture/mcp.md) | The MCP plugin: client-plane connections, runtime-registered tools, stdio + HTTP transports, the three auth modes + OAuth flow |
 | [architecture/knowledge.md](architecture/knowledge.md) | The `apps/knowledge` remote service: registry, auth, `/data`, the knowledgebase plane, dev stack |
 
 ## Error-handling conventions

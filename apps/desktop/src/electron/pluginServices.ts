@@ -3,12 +3,15 @@
 // over the bridge (IPC.pluginInvoke), e.g. MySQL connect / disconnect / status. Globbed here in the main
 // bundle, so these reach the SAME service singletons the plugin's local-tier tools import.
 
+import type { PluginToolRegistrar } from "../core/plugins/types.ts";
+
 type Emit = (type: string, payload: unknown) => void;
 type ServiceModule = {
   rpc?: Record<string, (...args: never[]) => unknown>;
   subscribe?: (emit: Emit) => void;
   install?: () => unknown; // lifecycle: bring the service to life (plugin enabled / boot-if-enabled)
   uninstall?: () => unknown; // lifecycle: tear it down (plugin disabled)
+  bindRegistrar?: (registrar: PluginToolRegistrar) => void; // receive the main registry registrar (runtime tools, e.g. MCP)
 };
 const MODULES = import.meta.glob<ServiceModule>("../plugins/*/service.ts", { eager: true });
 
@@ -25,6 +28,12 @@ export function wirePluginEvents(send: (slug: string, type: string, payload: unk
   for (const [slug, mod] of modules) {
     mod.subscribe?.((type, payload) => send(slug, type, payload));
   }
+}
+
+// Hand each service the main-registry registrar, so a service can add/remove runtime-discovered tools
+// (MCP). Called once at startup, before any service connect. Mirrors wirePluginEvents.
+export function wirePluginTools(registrar: PluginToolRegistrar): void {
+  for (const mod of modules.values()) mod.bindRegistrar?.(registrar);
 }
 
 // Dispatch one service call. "install"/"uninstall" are reserved lifecycle phases → the service's

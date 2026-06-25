@@ -44,6 +44,7 @@
     }
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "clsx": "^2.1.1",
     "i18next": "^26.0.10",
     "lucide-react": "^0.460.0",

@@ -55,6 +55,7 @@ export function ProviderSection() {
               }
               className={fieldInputFlex}
             >
+              <option value="" />
               {cfg.model.id && !cfg.models!.includes(cfg.model.id) && <option value={cfg.model.id}>{cfg.model.id}</option>}
               {cfg.models!.map((m) => (
                 <option key={m} value={m}>

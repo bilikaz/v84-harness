@@ -21,6 +21,14 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   knows nothing of who calls it. Discovery instantiates **only concrete `BaseTool` subclasses**
   (`v.prototype instanceof BaseTool`), so a tool module's sibling helper exports are ignored, not
   `new`-ed (abstract bases are skipped by the `base.ts` path too). Non-tool code lives in `tools/helpers/`.
+- **Runtime registration** ([ADR-0062](../adr/0062-runtime-registered-tools.md)): the registry also accepts
+  entries added after construction — `register(tool, ownerPluginId?)` / `unregister(name)`. A runtime entry
+  is an ordinary `BaseTool` instance (`byName` stays `Map<string, BaseTool>`), so `filter`/`run`/`cancel`
+  treat it identically to a globbed one; it's owner-tagged programmatically so the disabled-plugin gate still
+  applies. This is the **first dynamic (runtime-discovered) tool source** — a plugin's main-side service
+  contributes them through an injected `PluginToolRegistrar` (never importing the platform; see
+  [plugins.md](plugins.md)), the worked case being the MCP plugin discovering a server's tools at connect
+  ([mcp.md](mcp.md)). So "the folder layout IS the registry" now has a runtime-entries exception.
 - **The folder is the permission tier** (and the process it's globbed into):
   - **`general/`** — no workspace, available in any session (chat included). Host-agnostic (HTTP +
     data-URLs), globbed into both the web renderer and electron main. Mostly permissionless
