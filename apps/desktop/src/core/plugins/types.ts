@@ -2,6 +2,19 @@
 // SLUG (folder name) is its identity everywhere (config.plugins.<slug>, plugin_data.plugin_id,
 // ownerPluginId on tools, pluginId on UI contributions). No installed-registration row.
 
+import type { BaseTool } from "../tools/base.ts";
+import type { Config } from "../config/index.ts";
+
+// Handed to a plugin's main-side service (electron only) so it can add/remove RUNTIME-discovered tools
+// (e.g. MCP servers' tools) into the main registry. `config` is the main process's wire-seeded getter — a
+// registered tool reads it for canRun()/defaultPermission() exactly like a globbed tool. Injected by the
+// host (electron/pluginServices.ts wirePluginTools), so plugins never import the platform.
+export interface PluginToolRegistrar {
+  register(tool: BaseTool, ownerPluginId: string): void;
+  unregister(name: string): void;
+  config: () => Config;
+}
+
 // What a plugin's manifest.ts declares. Generic over its settings shape S for type-safety inside the
 // plugin; the registry holds it erased. settingsDefaults + validateSettings own config.plugins.<slug>.settings.
 export interface PluginManifest<S = unknown> {

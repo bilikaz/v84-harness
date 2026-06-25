@@ -5,6 +5,7 @@
 import { getConfig, type Config } from "../core/config/index.ts";
 import { ToolRegistry } from "../core/tools/registry.ts";
 import type { ToolCallRequest, ToolResult, ToolFilterParams, ToolFilterResult, WireConfig } from "../core/tools/types.ts";
+import type { PluginToolRegistrar } from "../core/plugins/types.ts";
 
 const MODULES = {
   ...import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true }),
@@ -33,3 +34,11 @@ export async function execTool(call: ToolCallRequest, wire: WireConfig): Promise
 export function cancelTool(callId: string): void {
   reg.cancel(callId);
 }
+
+// Handed to plugin services (wirePluginTools) so they can register runtime-discovered tools into THIS
+// registry. config is the wire-seeded getter, so a registered tool sees live config like a globbed one.
+export const toolRegistrar: PluginToolRegistrar = {
+  register: (tool, owner) => reg.register(tool, owner),
+  unregister: (name) => reg.unregister(name),
+  config: () => config,
+};

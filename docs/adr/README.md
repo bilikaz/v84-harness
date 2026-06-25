@@ -76,6 +76,9 @@ loading. Its index row below stays.
 | [0059](0059-builtin-general-agent.md) | Built-in universal General agent — always summonable, inherits the caller's context via its container | accepted |
 | [0060](0060-async-subagent-delivery.md) | Async sub-agent orchestration + the settle-event delivery model (`asyncAgents`, `awaitSettled`, `getAgentContent`, user-drivable children, shared `fanOut`) | accepted |
 | [0061](0061-subagent-alias-from-title.md) | Sub-agent alias from the title `#n` suffix (supersedes 0058's stored-alias clause) | accepted |
+| [0062](0062-runtime-registered-tools.md) | Runtime-registered tools — the registry as a dynamic tool source (`register`/`unregister`; amends 0033, 0049) | accepted |
+| [0063](0063-mcp-client-plugin.md) | MCP client as a first-party plugin — client plane, tools-only, stdio + HTTP, `MCP_<Server>_<Tool>` | accepted |
+| [0064](0064-mcp-oauth.md) | MCP OAuth — auth-code + PKCE, DCR or pre-registered app, in-app loopback window, machine-local tokens (refines 0063) | accepted |
 
 ## Needs review / important missing parts
 

@@ -54,6 +54,16 @@ provider") falls out of the lookup instead of needing guard code.
    separate module (a dispatcher, or the composition root) that imports the base; the base module stays pure
    declaration. (Resolve-by-key registries already glob at the call site; the trap is specific to the
    enumerate-and-instantiate variant tempted to self-glob.)
+8. **Runtime entries — a dynamic source.** A registry built from a static glob can still accept entries
+   added *after* construction, when a source is discovered only at runtime (a connected server's operations,
+   a loaded extension's commands). Keep them **first-class**: register the same implementation type the
+   static path produces — not a parallel "dynamic entry" shape — so lookup, gating, and teardown treat them
+   identically and there is no second code path. Two guards make it safe: **(a) tag each runtime entry with
+   its owning source** so the whole group drops when that source disconnects/disables; and **(b) keep a
+   `registeredName → source coordinates` map** on the registrar, so dispatch resolves through the map and
+   never parses a (possibly prettified, possibly colliding) display name back into coordinates. The static
+   "absence is the error" rule is unaffected — runtime entries simply add rows to the same table, gated by
+   the same predicate.
 
 ## Example
 

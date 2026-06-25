@@ -86,6 +86,20 @@ export class ToolRegistry {
     return out;
   }
 
+  // Runtime tool registration — the first dynamic tool source (MCP servers, discovered at connect).
+  // A registered tool is a regular BaseTool instance (byName stays Map<string, BaseTool>); static globbed
+  // tools never call these. Owner-tagged so the disabled-plugin gate drops them like any plugin tool.
+  register(tool: BaseTool, ownerPluginId?: string): void {
+    const name = tool.schema.function.name;
+    this.byName.set(name, tool);
+    if (ownerPluginId) this.owners.set(name, ownerPluginId);
+  }
+
+  unregister(name: string): void {
+    this.byName.delete(name);
+    this.owners.delete(name);
+  }
+
   async run(call: ToolCallRequest): Promise<ToolResult | null> {
     const tool = this.byName.get(call.name);
     if (!tool) return null;

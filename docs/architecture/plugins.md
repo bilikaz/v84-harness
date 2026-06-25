@@ -43,6 +43,7 @@ There is no minted id and no installed-registration row.
 | --- | --- | --- |
 | Settings + enable flag | `config.plugins.<slug>` — a synced settings row, validated by the manifest | `core/plugins/config.ts` |
 | Agent tools | `tools/<tier>/` — `BaseTool` subclasses, globbed into the registry of the process the tier runs in | [tools.md](tools.md) |
+| Runtime tools | the service registers/unregisters `BaseTool` instances at runtime via an injected `PluginToolRegistrar` (`bindRegistrar`) — for tools discovered at connect, not known at build time | [ADR-0062](../adr/0062-runtime-registered-tools.md) |
 | Stateful runtime | `service.ts` — a main-process singleton (e.g. a connection pool) | per plugin |
 | UI → service (call) | the service's `rpc` record, invoked via `ctx.api.invokePlugin` | [ADR-0049](../adr/0049-plugin-service-bridge.md) |
 | service → UI (push) | the service's `subscribe(emit)`, forwarded to `ctx.api.onPluginEvent` | [ADR-0049](../adr/0049-plugin-service-bridge.md) |
@@ -102,6 +103,12 @@ flowchart LR
 - **Lifecycle:** the service may export `install()` / `uninstall()`. `install` runs when the plugin is
   enabled and at boot for already-enabled plugins (`installEnabledPlugins`); `uninstall` runs on disable.
   Dispatched over the same `invokePlugin` channel as reserved phases — no separate channel.
+- **Tool registrar (runtime tools):** the service may export `bindRegistrar(registrar)` to receive a
+  `PluginToolRegistrar` (`register` / `unregister` + the wire-seeded `config` getter) the host hands it at
+  startup (`electron/pluginServices.ts wirePluginTools`, mirroring `wirePluginEvents`). It lets the service
+  add/remove `BaseTool` instances at runtime — tools discovered at connect, not globbed at build time
+  ([ADR-0062](../adr/0062-runtime-registered-tools.md)). The MCP plugin uses it ([mcp.md](mcp.md)); plugins
+  never import the platform, so the dependency direction stays electron→plugin.
 
 `ctx.api.invokePlugin` / `onPluginEvent` are part of the host capability surface ([ADR-0036](../adr/0036-host-capability-surface.md));
 they are **absent on web**, so the renderer helper (`core/plugins/service.ts`) degrades to a clean
