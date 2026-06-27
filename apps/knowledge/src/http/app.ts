@@ -10,15 +10,16 @@ import { inngest } from "../inngest/client.ts";
 import type { RegistryState } from "../core/feature.ts";
 
 export function mountRoutes(app: Hono, scanned: RegistryState): void {
-  // CORS — the harness renderer calls this from a different origin. Echo any
-  // origin back; tighten once deployment origins are fixed.
+  // CORS — the harness renderer + web clients call this from another origin. Auth is Bearer-only
+  // (no cookies), so we reflect the origin WITHOUT credentials: there is no ambient cookie/credential
+  // for a foreign origin to ride on, and `*` + credentials is a spec violation browsers reject anyway.
+  // Add an explicit origin allow-list here once the deployment origins are fixed.
   app.use(
     "/*",
     cors({
       origin: (origin) => origin ?? "*",
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "X-Device-Name"],
-      credentials: true,
       maxAge: 600,
     }),
   );
