@@ -65,10 +65,13 @@ class BrowserFleetStore extends Consumer<FleetState> {
   async open(url: string, ownerSessionId: string): Promise<string | null> {
     const host = this.host;
     if (!host) return null;
-    const id = await host.open(url, getAppConfig().browser.settleMs, getAppConfig().browser.graceMs);
-    if (!id) return null;
+    // Reserve the alias synchronously, BEFORE yielding on host.open — two concurrent opens for the same
+    // owner would otherwise both read the same seq and collide on one alias. A failed open below just
+    // burns the number, which is fine: aliases are monotonic and never reused, gaps are harmless.
     const n = (this.aliasSeq.get(ownerSessionId) ?? 0) + 1;
     this.aliasSeq.set(ownerSessionId, n);
+    const id = await host.open(url, getAppConfig().browser.settleMs, getAppConfig().browser.graceMs);
+    if (!id) return null;
     const win: FleetWindow = { id, url, title: url, ownerSessionId, alias: String(n), state: "inactive", loading: true, updatedAt: Date.now() };
     this.setWindows([...this.state.windows, win]);
     return id;
