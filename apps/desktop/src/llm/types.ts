@@ -54,11 +54,14 @@ export interface StreamUsage {
 // The media services config covers — the single runtime list; MediaService derives from it.
 export const MEDIA_SERVICES = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"] as const;
 export type MediaService = (typeof MEDIA_SERVICES)[number];
-export type ModelService = "main" | MediaService;
+// `main` (foreground chat) and `subAgent` (child runs) are the two text-runner roles the
+// concurrency runner pools over; both resolve through the text provider path.
+export type ModelService = "main" | "subAgent" | MediaService;
 
 export type Modality = "text" | "image" | "video" | "audio";
 export const SERVICE_MODALITY: Record<ModelService, Modality> = {
   main: "text",
+  subAgent: "text",
   imageRec: "text",
   videoRec: "text",
   audioRec: "text",

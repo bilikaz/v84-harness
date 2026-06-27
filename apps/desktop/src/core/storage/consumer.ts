@@ -79,7 +79,14 @@ export abstract class Consumer<T> {
     } else {
       this.state = this.defaults; // transient — reset on (re)hydrate
     }
-    this.notify();
+    try {
+      this.notify();
+    } catch {
+      // notify() may recompute derived state (Settings rebuilds config.llm + runner pools);
+      // a row that parsed but is structurally off must not take down init — fall back to defaults.
+      this.state = this.defaults;
+      this.notify();
+    }
   }
 
   protected persist(): void {

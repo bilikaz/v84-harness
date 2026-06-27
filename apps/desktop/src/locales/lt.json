@@ -9,7 +9,8 @@
     "local": "Vietiniai",
     "remote": "Nuotoliniai",
     "add": "Pridėti",
-    "newChat": "Naujas pokalbis"
+    "newChat": "Naujas pokalbis",
+    "waitingSlot": "Laukiama laisvos vietos…"
   },
   "container": {
     "title": "Darbo srities nustatymai",
@@ -157,7 +158,8 @@
       "imageRec": "Vaizdų atpažinimas",
       "videoRec": "Video atpažinimas",
       "audioGen": "Garso generavimas",
-      "audioRec": "Garso atpažinimas"
+      "audioRec": "Garso atpažinimas",
+      "subAgent": "Sub-agentų vykdytojas"
     },
     "covered": "Padengta",
     "notCovered": "Nepadengta",
@@ -192,7 +194,18 @@
     "promptStyleCosmos": "Praturtinti užklausas Cosmos JSON praturtintoju",
     "maxImageSize": "Maks. vaizdo dydis",
     "maxVideoSize": "Maks. video dydis",
-    "electronOnly": "Galima tik darbalaukio programoje"
+    "electronOnly": "Galima tik darbalaukio programoje",
+    "poolHint": "Kiekvienas panaudojimas yra prioritetų telkinys — pirmiausia naudojamas aukščiausias modelis su laisva talpa, leidžiantis žemyn.",
+    "addToPool": "+ pridėti modelį",
+    "removeFromPool": "Pašalinti iš telkinio",
+    "moveUp": "Aukštyn",
+    "moveDown": "Žemyn",
+    "concurrency": "Maks. lygiagrečiai",
+    "concurrencyHint": "Maks. vienu metu vykdomų užklausų šiame modelyje (numatyta 5).",
+    "reserve": "Pagrindinio rezervas",
+    "reserveHint": "Vietos paliekamos tik pirmplaniam darbui; likusios skolinamos sub-agentams (numatyta 2).",
+    "rating": "Reitingas",
+    "ratingHint": "Neprivalomas prioriteto patarimas rikiavimui telkinyje (didesnis pirmas)."
   },
   "session": {
     "placeholder": "Rašykite žinutę…",

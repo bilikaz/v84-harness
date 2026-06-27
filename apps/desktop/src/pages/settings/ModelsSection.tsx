@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 import { DetectButton, Row, fieldInputFlex, fieldInputFull } from "./Field.tsx";
 import {
   addModel,
   addProvider,
-  assignModel,
+  assignModels,
   detectProviderModels,
   providerCaps,
   removeModel,
@@ -18,15 +18,19 @@ import {
   type MediaRegistry,
   type MediaModel,
   type MediaProvider,
+  type ModelAssignment,
 } from "../../core/settings.ts";
-import { MEDIA_SERVICES, type MediaApiKind, type MediaService } from "../../llm/types.ts";
+import { MEDIA_SERVICES, type MediaApiKind, type ModelService } from "../../llm/types.ts";
+
+// Services that ModelsSection orders into priority pools — `main` is owned by the chat screen.
+const USE_CASES: readonly ModelService[] = ["subAgent", ...MEDIA_SERVICES];
 import { useDetection } from "../../lib/hooks.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 
 const FLAVORS: readonly MediaApiKind[] = ["openai", "generate"];
 const FLAVOR_KEY: Record<MediaApiKind, string> = { openai: "apiOpenai", generate: "apiGenerate" };
 
-const FIELD = "w-80";
+const FIELD = "w-[28rem]";
 
 export function ModelsSection() {
   const { t } = useTranslation();
@@ -34,7 +38,7 @@ export function ModelsSection() {
   const [tab, setTab] = useState<"useCases" | "providers">("useCases");
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       <h2 className="text-lg font-semibold text-neutral-900">{t("media.title")}</h2>
       <p className="mt-1 text-sm text-neutral-500">{t("media.subtitle")}</p>
 
@@ -63,43 +67,69 @@ function UseCasesTab({ reg }: { reg: MediaRegistry }) {
   const { t } = useTranslation();
   return (
     <div>
-      <p className="mt-3 text-xs text-neutral-400">{t("media.coverageHint")}</p>
-      {MEDIA_SERVICES.map((uc) => (
+      <p className="mt-3 text-xs text-neutral-400">{t("media.poolHint")}</p>
+      {USE_CASES.map((uc) => (
         <SlotRow key={uc} uc={uc} reg={reg} />
       ))}
     </div>
   );
 }
 
-function SlotRow({ uc, reg }: { uc: MediaService; reg: MediaRegistry }) {
+const refKey = (r: ModelAssignment): string => `${r.providerId}|${r.modelId}`;
+
+// An ordered priority pool: listed models (reorderable, removable) on top, an "add" picker
+// for the rest. Position = priority — the runner fills the top with capacity first.
+function SlotRow({ uc, reg }: { uc: ModelService; reg: MediaRegistry }) {
   const { t } = useTranslation();
   const options = slotOptions(uc, reg);
-  const ref = reg.assignments[uc];
-  const value = ref ? `${ref.providerId}|${ref.modelId}` : "";
-  const covered = !!ref && options.some((o) => `${o.ref.providerId}|${o.ref.modelId}` === value);
+  const list = reg.assignments[uc] ?? [];
+  const labelFor = (r: ModelAssignment): string => options.find((o) => refKey(o.ref) === refKey(r))?.label ?? refKey(r);
+  const remaining = options.filter((o) => !list.some((r) => refKey(r) === refKey(o.ref)));
+  const set = (next: ModelAssignment[]): void => assignModels(uc, next);
+  const move = (i: number, d: number): void => {
+    const j = i + d;
+    if (j < 0 || j >= list.length) return;
+    const next = [...list];
+    [next[i], next[j]] = [next[j], next[i]];
+    set(next);
+  };
   return (
     <Row label={t(`media.uc.${uc}`)}>
-      <div className={`flex ${FIELD} items-center gap-2`}>
-        <span
-          className={`h-2 w-2 shrink-0 rounded-full ${covered ? "bg-green-500" : "bg-neutral-300"}`}
-          title={covered ? t("media.covered") : t("media.notCovered")}
-        />
-        <select
-          value={covered ? value : ""}
-          disabled={options.length === 0}
-          onChange={(e) => {
-            const [providerId, modelId] = e.target.value.split("|");
-            assignModel(uc, e.target.value ? { providerId, modelId } : null);
-          }}
-          className={`${fieldInputFlex} disabled:bg-neutral-50 disabled:text-neutral-400`}
-        >
-          <option value="">{options.length === 0 ? t("media.noModels") : t("media.unassigned")}</option>
-          {options.map((o) => (
-            <option key={`${o.ref.providerId}|${o.ref.modelId}`} value={`${o.ref.providerId}|${o.ref.modelId}`}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+      <div className={`${FIELD} space-y-1`}>
+        {list.map((r, i) => (
+          <div key={refKey(r)} className="flex items-center gap-1 rounded-md border border-neutral-100 bg-neutral-50/50 px-2 py-1">
+            <span className="w-4 shrink-0 text-xs text-neutral-400">{i + 1}</span>
+            <span className="flex-1 truncate text-sm text-neutral-800">{labelFor(r)}</span>
+            <button disabled={i === 0} onClick={() => move(i, -1)} className="p-0.5 text-neutral-400 hover:text-neutral-700 disabled:opacity-30" title={t("media.moveUp")}>
+              <ArrowUp className="h-3.5 w-3.5" />
+            </button>
+            <button disabled={i === list.length - 1} onClick={() => move(i, 1)} className="p-0.5 text-neutral-400 hover:text-neutral-700 disabled:opacity-30" title={t("media.moveDown")}>
+              <ArrowDown className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => set(list.filter((_, k) => k !== i))} className="p-0.5 text-neutral-400 hover:text-red-600" title={t("media.removeFromPool")}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+        {remaining.length > 0 && (
+          <select
+            value=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              const [providerId, modelId] = e.target.value.split("|");
+              set([...list, { providerId, modelId }]);
+            }}
+            className={fieldInputFlex}
+          >
+            <option value="">{t("media.addToPool")}</option>
+            {remaining.map((o) => (
+              <option key={refKey(o.ref)} value={refKey(o.ref)}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {list.length === 0 && remaining.length === 0 && <span className="text-xs text-neutral-400">{t("media.noModels")}</span>}
       </div>
     </Row>
   );
@@ -332,6 +362,43 @@ function ModelRow({ p, m }: { p: MediaProvider; m: MediaModel }) {
             {t(`media.uc.${uc}`)}
           </label>
         ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-neutral-600">
+        <label className="flex items-center gap-1.5" title={t("media.concurrencyHint")}>
+          {t("media.concurrency")}
+          <input
+            type="number"
+            min={1}
+            value={m.c ?? ""}
+            placeholder="5"
+            onChange={(e) => updateModel(p.id, m.id, { c: e.target.value === "" ? undefined : Math.max(1, Number(e.target.value)) })}
+            className="w-16 rounded border border-neutral-200 px-1.5 py-0.5"
+          />
+        </label>
+        {m.capabilities.includes("main") && m.capabilities.includes("subAgent") && (
+          <label className="flex items-center gap-1.5" title={t("media.reserveHint")}>
+            {t("media.reserve")}
+            <input
+              type="number"
+              min={0}
+              value={m.reserve ?? ""}
+              placeholder="2"
+              onChange={(e) => updateModel(p.id, m.id, { reserve: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })}
+              className="w-16 rounded border border-neutral-200 px-1.5 py-0.5"
+            />
+          </label>
+        )}
+        <label className="flex items-center gap-1.5" title={t("media.ratingHint")}>
+          {t("media.rating")}
+          <input
+            type="number"
+            value={m.rating ?? ""}
+            placeholder="0"
+            onChange={(e) => updateModel(p.id, m.id, { rating: e.target.value === "" ? undefined : Number(e.target.value) })}
+            className="w-16 rounded border border-neutral-200 px-1.5 py-0.5"
+          />
+        </label>
       </div>
 
       {cosmosSignal && p.api === "openai" && (

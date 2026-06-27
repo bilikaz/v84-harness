@@ -17,12 +17,17 @@ import {
   type TextProviderKind,
 } from "../llm/types.ts";
 import { writeLLMConfig, type LLMConfig, type LLMConfigList } from "./config/llm.ts";
+import { writeRunnerPools, modelKey, type RunnerPools, type RunnerSlot } from "./config/pools.ts";
 import { listProviderModels } from "../llm/index.ts";
 import { errorMessage } from "../lib/errors.ts";
 
 const KEY = "v84-harness:settings";
 
-const ALL_SERVICES: readonly ModelService[] = ["main", ...MEDIA_SERVICES];
+const ALL_SERVICES: readonly ModelService[] = ["main", "subAgent", ...MEDIA_SERVICES];
+
+// Per-model concurrency defaults — a model omits these until tuned.
+const DEFAULT_C = 5;
+const DEFAULT_RESERVE = 2;
 
 export type MediaPromptStyle = "plain" | "cosmos-json";
 
@@ -32,6 +37,10 @@ export interface Model {
   id: string; // registry id
   modelId: string; // wire id
   capabilities: ModelService[];
+  // concurrency
+  c?: number; // max concurrent in-flight calls (default 5)
+  reserve?: number; // slots kept main-only when this model serves both main + subAgent (default 2)
+  rating?: number; // priority hint for ordering within a service pool (higher first)
   // chat knobs
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;
@@ -64,13 +73,14 @@ export interface ModelAssignment {
 
 export interface SettingsState {
   providers: Provider[];
-  services: Partial<Record<ModelService, ModelAssignment>>;
+  // Per service, the ORDERED priority pool (position = priority). Absent = empty.
+  services: Partial<Record<ModelService, ModelAssignment[]>>;
 }
 
 // Compatibility aliases so the media screen keeps its vocabulary.
 export type MediaProvider = Provider;
 export type MediaModel = Model;
-export type MediaRegistry = { providers: Provider[]; assignments: Partial<Record<ModelService, ModelAssignment>> };
+export type MediaRegistry = { providers: Provider[]; assignments: Partial<Record<ModelService, ModelAssignment[]>> };
 
 // The flat chat-config view the sessions engine + chat UI consume (the `main` service).
 export interface ChatModelSettings extends LLMConfig {
@@ -103,15 +113,29 @@ const DEFAULTS: SettingsState = {
       ],
     },
   ],
-  services: { main: { providerId: DEFAULT_PROVIDER, modelId: DEFAULT_MODEL } },
+  services: { main: [{ providerId: DEFAULT_PROVIDER, modelId: DEFAULT_MODEL }] },
 };
+
+// A stored row must match the current SettingsState shape or we discard it for DEFAULTS —
+// resolvePools/chatView index `services[svc]` as arrays, so a legacy/corrupt shape would throw.
+function isModelAssignment(x: unknown): boolean {
+  return !!x && typeof x === "object" && typeof (x as ModelAssignment).providerId === "string" && typeof (x as ModelAssignment).modelId === "string";
+}
+function isValidSettings(s: unknown): s is SettingsState {
+  if (!s || typeof s !== "object") return false;
+  const { providers, services } = s as SettingsState;
+  if (!Array.isArray(providers)) return false;
+  if (!providers.every((p) => p && typeof p === "object" && typeof p.id === "string" && Array.isArray(p.models))) return false;
+  if (!services || typeof services !== "object" || Array.isArray(services)) return false;
+  return Object.values(services).every((pool) => Array.isArray(pool) && pool.every(isModelAssignment));
+}
 
 const newId = (): string => crypto.randomUUID();
 
 // Media capabilities a provider's models can be assigned to (the ModelsSection
 // checkboxes). `main` is managed by the chat screen, so it's not offered here.
-export function providerCaps(api: ProviderKind): readonly MediaService[] {
-  return api === "generate" ? ["imageGen"] : MEDIA_SERVICES;
+export function providerCaps(api: ProviderKind): readonly ModelService[] {
+  return api === "generate" ? ["imageGen"] : [...MEDIA_SERVICES, "subAgent"];
 }
 
 function findModel(providers: Provider[], ref: ModelAssignment | undefined): { p: Provider; m: Model } | null {
@@ -127,10 +151,12 @@ function pruneServices(
 ): SettingsState["services"] {
   const out: SettingsState["services"] = {};
   for (const svc of ALL_SERVICES) {
-    const ref = services[svc];
-    const hit = findModel(providers, ref);
-    // main survives even if the model lacks an explicit capability flag; media slots require the capability.
-    if (hit && (svc === "main" || hit.m.capabilities.includes(svc))) out[svc] = ref;
+    // main survives even if the model lacks an explicit capability flag; every other pool requires it.
+    const kept = (services[svc] ?? []).filter((ref) => {
+      const hit = findModel(providers, ref);
+      return !!hit && (svc === "main" || hit.m.capabilities.includes(svc));
+    });
+    if (kept.length) out[svc] = kept;
   }
   return out;
 }
@@ -138,6 +164,16 @@ function pruneServices(
 class Settings extends Consumer<SettingsState> {
   constructor(ctx: Ctx) {
     super(ctx, KEY, DEFAULTS, true); // synced — providers/models (incl. keys) follow the connection to the cloud
+  }
+
+  // Reject a row whose shape doesn't match SettingsState (legacy/corrupt) — DEFAULTS, never a throw.
+  protected override parse(raw: string): SettingsState {
+    try {
+      const s = { ...DEFAULTS, ...(JSON.parse(raw) as object) };
+      return isValidSettings(s) ? s : DEFAULTS;
+    } catch {
+      return DEFAULTS;
+    }
   }
 
   // Derived views are cached so the React hooks return a STABLE reference until
@@ -153,14 +189,14 @@ class Settings extends Consumer<SettingsState> {
     const slice: LLMConfigList = {};
     for (const svc of ALL_SERVICES) slice[svc] = this.resolveConfig(svc) ?? undefined;
     writeLLMConfig(slice);
+    writeRunnerPools(this.resolvePools());
     super.notify();
   }
 
   // ── resolution ────────────────────────────────────────────────────────────
-  resolveConfig(service: ModelService): LLMConfig | null {
-    const hit = findModel(this.state.providers, this.state.services[service]);
-    if (!hit || !hit.p.baseUrl) return null;
-    const { p, m } = hit;
+  // Flatten a provider+model into a call target; null when the provider has no endpoint.
+  private toConfig(p: Provider, m: Model): LLMConfig | null {
+    if (!p.baseUrl) return null;
     return {
       provider: { name: p.name, type: p.api, baseUrl: p.baseUrl, apiKey: p.apiKey },
       model: {
@@ -177,10 +213,39 @@ class Settings extends Consumer<SettingsState> {
     };
   }
 
+  // The single derived config for a service is its PRIMARY (pool head) — keeps every
+  // existing config.llm[service] consumer working off one target.
+  resolveConfig(service: ModelService): LLMConfig | null {
+    const hit = findModel(this.state.providers, (this.state.services[service] ?? [])[0]);
+    return hit ? this.toConfig(hit.p, hit.m) : null;
+  }
+
+  // The full ordered pool per service for the concurrency runner. `reserve` is non-zero
+  // only for a model that serves BOTH main and subAgent (a shared model's main headroom).
+  private resolvePools(): RunnerPools {
+    const { providers, services } = this.state;
+    const mainKeys = new Set((services.main ?? []).map(modelKey));
+    const subKeys = new Set((services.subAgent ?? []).map(modelKey));
+    const out: RunnerPools = {};
+    for (const svc of ALL_SERVICES) {
+      const slots: RunnerSlot[] = [];
+      for (const ref of services[svc] ?? []) {
+        const hit = findModel(providers, ref);
+        const config = hit && this.toConfig(hit.p, hit.m);
+        if (!hit || !config) continue;
+        const key = modelKey(ref);
+        const reserve = mainKeys.has(key) && subKeys.has(key) ? hit.m.reserve ?? DEFAULT_RESERVE : 0;
+        slots.push({ providerId: ref.providerId, modelId: ref.modelId, config, c: hit.m.c ?? DEFAULT_C, reserve });
+      }
+      if (slots.length) out[svc] = slots;
+    }
+    return out;
+  }
+
   // ── chat (main) view + edits ────────────────────────────────────────────────
   private chatView(): ChatModelSettings {
     if (this.chatCache) return this.chatCache;
-    const hit = findModel(this.state.providers, this.state.services.main);
+    const hit = findModel(this.state.providers, (this.state.services.main ?? [])[0]);
     const v: ChatModelSettings = !hit
       ? { provider: { name: "", type: "openai", baseUrl: "" }, model: {}, models: [] }
       : {
@@ -214,13 +279,13 @@ class Settings extends Consumer<SettingsState> {
   // Apply a patch to the `main` provider and/or model, creating them if main is unset.
   private editMain(providerPatch: Partial<Provider>, modelPatch: Partial<Model>): void {
     let { providers, services } = this.state;
-    let ref = services.main;
+    let ref = (services.main ?? [])[0];
     if (!findModel(providers, ref)) {
       const pid = newId();
       const mid = newId();
       providers = [...providers, { id: pid, name: "Default", api: "openai", baseUrl: "", models: [{ id: mid, modelId: "", capabilities: ["main"] }] }];
       ref = { providerId: pid, modelId: mid };
-      services = { ...services, main: ref };
+      services = { ...services, main: [ref, ...(services.main ?? [])] };
     }
     const r = ref!;
     providers = providers.map((p) =>
@@ -319,7 +384,14 @@ class Settings extends Consumer<SettingsState> {
     );
     const services = pruneServices(this.state.services, providers);
     const model = findModel(providers, { providerId, modelId })?.m;
-    if (model) for (const uc of model.capabilities) if (uc !== "main") services[uc] ??= { providerId, modelId };
+    // A ticked capability appends the model to that pool (kept if already listed). `main` is
+    // managed by the chat screen, not auto-filled here.
+    if (model)
+      for (const uc of model.capabilities) {
+        if (uc === "main") continue;
+        const list = services[uc] ?? [];
+        if (!list.some((r) => r.providerId === providerId && r.modelId === modelId)) services[uc] = [...list, { providerId, modelId }];
+      }
     this.commit({ providers, services });
   }
 
@@ -328,9 +400,10 @@ class Settings extends Consumer<SettingsState> {
     this.commit({ providers, services: pruneServices(this.state.services, providers) });
   }
 
-  assign(service: ModelService, ref: ModelAssignment | null): void {
+  // Set a service's whole ordered pool (position = priority). Empty clears it.
+  assign(service: ModelService, refs: ModelAssignment[]): void {
     const services = { ...this.state.services };
-    if (ref) services[service] = ref;
+    if (refs.length) services[service] = refs;
     else delete services[service];
     this.commit({ ...this.state, services });
   }
@@ -359,7 +432,7 @@ class Settings extends Consumer<SettingsState> {
   // Chat detection uses the direct llm listing (yields context lengths), not the
   // host media-listing path — detects the `main` provider.
   async detectChat(): Promise<{ ok: boolean; count: number; error?: string }> {
-    const hit = findModel(this.state.providers, this.state.services.main);
+    const hit = findModel(this.state.providers, (this.state.services.main ?? [])[0]);
     if (!hit) return { ok: false, count: 0, error: "no main provider configured" };
     try {
       const infos = await listProviderModels({ name: hit.p.name, type: hit.p.api, baseUrl: hit.p.baseUrl, apiKey: hit.p.apiKey });
@@ -414,7 +487,7 @@ export const removeProvider = (id: string): void => inst.removeProvider(id);
 export const addModel = (providerId: string, wireId: string): string => inst.addModel(providerId, wireId);
 export const updateModel = (providerId: string, modelId: string, patch: Partial<Omit<Model, "id">>): void => inst.updateModel(providerId, modelId, patch);
 export const removeModel = (providerId: string, modelId: string): void => inst.removeModel(providerId, modelId);
-export const assignModel = (useCase: ModelService, ref: ModelAssignment | null): void => inst.assign(useCase, ref);
+export const assignModels = (service: ModelService, refs: ModelAssignment[]): void => inst.assign(service, refs);
 export const slotOptions = (useCase: ModelService, reg: MediaRegistry): Array<{ ref: ModelAssignment; label: string }> => inst.slotOptions(useCase, reg);
 export const detectProviderModels = (ctx: Ctx, id: string): Promise<{ ok: boolean; count: number; error?: string }> => inst.detect(ctx, id);
 

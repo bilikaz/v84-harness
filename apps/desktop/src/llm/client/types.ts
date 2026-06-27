@@ -6,6 +6,15 @@ export interface LLMConfigResolver {
   resolve(service: ModelService): LLMConfig | null;
 }
 
+// Injected concurrency control (the runner, defined in core/ — kept as an interface so the llm
+// layer doesn't import it). A target-less call leases a slot on its service's pool (priority-fill,
+// per-model `c`); `acquire` returns the chosen target, or null when the pool is empty (fall back to
+// the resolver). The id is the caller's release handle.
+export interface SlotProvider {
+  acquire(service: ModelService, id: string, signal?: AbortSignal): Promise<LLMConfig | null>;
+  release(id: string): void;
+}
+
 export class HealError extends Error {
   constructor(
     message: string,
@@ -31,6 +40,9 @@ export interface CallOptions<T> {
   signal?: AbortSignal;
   handler?: ResponseHandler<T>;
   maxHeals?: number;
+  // An explicit target (the concurrency runner's leased model) — overrides resolving the
+  // service's global assignment, so a turn calls exactly the provider it holds a slot on.
+  target?: LLMConfig;
 }
 
 export interface LLMClient {

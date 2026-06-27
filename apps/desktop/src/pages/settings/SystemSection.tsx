@@ -13,7 +13,7 @@ export function SystemSection() {
   const [tab, setTab] = useState<"message" | "config">("message");
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       <h2 className="text-lg font-semibold text-neutral-900">Settings</h2>
       <p className="mt-1 text-sm text-neutral-500">Your assistant's default instructions, and how the harness behaves.</p>
 
@@ -74,6 +74,8 @@ function ConfigurationTab() {
   const [shots, setShots] = useState(cfg.browser.shots);
   const [asyncAgents, setAsyncAgents] = useState(cfg.session.asyncAgents);
   const [delivery, setDelivery] = useState(cfg.session.asyncDelivery);
+  const [ttlMin, setTtlMin] = useState(Math.round(cfg.session.runnerTtlMs / 60000));
+  const [kvThreshold, setKvThreshold] = useState(cfg.session.kvProtectThreshold);
   const [devMode, setDevMode] = useState(cfg.developerMode);
   const [debug, setDebug] = useState(llmDebugEnabled());
 
@@ -90,6 +92,10 @@ function ConfigurationTab() {
     setDelivery(mode);
     const o = getConfigOverrides();
     setConfigOverrides({ ...o, session: { ...o.session, asyncDelivery: mode } });
+  }
+  function persistSession(patch: { runnerTtlMs?: number; kvProtectThreshold?: number }): void {
+    const o = getConfigOverrides();
+    setConfigOverrides({ ...o, session: { ...o.session, ...patch } });
   }
   function persistDevMode(on: boolean): void {
     setDevMode(on);
@@ -119,6 +125,34 @@ function ConfigurationTab() {
           </select>
         </Row>
       )}
+
+      <h3 className="mt-8 text-base font-semibold text-neutral-900">Concurrency</h3>
+      <p className="mt-1 text-sm text-neutral-500">
+        How long a session stays pinned to its provider after it goes idle (so a return re-warms the KV cache), and
+        the context size above which a session waits for its busy provider instead of re-routing (and re-prefilling).
+      </p>
+      <Row label="Provider binding (minutes)">
+        <input
+          type="number"
+          min={1}
+          step={1}
+          className={fieldInput}
+          value={ttlMin}
+          onChange={(e) => setTtlMin(e.target.valueAsNumber)}
+          onBlur={() => Number.isInteger(ttlMin) && ttlMin > 0 && persistSession({ runnerTtlMs: ttlMin * 60000 })}
+        />
+      </Row>
+      <Row label="KV-protect threshold (tokens)">
+        <input
+          type="number"
+          min={0}
+          step={1000}
+          className={fieldInput}
+          value={kvThreshold}
+          onChange={(e) => setKvThreshold(e.target.valueAsNumber)}
+          onBlur={() => Number.isInteger(kvThreshold) && kvThreshold > 0 && persistSession({ kvProtectThreshold: kvThreshold })}
+        />
+      </Row>
 
       <h3 className="mt-8 text-base font-semibold text-neutral-900">Browser windows</h3>
       <p className="mt-1 text-sm text-neutral-500">How the agent reads pages it opens with the Browser tool.</p>

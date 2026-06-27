@@ -26,7 +26,7 @@ export function StorageSection() {
   const total = sessions.reduce((n, s) => n + sessionBytes(s), 0);
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-3xl">
       <h2 className="text-lg font-semibold text-neutral-900">{t("storage.title")}</h2>
       <p className="mt-1 text-sm text-neutral-500">{t("storage.subtitle")}</p>
 

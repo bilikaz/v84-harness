@@ -15,6 +15,7 @@ import {
   resumeTail,
   addChildRun,
   setErrorKind,
+  setLastModel,
   setLastToolCalls,
   setStreaming,
   setUsage,
@@ -65,6 +66,9 @@ const offs: Array<() => void> = [
     setErrorKind(e.sessionId, undefined); // a fresh turn clears any prior failure state
     setStreaming(e.sessionId, true);
     notify();
+  }),
+  bus.on("message:done", (e) => {
+    if (e.model) setLastModel(e.sessionId, e.model); // persisted by the turn:end persistSession below
   }),
   bus.on("turn:end", (e) => {
     setStreaming(e.sessionId, false);

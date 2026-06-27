@@ -217,6 +217,7 @@ export function SessionView() {
           <div className="mx-auto max-w-3xl">
             <Composer
               disabled={compacting || full}
+              modelLabel={session.lastModel}
               streaming={streaming}
               lock={streaming}
               lockNote="Running — stop it to send guidance"
@@ -264,6 +265,7 @@ export function SessionView() {
             ) : null}
             <Composer
               disabled={compacting || full}
+              modelLabel={session.lastModel}
               streaming={streaming}
               onStop={() => ctx.sessions.stopTurn(session.id)}
               onSubmit={submit}

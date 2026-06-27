@@ -2,7 +2,7 @@ import type { CallContext, ResponseHandler, LLMConfig, GenParams, ModelInfo, Mod
 import { SERVICE_MODALITY, targetLabel } from "../types.ts";
 import type { BaseProvider } from "../providers/base.ts";
 import { errorMessage } from "../../lib/errors.ts";
-import { HealError, type CallOptions, type LLMClient, type LLMConfigResolver } from "./types.ts";
+import { HealError, type CallOptions, type LLMClient, type LLMConfigResolver, type SlotProvider } from "./types.ts";
 
 export { HealError } from "./types.ts";
 export type { CallOptions, LLMClient, LLMConfigResolver } from "./types.ts";
@@ -30,7 +30,7 @@ export async function listProviderModels(provider: LLMConfig["provider"]): Promi
   return ctor?.listModels ? ctor.listModels(provider) : [];
 }
 
-export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?: number }): LLMClient {
+export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?: number; slots?: SlotProvider }): LLMClient {
   function tuned(target: LLMConfig, params?: GenParams): LLMConfig {
     if (!params) return target;
     const { maxTokens, reasoningEffort, thinkingBudget } = params;
@@ -42,8 +42,8 @@ export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?
     return Object.keys(knobs).length ? { ...target, model: { ...target.model, ...knobs } } : target;
   }
 
-  function resolveProvider(service: ModelService, callCtx: CallContext): BaseProvider {
-    const target = resolver.resolve(service);
+  function resolveProvider(service: ModelService, callCtx: CallContext, override?: LLMConfig): BaseProvider {
+    const target = override ?? resolver.resolve(service);
     if (!target) {
       throw new Error(`no model is assigned to the "${service}" service — assign one in Settings.`);
     }
@@ -65,22 +65,40 @@ export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?
       signal: opts.signal ?? new AbortController().signal,
     };
 
-    const provider = resolveProvider(opts.service, callCtx);
-    const handler = opts.handler ?? (provider.defaultHandler() as ResponseHandler<T>);
+    // A turn supplies its leased target directly. A target-less call (media gen/rec, naming,
+    // compaction) leases a slot from the runner for the call's duration; an empty pool falls back
+    // to the resolver so behaviour degrades to today's single-target path.
+    let target = opts.target;
+    let slotId: string | undefined;
+    if (!target && defaults?.slots) {
+      const id = crypto.randomUUID();
+      const leased = await defaults.slots.acquire(opts.service, id, callCtx.signal);
+      if (leased) {
+        target = leased;
+        slotId = id;
+      }
+    }
 
-    const max = opts.maxHeals ?? defaults?.maxHeals ?? MAX_HEAL_ATTEMPTS;
-    let heals = 0;
-    for (;;) {
-      try {
-        return await provider.call(handler);
-      } catch (e) {
-        if (!(e instanceof HealError) || heals >= max) throw e;
-        heals++;
-        // Chat heals become conversation turns; binary heals just re-fire.
-        if (e.raw !== undefined) {
-          callCtx.messages.push({ role: "assistant", content: e.raw }, { role: "user", content: healCorrection(e.message) });
+    try {
+      const provider = resolveProvider(opts.service, callCtx, target);
+      const handler = opts.handler ?? (provider.defaultHandler() as ResponseHandler<T>);
+
+      const max = opts.maxHeals ?? defaults?.maxHeals ?? MAX_HEAL_ATTEMPTS;
+      let heals = 0;
+      for (;;) {
+        try {
+          return await provider.call(handler);
+        } catch (e) {
+          if (!(e instanceof HealError) || heals >= max) throw e;
+          heals++;
+          // Chat heals become conversation turns; binary heals just re-fire.
+          if (e.raw !== undefined) {
+            callCtx.messages.push({ role: "assistant", content: e.raw }, { role: "user", content: healCorrection(e.message) });
+          }
         }
       }
+    } finally {
+      if (slotId) defaults!.slots!.release(slotId);
     }
   }
 

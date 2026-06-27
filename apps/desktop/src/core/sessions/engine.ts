@@ -196,6 +196,7 @@ export class SessionEngine {
   deleteSession(id: string): void {
     for (const child of getSessions().filter((s) => s.parentId === id)) this.deleteSession(child.id);
     this.stopTurn(id);
+    this.ctx.runner.drop(id); // release any held slot + queued wait + binding
     // A deleted session's browser windows have no owner left to drive them — close them.
     void browserFleet().closeForSession(id);
     deleteSessionState(id);
@@ -299,6 +300,22 @@ export class SessionEngine {
     const { ws, agent } = capabilityContext(getSession(sid));
     const controller = new AbortController();
     this.inflight.set(sid, controller);
+
+    // Lease a concurrency slot for the whole turn: foreground draws the `main` pool, a child the
+    // `subAgent` pool (held across every step, released in the finally). A null lease is either a
+    // user Stop while queued (aborted — clean exit) or an empty pool (no models for this role) —
+    // the latter falls back to the primary `main` target so a child still runs un-leased.
+    const role = isChild ? "subAgent" : "main";
+    const lease = await this.ctx.runner.acquire(role, sid, getSession(sid)?.usedTokens ?? 0, { signal: controller.signal });
+    if (!lease && controller.signal.aborted) {
+      this.inflight.delete(sid);
+      bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: false, firstExchange, autoName, userText });
+      bus.emit("turn:end", { sessionId: sid, errored: false, aborted: true });
+      return { text: "", errored: false, aborted: true };
+    }
+    const callTarget = lease?.config; // undefined → resolveProvider falls back to the global `main` assignment
+    const turnInput = (lease?.config.input ?? cfg.input) ?? {};
+
     // The engine-call context for the driver-level tool tier (browser fleet, sub-agent spawner).
     const ec: EngineCtx = { ctx: this.ctx, sessionId: sid, workspace: ws, signal: controller.signal, isChild, engine: this };
     // One policy pass: the gateway returns the advertised schemas + each tool's effective mode. The engine
@@ -329,7 +346,7 @@ export class SessionEngine {
       for (; step < maxSteps; step++) {
         if (controller.signal.aborted) break;
         // History is re-filtered against the CURRENT model's inputs each step — the model can change mid-session, and yesterday's images must not 400 today's text-only endpoint.
-        const history = toChatMessages(getSession(sid)?.messages ?? [], cfg.input ?? {});
+        const history = toChatMessages(getSession(sid)?.messages ?? [], turnInput);
         // The overridable BASE block, resolved live: the agent's baked system → the session's container
         // (workspace) message → the user's global system prompt (Settings) → the built-in default. Read the
         // session's OWN container (not the fs-masked `ws`) so a workspace message applies even when its file
@@ -356,6 +373,7 @@ export class SessionEngine {
         // Heal stays driver-driven (the correction is a SESSION turn via the store), so the handler never throws HealError.
         const { text, thinking, calls } = await this.ctx.llm.call({
           service: "main",
+          target: callTarget,
           messages: history,
           system,
           tools: toolSpecs,
@@ -467,8 +485,8 @@ export class SessionEngine {
         // A premature getAgentContent erased its own call — end the turn cleanly (no result to react to).
         if (erased) break;
         // Feed back only what the model's declared inputs accept — otherwise the endpoint rejects the turn.
-        const feedImages = cfg.input?.image !== false ? fedImages : [];
-        const feedVideo = cfg.input?.video === true ? fedVideo : [];
+        const feedImages = turnInput.image !== false ? fedImages : [];
+        const feedVideo = turnInput.video === true ? fedVideo : [];
         if (feedImages.length || feedVideo.length) {
           bus.emit("mediaFeedback", {
             sessionId: sid,
@@ -497,7 +515,11 @@ export class SessionEngine {
       }
     } finally {
       this.inflight.delete(sid);
-      bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, userText });
+      this.ctx.runner.release(sid); // free the slot; the provider binding lingers for the TTL
+      // The model that actually served this turn (leased pool model, or the `main` fallback) — recorded as
+      // the session's lastModel so the composer labels the chat by what answered, not the configured head.
+      const model = errored ? undefined : callTarget?.model.id ?? cfg.model.id;
+      bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, userText, model });
       bus.emit("turn:end", { sessionId: sid, errored, aborted: controller.signal.aborted });
     }
     return { text: finalText, errored, aborted: controller.signal.aborted, errorKind: errored ? errorKind : undefined };

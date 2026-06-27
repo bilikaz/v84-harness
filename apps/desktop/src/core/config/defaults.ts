@@ -88,6 +88,14 @@ export interface ConfigApp {
     // "synthetic" fabricates a getAgentContent call+result into history (no extra
     // round-trip); "nudge" injects a notice and lets the model call it.
     asyncDelivery: "synthetic" | "nudge";
+    // Concurrency runner: how long a session's provider BINDING (affinity, not a
+    // held slot) survives idle — a return within this window re-warms KV on the
+    // same provider; after it, the binding is dropped (KV is gone anyway).
+    runnerTtlMs: number;
+    // KV-protect threshold (tokens): when a warm session's bound provider is full,
+    // a context at or above this waits for it (re-routing would re-prefill); a
+    // smaller one roams to the next free model in the pool instead.
+    kvProtectThreshold: number;
   };
 }
 
@@ -132,5 +140,7 @@ export const CONFIG_DEFAULTS: ConfigApp = {
     compactThinkingBudget: 2048,
     asyncAgents: false,
     asyncDelivery: "nudge",
+    runnerTtlMs: 10 * 60 * 1000,
+    kvProtectThreshold: 16_000,
   },
 };
