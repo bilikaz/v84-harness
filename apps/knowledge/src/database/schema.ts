@@ -25,6 +25,9 @@ export interface AuthSessionsTable {
   id: string;
   user_id: number;
   refresh_token_hash: string;
+  // The hash rotated out on the last refresh — replaying it signals token theft. Optional on insert
+  // (a fresh session has no prior), written on every rotate, read by the reuse check.
+  prev_refresh_token_hash: ColumnType<string | null, string | null | undefined, string | null>;
   device_name: string | null;
   ip_address: string | null;
   expires_at: ColumnType<Date, Date, Date>;

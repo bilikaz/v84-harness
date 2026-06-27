@@ -9,6 +9,7 @@ export interface SessionRow {
   id: string;
   user_id: number;
   refresh_token_hash: string;
+  prev_refresh_token_hash: string | null; // last rotated-out hash — replaying it signals theft
   device_name: string | null;
   ip_address: string | null;
   expires_at: Date;
@@ -40,12 +41,12 @@ export class SessionsRepo {
     return this.db.selectFrom("auth_sessions").selectAll().where("id", "=", id).executeTakeFirst();
   }
 
-  // Refresh extends the session (new token hash, new expiry, touch last_seen);
-  // it does NOT relabel the device — that identity is set at login.
-  async rotate(id: string, refreshTokenHash: string, expiresAt: Date): Promise<void> {
+  // Refresh extends the session (new token hash, new expiry, touch last_seen) and records the
+  // rotated-out hash as `prev` for reuse detection; it does NOT relabel the device (set at login).
+  async rotate(id: string, refreshTokenHash: string, prevTokenHash: string, expiresAt: Date): Promise<void> {
     await this.db
       .updateTable("auth_sessions")
-      .set({ refresh_token_hash: refreshTokenHash, expires_at: expiresAt, last_seen_at: new Date() })
+      .set({ refresh_token_hash: refreshTokenHash, prev_refresh_token_hash: prevTokenHash, expires_at: expiresAt, last_seen_at: new Date() })
       .where("id", "=", id)
       .execute();
   }

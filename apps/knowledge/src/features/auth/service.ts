@@ -86,9 +86,17 @@ export async function rotateTokens(refreshToken: string): Promise<AuthTokens | n
     await repos.authSessions.revokeById(sessionId);
     return null;
   }
-  if (!equalHex(sha256(secret), session.refresh_token_hash)) return null;
+  const presented = sha256(secret);
+  // Replay of the already-rotated-out token = theft signal: the legitimate client only ever holds the
+  // current token, so a valid `prev` came from a leak (or a stale client). Revoke the whole session —
+  // both holders must re-login. (Known trade-off: a lost-rotation-response retry also trips this.)
+  if (session.prev_refresh_token_hash && equalHex(presented, session.prev_refresh_token_hash)) {
+    await repos.authSessions.revokeById(sessionId);
+    return null;
+  }
+  if (!equalHex(presented, session.refresh_token_hash)) return null;
 
   const { token: refreshTokenNew, hash } = newRefreshToken(sessionId);
-  await repos.authSessions.rotate(sessionId, hash, new Date(Date.now() + config.auth.refreshTtl * 1000));
+  await repos.authSessions.rotate(sessionId, hash, session.refresh_token_hash, new Date(Date.now() + config.auth.refreshTtl * 1000));
   return { accessToken: await signAccess(session.user_id, sessionId), refreshToken: refreshTokenNew, expiresIn: config.auth.accessTtl, tokenType: "Bearer" };
 }
