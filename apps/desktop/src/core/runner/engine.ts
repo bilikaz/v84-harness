@@ -98,7 +98,8 @@ export class RunnerEngine {
   private free(slot: RunnerSlot, service: ModelService): boolean {
     const cur = this.cnt(modelKey(slot));
     if (cur.total >= slot.c) return false;
-    if (service === "subAgent" && cur.child >= slot.c - slot.reserve) return false;
+    // clamp: a stored reserve > c would make the band negative and silently block every child on this model.
+    if (service === "subAgent" && cur.child >= Math.max(0, slot.c - slot.reserve)) return false;
     return true;
   }
 

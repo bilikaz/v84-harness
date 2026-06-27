@@ -382,9 +382,11 @@ function ModelRow({ p, m }: { p: MediaProvider; m: MediaModel }) {
             <input
               type="number"
               min={0}
+              max={m.c ?? 5}
               value={m.reserve ?? ""}
               placeholder="2"
-              onChange={(e) => updateModel(p.id, m.id, { reserve: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })}
+              // Clamp to c: reserve > c makes the runner's open band (c − reserve) negative and blocks every child.
+              onChange={(e) => updateModel(p.id, m.id, { reserve: e.target.value === "" ? undefined : Math.min(m.c ?? 5, Math.max(0, Number(e.target.value))) })}
               className="w-16 rounded border border-neutral-200 px-1.5 py-0.5"
             />
           </label>

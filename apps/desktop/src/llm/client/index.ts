@@ -69,13 +69,16 @@ export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?
     // compaction) leases a slot from the runner for the call's duration; an empty pool falls back
     // to the resolver so behaviour degrades to today's single-target path.
     let target = opts.target;
-    let slotId: string | undefined;
+    // Capture the release as a closure at acquire time — keeps the finally block free of non-null
+    // assertions on defaults/slots, and resilient if the acquisition path later moves.
+    let releaseSlot: (() => void) | undefined;
     if (!target && defaults?.slots) {
+      const slots = defaults.slots;
       const id = crypto.randomUUID();
-      const leased = await defaults.slots.acquire(opts.service, id, callCtx.signal);
+      const leased = await slots.acquire(opts.service, id, callCtx.signal);
       if (leased) {
         target = leased;
-        slotId = id;
+        releaseSlot = () => slots.release(id);
       }
     }
 
@@ -98,7 +101,7 @@ export function createClient(resolver: LLMConfigResolver, defaults?: { maxHeals?
         }
       }
     } finally {
-      if (slotId) defaults!.slots!.release(slotId);
+      releaseSlot?.();
     }
   }
 

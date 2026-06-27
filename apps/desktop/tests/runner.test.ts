@@ -72,6 +72,21 @@ describe("reserve", () => {
     expect(await c4).toBeTruthy(); // freed child slot goes to the queued child
     void m3;
   });
+
+  it("clamps a reserve > c to a zero band instead of a negative one (no phantom child seats)", async () => {
+    // A misconfigured reserve once made the band (c − reserve) negative, so `cur.child >= band` was
+    // always true and every child silently blocked. Clamped to 0: children blocked, main unaffected.
+    const shared = slot("A", 2, 5); // reserve 5 > c 2
+    const { engine } = harness({ main: [shared], subAgent: [shared] });
+
+    const c1 = engine.acquire("subAgent", "c1", 0);
+    expect(engine.isWaiting("c1")).toBe(true); // band is 0, not -3 → no child seat
+    expect(engine.inflight(key("A")).child).toBe(0);
+
+    const m1 = await engine.acquire("main", "m1", 0); // main still uses the full cap
+    expect(m1?.modelKey).toBe(key("A"));
+    void c1;
+  });
 });
 
 describe("priority fill", () => {
