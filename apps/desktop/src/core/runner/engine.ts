@@ -77,11 +77,18 @@ export class RunnerEngine {
   private readonly queue: Waiter[] = [];
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly reaper?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: RunnerDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.newId = deps.newId ?? (() => crypto.randomUUID());
-    if (deps.reaperMs) setInterval(() => this.pump(), deps.reaperMs);
+    if (deps.reaperMs) this.reaper = setInterval(() => this.pump(), deps.reaperMs);
+  }
+
+  // Stop the TTL reaper. The app-lifetime singleton never disposes; this is for tests and HMR
+  // teardown, so a stale interval can't keep pumping a replaced engine.
+  dispose(): void {
+    if (this.reaper) clearInterval(this.reaper);
   }
 
   private emit(e: RunnerEvent): void {
@@ -147,13 +154,15 @@ export class RunnerEngine {
 
   // Acquirer gone: drop its live lease, binding, and any queued waiter.
   drop(id: string): void {
-    this.release(id);
     this.bindings.delete(id);
-    const w = this.queue.find((x) => x.id === id);
-    if (w) {
+    // Resolve any queued waiter(s) for this id BEFORE releasing: release() pumps the queue, and a
+    // still-queued same-id waiter (e.g. a double-acquire) could otherwise be granted a fresh lease
+    // that then escapes this cleanup, leaking a slot.
+    for (const w of this.queue.filter((x) => x.id === id)) {
       this.removeWaiter(w);
       w.resolve(null);
     }
+    this.release(id);
   }
 
   // Try to satisfy waiters against current free capacity. A warm waiter holds out for its bound

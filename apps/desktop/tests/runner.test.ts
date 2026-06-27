@@ -89,6 +89,27 @@ describe("reserve", () => {
   });
 });
 
+describe("drop", () => {
+  it("tears down a same-id waiter before release pumps, so no fresh lease escapes cleanup", async () => {
+    // Double-acquire leaves one waiter live and one still queued under the same id. drop() must free
+    // both; if release() pumped first, the queued twin would be granted a lease that then leaks.
+    const { engine } = harness({ main: [slot("A", 1)] });
+    await engine.acquire("main", "occupy", 0); // A full (total 1)
+    const first = engine.acquire("main", "dup", 0); // queued (waiter 1)
+    const second = engine.acquire("main", "dup", 0); // queued again, same id (waiter 2)
+    expect(engine.isWaiting("dup")).toBe(true);
+
+    engine.release("occupy"); // pump grants waiter 1 → "dup" live; waiter 2 still queued
+    expect(await first).toBeTruthy();
+    expect(engine.inflight(key("A")).total).toBe(1);
+
+    engine.drop("dup");
+    expect(engine.inflight(key("A")).total).toBe(0); // live lease freed, twin not re-granted
+    expect(engine.isWaiting("dup")).toBe(false);
+    expect(await second).toBeNull();
+  });
+});
+
 describe("priority fill", () => {
   it("fills the top model first, spills to the next when it's saturated", async () => {
     const { engine } = harness({ main: [slot("A", 1), slot("B", 5)] });
