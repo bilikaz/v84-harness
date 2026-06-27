@@ -23,6 +23,7 @@ export function normalize(s: Partial<Session> & { messages?: Partial<Message>[] 
     parentId: s.parentId,
     errorKind: s.errorKind,
     tools: Array.isArray(s.tools) ? s.tools : [],
+    lastModel: s.lastModel,
     usedTokens: s.usedTokens,
     unread: s.unread,
     bytes: s.bytes,

@@ -7,7 +7,7 @@ export const fieldInputBare = "rounded-lg border px-3 py-1.5 text-sm outline-non
 
 const base = `${fieldInputBare} border-neutral-200 focus:border-neutral-400`;
 
-export const fieldInput = `w-80 ${base}`;
+export const fieldInput = `w-[28rem] ${base}`;
 export const fieldInputFlex = `min-w-0 flex-1 ${base}`;
 export const fieldInputFull = `w-full ${base}`;
 

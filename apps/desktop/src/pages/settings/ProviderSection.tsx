@@ -20,7 +20,7 @@ export function ProviderSection() {
   const reserveBelowMin = minReserve > 0 && !!cfg.contextReserve && cfg.contextReserve < minReserve;
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-3xl">
       <h2 className="text-lg font-semibold text-neutral-900">{t("provider.title")}</h2>
       <p className="mt-1 text-sm text-neutral-500">{t("provider.subtitle")}</p>
 
@@ -46,7 +46,7 @@ export function ProviderSection() {
       </Row>
 
       <Row label={t("provider.model")}>
-        <div className="flex w-80 items-center gap-2">
+        <div className="flex w-[28rem] items-center gap-2">
           {hasModels ? (
             <select
               value={cfg.model.id}
@@ -77,7 +77,7 @@ export function ProviderSection() {
       )}
 
       <Row label={t("provider.inputModalities")}>
-        <div className="flex w-80 items-center gap-4">
+        <div className="flex w-[28rem] items-center gap-4">
           {(["image", "video", "audio"] as const).map((m) => (
             <label key={m} className="flex items-center gap-1.5 text-sm text-neutral-700">
               <input
@@ -148,7 +148,7 @@ export function ProviderSection() {
       </Row>
 
       <Row label={t("provider.contextReserve")}>
-        <div className="flex w-80 flex-col gap-1">
+        <div className="flex w-[28rem] flex-col gap-1">
           <input
             type="number"
             name="system-reserve"

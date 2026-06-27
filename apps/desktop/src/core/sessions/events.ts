@@ -51,6 +51,7 @@ export interface MessageDone {
   firstExchange: boolean;
   autoName: boolean;
   userText: string;
+  model?: string; // wire id that served the turn — recorded as the session's lastModel
 }
 export interface TurnEnd {
   sessionId: string;

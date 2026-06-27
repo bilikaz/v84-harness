@@ -9,7 +9,8 @@
     "local": "Local",
     "remote": "Remote",
     "add": "Add",
-    "newChat": "New chat"
+    "newChat": "New chat",
+    "waitingSlot": "Waiting for a free slot…"
   },
   "container": {
     "title": "Workspace settings",
@@ -157,7 +158,8 @@
       "imageRec": "Image recognition",
       "videoRec": "Video recognition",
       "audioGen": "Audio generation",
-      "audioRec": "Audio recognition"
+      "audioRec": "Audio recognition",
+      "subAgent": "Sub-agent runner"
     },
     "covered": "Covered",
     "notCovered": "Not covered",
@@ -192,7 +194,18 @@
     "promptStyleCosmos": "Upsample prompts with the Cosmos JSON enhancer",
     "maxImageSize": "Max image size",
     "maxVideoSize": "Max video size",
-    "electronOnly": "Available in the desktop app only"
+    "electronOnly": "Available in the desktop app only",
+    "poolHint": "Each use case is a priority pool — the top model with free capacity is used first, spilling down.",
+    "addToPool": "+ add a model",
+    "removeFromPool": "Remove from pool",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "concurrency": "Max parallel",
+    "concurrencyHint": "Max concurrent in-flight calls on this model (default 5).",
+    "reserve": "Main reserve",
+    "reserveHint": "Slots kept for foreground only; the rest is lent to sub-agents (default 2).",
+    "rating": "Rating",
+    "ratingHint": "Optional priority hint for ordering within a pool (higher first)."
   },
   "session": {
     "placeholder": "Write a message…",

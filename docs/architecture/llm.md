@@ -12,7 +12,7 @@ Everything that talks to a model goes through one entry. A caller names a
 details or knows wire formats.
 
 ```ts
-client.call({ service, messages, system?, tools?, params?, signal?, handler?, maxHeals? })
+client.call({ service, messages, system?, tools?, params?, signal?, handler?, maxHeals?, target? })
 ```
 
 ## The vocabulary
@@ -36,9 +36,12 @@ flowchart LR
     L --> C["3 cycle\nprovider.call(handler)\nHealError → correction turn → re-run"]
 ```
 
-1. **resolve** — `resolver.resolve(service)` through the injected
-   `LLMConfigResolver`, the ONE seam to wherever configuration lives. `null` → a
-   clean "no model is assigned" error.
+1. **resolve** — a caller-supplied `target` (a turn's leased model) is used as-is;
+   otherwise `resolver.resolve(service)` through the injected `LLMConfigResolver`, the
+   ONE seam to wherever configuration lives. `null` → a clean "no model is assigned"
+   error. A target-less call may instead be slot-leased through an injected
+   `SlotProvider` so it obeys the per-model concurrency cap — see
+   [runner.md](runner.md) ([ADR-0066](../adr/0066-concurrency-runner.md)).
 2. **load** — the registry IS the folder layout: the service's modality + the
    target's provider type parse straight to a module path
    (`providers/text/openai.ts`, `providers/image/generate.ts`, …), each

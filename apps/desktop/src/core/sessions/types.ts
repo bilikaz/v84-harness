@@ -56,6 +56,9 @@ export interface Session {
   errorKind?: ErrorKind;
   tools: SessionTool[];
   messages: Message[];
+  // Wire id of the model that served the latest turn — the runner can lease a different pool model each
+  // turn, so this (not the configured head) is what the composer labels as the chat's model.
+  lastModel?: string;
   usedTokens?: number;
   unread?: boolean;
   bytes?: number;

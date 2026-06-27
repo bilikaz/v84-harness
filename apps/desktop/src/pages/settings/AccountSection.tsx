@@ -13,7 +13,7 @@ export function AccountSection() {
   const account = useAccount();
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-3xl">
       <h2 className="text-lg font-semibold text-neutral-900">{t("account.title")}</h2>
       <p className="mt-1 text-sm text-neutral-500">{t("account.subtitle")}</p>
 
@@ -75,7 +75,7 @@ function SignedIn() {
   const account = useAccount();
   const [busy, setBusy] = useState(false);
   return (
-    <div className="flex w-80 items-center justify-between gap-2 rounded-lg border border-neutral-200 px-3 py-2.5">
+    <div className="flex w-[28rem] items-center justify-between gap-2 rounded-lg border border-neutral-200 px-3 py-2.5">
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium text-neutral-800">{account.username}</span>
         <span className="block truncate text-xs text-neutral-500">{account.endpoint}</span>
@@ -114,7 +114,7 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex w-80 flex-col gap-2">
+    <div className="flex w-[28rem] flex-col gap-2">
       <input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder={t("account.endpointPlaceholder")} className={fieldInputFull} />
       <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t("account.username")} autoComplete="username" className={fieldInputFull} />
       <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={t("account.password")} autoComplete="current-password" className={fieldInputFull} />
@@ -147,7 +147,7 @@ function ConnChoice(props: { active: boolean; onClick: () => void; icon: ReactNo
       type="button"
       onClick={props.onClick}
       className={cn(
-        "flex w-80 items-start gap-3 rounded-lg border px-3 py-2.5 text-left",
+        "flex w-[28rem] items-start gap-3 rounded-lg border px-3 py-2.5 text-left",
         props.active ? "border-neutral-900 bg-neutral-900/[0.03]" : "border-neutral-200 hover:bg-neutral-50",
       )}
     >

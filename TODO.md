@@ -33,42 +33,22 @@ story — a portable command layer, or platform-appropriate shells behind one to
 contract — so workspace tooling works the same on Windows as on Linux/macOS.
 Needs a design pass (and likely an ADR, given the tool-surface + permission impact).
 
-## Local-LLM prefill/eviction kills long & resumed runs
+## Bound a child's context growth (re-prefill cost)
 
-Self-hosted LLM servers (vLLM and friends) hold a **finite KV cache** and admit a
-bounded number of concurrent sequences (`max_num_seqs`). Two harness behaviours
-push past that and the server evicts cached prefixes — which then have to be
-**re-prefilled** from scratch on the next turn (slow), or the slow-trickling SSE
-stream is reset mid-response:
+The local-LLM eviction/stream-reset failure is **resolved**: the concurrency runner
+([ADR-0065](docs/adr/0065-per-service-priority-pools.md) /
+[ADR-0066](docs/adr/0066-concurrency-runner.md)) caps in-flight calls per model (`c` +
+reserve + queue) so the app never overruns the server budget, and keeps a returning
+session on its warm provider (provider affinity + KV-protect threshold) instead of
+re-routing; the server-side keep-alive ping covers stream/connection liveness. Set each
+model's `c` to the endpoint's `max_num_seqs` budget and the eviction pressure is bounded.
 
-1. **Fan-out concurrency.** `RunAgent` spawns every run at once
-   ([ADR-0060](docs/adr/0060-async-subagent-delivery.md)); N children + the parent
-   can exceed the server's eviction-proof budget (roughly
-   `max_num_seqs × max_model_len ≤ KV pool`), so sessions get evicted and thrash
-   re-prefill, or streams reset under the load.
-2. **Resume re-prefills the whole context.** `ResumeAgent` /
-   `engine.resume` continues from the *full* saved history
-   ([ADR-0058](docs/adr/0058-conversational-sub-agent-orchestration.md)) — and if
-   the cache was evicted in the gap (a 10–15 min wait is enough), the entire
-   prompt is recomputed before the run can make progress.
-
-This is a **design gap, not a settled fix** — think it through before building.
-Candidate directions (not yet decided):
-
-- **Cap concurrent sub-agents** to fit the server budget — e.g. a
-  `session.maxConcurrentAgents` (default ~`max_num_seqs − 1`, reserving a parent
-  slot), queue the excess, start the next as one finishes. Bounds both eviction
-  pressure and stream-reset risk. Async delivery already makes "queued, not
-  blocking" natural.
-- **Bound a child's context growth** so long runs don't balloon the prefix in the
-  first place (ADR-0058 flagged this as still-needed) — the cheaper a prefix is to
-  recompute, the less an eviction hurts.
-- Anything touching the server side (KV pool sizing, `max_num_seqs`, proxy stream
-  timeouts) is the **operator's** lever, not the app's — but the app should not
-  *generate* load it knows the server can't hold.
-
-Likely an ADR once a direction is chosen (it changes dispatch behaviour + adds
-config). Tracked in the ADR "Needs review" table too.
+What remains is an **optimization, not a live failure**: a child's prefix still **grows
+unbounded** over a long run ([ADR-0058](docs/adr/0058-conversational-sub-agent-orchestration.md)
+flagged this), so the rare re-prefill that does happen (e.g. a binding lapses past its TTL)
+is more expensive than it needs to be. Bound the growth — sliding window, mid-run
+compaction, or a per-child context budget — so re-prefill stays cheap. Lower priority now
+that eviction itself is contained; likely a refinement ADR if/when pursued.
 
 ## Implement remote workspaces
 

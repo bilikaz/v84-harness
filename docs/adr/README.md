@@ -42,7 +42,7 @@ loading. Its index row below stays.
 | [0025](0025-media-resend-window.md) | Media resend window + aligned per-item caps | accepted |
 | [0026](0026-agent-session-placement-vs-capability.md) | Agent sessions: placement follows launch context, capability masked separately + unlink | accepted |
 | [0027](0027-per-model-image-pixel-cap.md) | Images model-checked by dimensions (`imageMaxDim`, renderer downscaling); byte caps become transport bounds | accepted |
-| [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected resolver (`LLMConfigResolver`); heal cycle; tool calls stay engine-side | accepted (ConfigSource renamed `LLMConfigResolver`) |
+| [0028](0028-llm-client-service-calls.md) | One llm client: service-named calls over an injected resolver (`LLMConfigResolver`); heal cycle; tool calls stay engine-side | accepted (ConfigSource renamed `LLMConfigResolver`; leased `target` + injected `SlotProvider` added by 0066) |
 | [0029](0029-provider-classes-folder-factory.md) | Provider classes resolved by the folder-layout factory; response handlers are response-side only | accepted |
 | [0030](0030-unified-call-target.md) | One model-data format held end to end (stores included, no migrations) | accepted (CallTarget → `LLMConfig` / ownership moved to config by 0031) |
 | [0031](0031-config-sole-source-of-truth.md) | Config as the sole source of truth — domains under one roof, owners push | accepted |
@@ -56,7 +56,7 @@ loading. Its index row below stays.
 | [0039](0039-account-local-store-and-connection-lifecycle.md) | `account` — the lone local store, connection lifecycle, renderer-side memory tool tier | accepted |
 | [0040](0040-knowledge-remote-service.md) | `apps/knowledge` — the remote service (Hono + MariaDB + OpenSearch + Inngest; auth; `/data` + `/kb` + `/inngest`) | accepted |
 | [0041](0041-knowledgebase-plane.md) | Knowledgebase — all-OpenSearch, nested chunks, hybrid sparse+dense, fire-and-forget ingest | accepted |
-| [0042](0042-unified-settings-registry.md) | Unified Settings registry — providers/models/services, `config.llm` derived, media subsumed (refines 0018) | accepted |
+| [0042](0042-unified-settings-registry.md) | Unified Settings registry — providers/models/services, `config.llm` derived, media subsumed (refines 0018) | accepted (services → per-service priority pools by 0065) |
 | [0043](0043-per-entity-repos.md) | Per-entity storage tables + `StorageRepos` (KV substrate retired; supersedes 0035, 0021) | accepted |
 | [0044](0044-storage-engine-provider-swap.md) | `StorageEngine` — provider swap with a machine-local lane (`repos()` vs `localRepos()`; supersedes 0038) | accepted |
 | [0045](0045-machine-local-vs-account-synced.md) | Machine-local vs account-synced state (`Consumer.synced`; refines 0037, 0039, 0042) | accepted |
@@ -74,11 +74,13 @@ loading. Its index row below stays.
 | [0057](0057-developer-gated-script-execution.md) | RunScript — out-of-process, developer-gated code execution + `developerMode` flag | accepted |
 | [0058](0058-conversational-sub-agent-orchestration.md) | Conversational sub-agent orchestration — a standing team (aliases, ActiveAgents/AskAgent/ResumeAgent), typed outcomes, resume-from-history (supersedes/extends 0022) | accepted (async delivery added by 0060; alias clause superseded by 0061) |
 | [0059](0059-builtin-general-agent.md) | Built-in universal General agent — always summonable, inherits the caller's context via its container | accepted |
-| [0060](0060-async-subagent-delivery.md) | Async sub-agent orchestration + the settle-event delivery model (`asyncAgents`, `awaitSettled`, `getAgentContent`, user-drivable children, shared `fanOut`) | accepted |
+| [0060](0060-async-subagent-delivery.md) | Async sub-agent orchestration + the settle-event delivery model (`asyncAgents`, `awaitSettled`, `getAgentContent`, user-drivable children, shared `fanOut`) | accepted (per-model concurrency cap added by 0066) |
 | [0061](0061-subagent-alias-from-title.md) | Sub-agent alias from the title `#n` suffix (supersedes 0058's stored-alias clause) | accepted |
 | [0062](0062-runtime-registered-tools.md) | Runtime-registered tools — the registry as a dynamic tool source (`register`/`unregister`; amends 0033, 0049) | accepted |
 | [0063](0063-mcp-client-plugin.md) | MCP client as a first-party plugin — client plane, tools-only, stdio + HTTP, `MCP_<Server>_<Tool>` | accepted |
 | [0064](0064-mcp-oauth.md) | MCP OAuth — auth-code + PKCE, DCR or pre-registered app, in-app loopback window, machine-local tokens (refines 0063) | accepted |
+| [0065](0065-per-service-priority-pools.md) | Per-service priority pools + per-model concurrency caps (`services` → ordered lists, `c`/reserve/rating; refines 0042) | accepted |
+| [0066](0066-concurrency-runner.md) | Concurrency runner — turn-held slot leases + provider affinity (refines 0028/0032/0060; resolves the local-LLM eviction item) | accepted |
 
 ## Needs review / important missing parts
 
@@ -94,7 +96,7 @@ it from this list.
 | Bridge startup handshake | [ADR-0002](0002-typed-ipc-bridge.md) | 18 IPC channels now (was 6 when "revisit if it grows" was written; +2 for the plugin bridge [ADR-0049](0049-plugin-service-bridge.md), +2 for the browser fleet's `capturePage`/`browserEvent` [ADR-0051](0051-browser-windows-session-owned.md)); a missing handler still hangs the invoke silently. A startup ping would catch it. |
 | Plugin service lifecycle/dispose depth | [ADR-0049](0049-plugin-service-bridge.md) | `install`/`uninstall` exist, but there's no teardown on app quit (process death is relied on) and no per-window scoping; fine for single-window desktop, revisit if a plugin holds resources that need graceful release. |
 | Tests/typecheck not in CI | conventions/testing.md | `.github/workflows/review.yml` runs the reviewer gate only; nothing runs `pnpm typecheck` / `pnpm test` on push. |
-| Local-LLM prefill/eviction kills long & resumed runs | [ADR-0058](0058-conversational-sub-agent-orchestration.md), [ADR-0060](0060-async-subagent-delivery.md), [/TODO.md](../../TODO.md) | Resume re-prefills the full saved context; concurrent sub-agents overrun a local server's KV cache so runs get evicted and re-prefilled (or the stream resets). No concurrency cap or context bound yet — needs a design pass. |
+| Child context growth unbounded | [ADR-0058](0058-conversational-sub-agent-orchestration.md), [/TODO.md](../../TODO.md) | The concurrency cap + provider affinity ([ADR-0066](0066-concurrency-runner.md)) + the server keep-alive ping closed the eviction/stream-reset failure. What remains is an **optimization**: bound a child's prefix growth so a re-prefill (when it does happen) is cheaper. Not a live failure. |
 
 Resolved since first written: reasoning config beyond OpenAI-compatible
 (ADR-0006 — effort now maps to all three providers), the `lib/` → `core/`
@@ -105,4 +107,7 @@ progress DAG (removed — ToolCard links + live child sessions are the progress
 view, ADR-0022), and client-side media downscaling (per-model pixel cap,
 stored copy is the downscaled one — ADR-0027), and the account "Connected" mode
 (now designed and built — the `account` store + connection lifecycle in
-ADR-0039, with `apps/knowledge` as the backend in ADR-0040).
+ADR-0039, with `apps/knowledge` as the backend in ADR-0040), and the local-LLM
+prefill/eviction failure (the concurrency runner — per-model `c` + priority pools +
+provider affinity, ADR-0065/0066 — plus a server-side keep-alive ping; only the
+child-context-growth optimization remains).

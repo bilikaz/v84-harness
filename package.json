@@ -9,7 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "postinstall": "node -e \"require('electron')\"",
+    "postinstall": "node -e \"if (!process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) require('electron')\"",
     "typecheck": "pnpm -r typecheck",
     "dev:desktop": "pnpm --filter @v84-harness/desktop dev",
     "dev:desktop:electron": "pnpm --filter @v84-harness/desktop dev:electron",

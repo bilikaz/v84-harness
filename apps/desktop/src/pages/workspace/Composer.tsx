@@ -14,6 +14,7 @@ import type { Attachments } from "../../core/sessions/index.ts";
 export function Composer(props: {
   seed?: string;
   disabled?: boolean; // blocks send (context full, compacting, missing workspace)
+  modelLabel?: string; // the model that actually answered this chat; falls back to the configured head
   streaming?: boolean;
   lock?: boolean; // hard-lock the input itself (a running sub-agent: stop it to guide it)
   lockNote?: string; // placeholder shown while locked
@@ -160,7 +161,7 @@ export function Composer(props: {
             title={t("session.changeModel")}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100"
           >
-            {provider.model.id || t("session.selectModel")}
+            {props.modelLabel || provider.model.id || t("session.selectModel")}
             <ChevronDown size={14} />
           </button>
           {props.streaming ? (

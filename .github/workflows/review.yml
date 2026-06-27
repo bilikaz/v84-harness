@@ -38,7 +38,11 @@ jobs:
           node-version: 24      # reviewer ships prebuilt dist/, but needs Node >=24
           cache: pnpm
 
+      # The reviewer needs no Electron binary; skipping the download avoids a ~100 MB
+      # fetch and the root postinstall probe that fails when it didn't land (no path.txt).
       - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
       - name: Review this PR
         env:

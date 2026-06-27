@@ -474,6 +474,12 @@ export function setUsage(sid: string, tokens: number): void {
   notify();
 }
 
+// The model that served the latest turn — persisted via meta (turn:end), shown by the composer.
+export function setLastModel(sid: string, model: string): void {
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, lastModel: model } : s));
+  notify();
+}
+
 export function markUnread(sid: string): void {
   sessions = sessions.map((s) => (s.id === sid ? { ...s, unread: true } : s));
   notify();

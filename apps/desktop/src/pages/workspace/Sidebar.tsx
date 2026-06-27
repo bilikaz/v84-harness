@@ -26,6 +26,7 @@ import {
   useSessions,
   useStreamingIds,
 } from "../../core/sessions/index.ts";
+import { useWaiting } from "../../core/runner/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import {
   createContainer,
@@ -50,6 +51,7 @@ export function Sidebar() {
   const sessions = useSessions();
   const activeId = useActiveId();
   const streamingIds = useStreamingIds();
+  const waiting = useWaiting();
   const containers = useContainers();
   const activeContainerId = useActiveContainerId();
   const account = useAccount();
@@ -174,7 +176,7 @@ export function Sidebar() {
                       related={related}
                       threadActive={threadActive}
                       indent={child}
-                      dot={<StatusDot streaming={streamingIds.has(s.id)} unread={!!s.unread} />}
+                      dot={<StatusDot waiting={waiting[s.id] !== undefined} streaming={streamingIds.has(s.id)} unread={!!s.unread} />}
                       renaming={renamingId === s.id}
                       draft={draft}
                       onDraft={setDraft}
@@ -352,12 +354,14 @@ function Row(props: {
   );
 }
 
-function StatusDot({ streaming, unread }: { streaming: boolean; unread: boolean }) {
+function StatusDot({ waiting, streaming, unread }: { waiting: boolean; streaming: boolean; unread: boolean }) {
+  const { t } = useTranslation();
   return (
     <span
+      title={waiting ? t("sidebar.waitingSlot") : undefined}
       className={cn(
         "h-2 w-2 shrink-0 rounded-full",
-        streaming ? "animate-pulse bg-amber-400" : unread ? "bg-emerald-500" : "bg-transparent",
+        waiting ? "animate-pulse bg-sky-400" : streaming ? "animate-pulse bg-amber-400" : unread ? "bg-emerald-500" : "bg-transparent",
       )}
     />
   );

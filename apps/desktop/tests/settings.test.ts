@@ -18,6 +18,7 @@ import {
   updateModel,
   updateProvider,
 } from "../src/core/settings.ts";
+import { hydrateConsumers } from "../src/core/storage/consumer.ts";
 import { initTestCtx } from "./ctx.ts";
 
 // A media provider with one imageGen-capable model "m1" (the default `main`
@@ -50,7 +51,7 @@ describe("providers + models", () => {
 
   it("providerCaps constrains what a model can declare", () => {
     expect(providerCaps("generate")).toEqual(["imageGen"]);
-    expect(providerCaps("openai")).toHaveLength(6);
+    expect(providerCaps("openai")).toHaveLength(7); // 6 media + subAgent
   });
 
   it("a cosmos wire id arrives pre-marked for the JSON enhancer", () => {
@@ -61,16 +62,18 @@ describe("providers + models", () => {
 });
 
 describe("assignment + resolution", () => {
-  it("capability tick auto-fills an empty slot, never overrides, and a lost capability prunes", () => {
+  it("capability tick appends to the pool (ordered), and a lost capability prunes that entry", () => {
     const { pid, mid } = seedProvider();
-    expect(getMediaRegistry().assignments.imageGen).toEqual({ providerId: pid, modelId: mid });
+    expect(getMediaRegistry().assignments.imageGen).toEqual([{ providerId: pid, modelId: mid }]);
 
     const mid2 = addModel(pid, "m2");
     updateModel(pid, mid2, { capabilities: ["imageGen"] });
-    expect(getMediaRegistry().assignments.imageGen?.modelId).toBe(mid); // first pick survives
+    const pool = getMediaRegistry().assignments.imageGen!;
+    expect(pool).toHaveLength(2);
+    expect(pool[0].modelId).toBe(mid); // first pick keeps its priority position
 
     updateModel(pid, mid, { capabilities: [] });
-    expect(getMediaRegistry().assignments.imageGen).toBeUndefined();
+    expect(getMediaRegistry().assignments.imageGen).toEqual([{ providerId: pid, modelId: mid2 }]);
   });
 
   it("slotOptions lists 'provider : model' for capable models only", () => {
@@ -89,6 +92,19 @@ describe("assignment + resolution", () => {
 
     updateProvider(pid, { baseUrl: "" });
     expect(resolveMediaProvider("imageGen")).toBeNull();
+  });
+
+  it("a structurally-malformed stored row hydrates to DEFAULTS instead of throwing", async () => {
+    const ctx = initTestCtx();
+    // Legacy/corrupt: services.main is a single object, not the ordered array resolvePools maps over.
+    await ctx.storage.repos().settings.put({
+      key: "v84-harness:settings",
+      scope: "account",
+      value: JSON.stringify({ providers: [], services: { main: { providerId: "x", modelId: "y" } } }),
+    });
+    await expect(hydrateConsumers()).resolves.toBeDefined();
+    expect(getMediaRegistry().providers.some((p) => p.id === "default-provider")).toBe(true);
+    expect(getMediaRegistry().assignments.main).toEqual([{ providerId: "default-provider", modelId: "default-main" }]);
   });
 
   it("removing a model or provider prunes its assignments", () => {
