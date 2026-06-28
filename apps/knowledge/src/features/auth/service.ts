@@ -7,7 +7,12 @@
 //             Every refresh ROTATES the secret, so a captured refresh dies on next use.
 
 import { sign } from "hono/jwt";
-import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scrypt as scryptCb, scryptSync, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+
+// scrypt is CPU/memory-heavy by design (~tens of ms). The async form keeps it OFF the event loop so a
+// burst of logins/registers can't stall every other request — the sync form would serialise them all.
+const scrypt = promisify(scryptCb) as (password: string | Buffer, salt: string | Buffer, keylen: number) => Promise<Buffer>;
 
 import { config } from "../../config/config.ts";
 import { openRepos } from "../../database/repos.ts";
@@ -24,18 +29,29 @@ export interface DeviceInfo {
   ip?: string | null;
 }
 
-export function hashPassword(password: string): string {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const hash = scryptSync(password, salt, 64);
+  const hash = await scrypt(password, salt, 64);
   return `${salt.toString("hex")}:${hash.toString("hex")}`;
 }
 
-export function verifyPassword(password: string, stored: string): boolean {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [saltHex, hashHex] = stored.split(":");
   if (!saltHex || !hashHex) return false;
-  const hash = scryptSync(password, Buffer.from(saltHex, "hex"), 64);
+  const hash = await scrypt(password, Buffer.from(saltHex, "hex"), 64);
   const expected = Buffer.from(hashHex, "hex");
   return hash.length === expected.length && timingSafeEqual(hash, expected);
+}
+
+// Login against a possibly-absent user WITHOUT leaking which usernames exist: when there's no stored
+// hash, verify against a real decoy so the scrypt cost (and thus response time) is the same whether or
+// not the username is real. Returns false for the decoy path. DECOY is computed once at module load —
+// the one-time sync hash at startup is fine (it's not on any request path).
+const DECOY_SALT = randomBytes(16);
+const DECOY_HASH = `${DECOY_SALT.toString("hex")}:${scryptSync(randomBytes(32).toString("hex"), DECOY_SALT, 64).toString("hex")}`;
+export async function verifyLogin(password: string, stored: string | undefined): Promise<boolean> {
+  const ok = await verifyPassword(password, stored ?? DECOY_HASH);
+  return stored !== undefined && ok;
 }
 
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
@@ -87,14 +103,19 @@ export async function rotateTokens(refreshToken: string): Promise<AuthTokens | n
     return null;
   }
   const presented = sha256(secret);
-  // Replay of the already-rotated-out token = theft signal: the legitimate client only ever holds the
-  // current token, so a valid `prev` came from a leak (or a stale client). Revoke the whole session —
-  // both holders must re-login. (Known trade-off: a lost-rotation-response retry also trips this.)
-  if (session.prev_refresh_token_hash && equalHex(presented, session.prev_refresh_token_hash)) {
-    await repos.authSessions.revokeById(sessionId);
-    return null;
+  if (!equalHex(presented, session.refresh_token_hash)) {
+    // Not the current token. The just-rotated-out `prev` is only legitimately held by a client whose
+    // rotation RESPONSE was lost and is retrying — accept that within the grace window and rotate again.
+    // Outside the window (or any other token) it's a replay/theft signal → revoke the whole session.
+    const matchesPrev = !!session.prev_refresh_token_hash && equalHex(presented, session.prev_refresh_token_hash);
+    const withinGrace = Date.now() - session.last_seen_at.getTime() <= config.auth.refreshReuseGraceMs;
+    if (matchesPrev && withinGrace) {
+      // fall through — re-rotate and hand the retrying client a fresh pair
+    } else {
+      if (matchesPrev) await repos.authSessions.revokeById(sessionId);
+      return null;
+    }
   }
-  if (!equalHex(presented, session.refresh_token_hash)) return null;
 
   const { token: refreshTokenNew, hash } = newRefreshToken(sessionId);
   await repos.authSessions.rotate(sessionId, hash, session.refresh_token_hash, new Date(Date.now() + config.auth.refreshTtl * 1000));

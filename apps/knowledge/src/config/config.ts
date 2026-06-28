@@ -20,6 +20,9 @@ export const config = {
     jwtSecret: process.env.JWT_SECRET ?? DEV_JWT_SECRET,
     accessTtl: num(process.env.ACCESS_TTL, 900), // access token lifetime, seconds (15 min)
     refreshTtl: num(process.env.REFRESH_TTL, 60 * 60 * 24 * 30), // refresh/session lifetime, seconds (30 days)
+    // Grace window (ms) after a rotation in which the just-rotated-out token is accepted as a lost-response
+    // retry rather than treated as theft — keeps a flaky client from being logged out on a dropped response.
+    refreshReuseGraceMs: num(process.env.REFRESH_REUSE_GRACE_MS, 30_000),
   },
   // Knowledgebase: OpenSearch (vector index) + an OpenAI-compatible embedding
   // server. Model/dim/prefixes are docker config; dim is baked into the index.

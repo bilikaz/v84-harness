@@ -10,7 +10,7 @@
 import { Hono, type Context } from "hono";
 
 import { openRepos } from "../../database/repos.ts";
-import { hashPassword, issueTokens, rotateTokens, verifyPassword } from "./service.ts";
+import { hashPassword, issueTokens, rotateTokens, verifyLogin } from "./service.ts";
 import { requireAuth, type AuthEnv } from "./middleware.ts";
 import type { Credentials, RefreshBody } from "./types.ts";
 
@@ -46,7 +46,7 @@ authRouter.post("/register", async (c) => {
   if (bad) return c.json({ error: bad }, 400);
   const repos = openRepos();
   if (await repos.users.findByUsername(username)) return c.json({ error: "username taken" }, 409);
-  const id = await repos.users.create(username, hashPassword(password));
+  const id = await repos.users.create(username, await hashPassword(password));
   return c.json(await issueTokens(id, device(c)), 201);
 });
 
@@ -56,7 +56,11 @@ authRouter.post("/login", async (c) => {
   const bad = lengthError(username, password, false);
   if (bad) return c.json({ error: bad }, 400);
   const user = await openRepos().users.findByUsername(username);
-  if (!user || !verifyPassword(password, user.password_hash)) return c.json({ error: "invalid credentials" }, 401);
+  // verifyLogin runs scrypt even when the user is absent (decoy), so timing can't reveal which
+  // usernames exist; the !user check below is post-hash, so it doesn't reintroduce the timing gap.
+  const ok = await verifyLogin(password, user?.password_hash);
+  if (!user || !ok) return c.json({ error: "invalid credentials" }, 401);
+  await openRepos().authSessions.deleteExpired(user.id); // sweep this user's dead sessions on login
   return c.json(await issueTokens(user.id, device(c)));
 });
 

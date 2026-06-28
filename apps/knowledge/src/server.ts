@@ -14,7 +14,7 @@ import { config } from "./config/config.ts";
 import { errorMessage } from "./lib/errors.ts";
 import { rootLogger } from "./core/logger.ts";
 import { loadRegistry } from "./core/registry.ts";
-import { runInitialMigration } from "./database/index.ts";
+import { closeDb, runInitialMigration } from "./database/index.ts";
 import { mountRoutes } from "./http/app.ts";
 
 const log = rootLogger.child({ component: "server" });
@@ -33,10 +33,19 @@ async function main(): Promise<void> {
     log.warn("DATABASE_URL unset — MariaDB is required; storage routes will fail until it is set");
   }
 
-  honoServe({ fetch: app.fetch, port: config.api.port, hostname: "0.0.0.0" }, (info) => {
+  const server = honoServe({ fetch: app.fetch, port: config.api.port, hostname: "0.0.0.0" }, (info) => {
     log.info({ port: info.port }, "server.up");
     void registerWithInngest(info.port);
   });
+
+  // Graceful shutdown: stop accepting connections, let in-flight requests drain, then close the DB pool
+  // so the process exits cleanly instead of dropping connections and leaving the pool open.
+  const shutdown = (signal: string): void => {
+    log.info({ signal }, "server.shutdown");
+    server.close(() => void closeDb().finally(() => process.exit(0)));
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 // Inngest sync: PUT our own /inngest webhook so the inngest/hono handler pushes

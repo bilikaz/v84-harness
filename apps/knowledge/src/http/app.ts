@@ -8,8 +8,19 @@ import { serve as inngestServe } from "inngest/hono";
 
 import { inngest } from "../inngest/client.ts";
 import type { RegistryState } from "../core/feature.ts";
+import { rootLogger } from "../core/logger.ts";
+import { errorMessage, ServiceDownError } from "../lib/errors.ts";
 
 export function mountRoutes(app: Hono, scanned: RegistryState): void {
+  // One place to turn a thrown handler error into a response: a missing global handler means an
+  // uncaught error (e.g. the DB is down during /logout or a token rotation) becomes Hono's bare 500
+  // with no log. Log it, and map ServiceDownError to 503; never leak internals to the client.
+  app.onError((err, c) => {
+    if (err instanceof ServiceDownError) return c.json({ error: err.message }, 503);
+    rootLogger.error({ err: errorMessage(err), path: c.req.path }, "request.unhandled");
+    return c.json({ error: "internal error" }, 500);
+  });
+
   // CORS — the harness renderer + web clients call this from another origin. Auth is Bearer-only
   // (no cookies), so we reflect the origin WITHOUT credentials: there is no ambient cookie/credential
   // for a foreign origin to ride on, and `*` + credentials is a spec violation browsers reject anyway.

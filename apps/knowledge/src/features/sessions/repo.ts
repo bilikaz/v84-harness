@@ -63,6 +63,11 @@ export class SessionsRepo {
     await this.db.deleteFrom("auth_sessions").where("user_id", "=", userId).execute();
   }
 
+  // Sweep a user's expired session rows (swept on their next login) so dead rows don't accumulate forever.
+  async deleteExpired(userId: number): Promise<void> {
+    await this.db.deleteFrom("auth_sessions").where("user_id", "=", userId).where("expires_at", "<", new Date()).execute();
+  }
+
   listByUser(userId: number): Promise<SessionRow[]> {
     return this.db
       .selectFrom("auth_sessions")

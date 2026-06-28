@@ -26,6 +26,9 @@ export const requireAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
   } catch {
     return c.json({ error: "invalid or expired token" }, 401);
   }
+  // A malformed `sub` (missing / non-numeric) makes Number() NaN, which would silently poison every
+  // downstream `user_id` query (the session lookup doesn't cross-check it) — reject it outright.
+  if (!Number.isInteger(userId) || userId <= 0) return c.json({ error: "invalid token payload" }, 401);
   // Revoked/logged-out sessions are DELETED — a missing row means the token is no longer honoured.
   const session = await openRepos().authSessions.findById(sessionId);
   if (!session) return c.json({ error: "session revoked" }, 401);
