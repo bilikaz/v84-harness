@@ -49,10 +49,7 @@ export async function runInitialMigration(): Promise<void> {
     .execute(db);
 
   const applied = new Set(
-    ((await db
-      .selectFrom("schema_migrations" as never)
-      .select("filename" as never)
-      .execute()) as Array<{ filename: string }>).map((r) => r.filename),
+    (await db.selectFrom("schema_migrations").select("filename").execute()).map((r) => r.filename),
   );
 
   const dir = join(HERE, "migrations");
@@ -70,8 +67,8 @@ export async function runInitialMigration(): Promise<void> {
     for (const stmt of statements) await sql.raw(stmt).execute(db);
 
     await db
-      .insertInto("schema_migrations" as never)
-      .values({ filename: file } as never)
+      .insertInto("schema_migrations")
+      .values({ filename: file })
       .ignore()
       .execute();
 

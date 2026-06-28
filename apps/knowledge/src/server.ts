@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { serve as honoServe } from "@hono/node-server";
 
 import { config } from "./config/config.ts";
+import { errorMessage } from "./lib/errors.ts";
 import { rootLogger } from "./core/logger.ts";
 import { loadRegistry } from "./core/registry.ts";
 import { runInitialMigration } from "./database/index.ts";
@@ -53,7 +54,7 @@ async function registerWithInngest(port: number): Promise<void> {
       }
       log.warn({ status: res.status, attempt }, "inngest.sync.retry");
     } catch (err) {
-      log.warn({ err: err instanceof Error ? err.message : String(err), attempt }, "inngest.sync.unreachable");
+      log.warn({ err: errorMessage(err), attempt }, "inngest.sync.unreachable");
     }
     await new Promise((r) => setTimeout(r, 1500 * attempt));
   }
@@ -61,6 +62,6 @@ async function registerWithInngest(port: number): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error({ err: err instanceof Error ? err.message : String(err) }, "server.boot.failed");
+  log.error({ err: errorMessage(err) }, "server.boot.failed");
   process.exit(1);
 });

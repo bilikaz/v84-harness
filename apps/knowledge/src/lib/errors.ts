@@ -8,6 +8,14 @@ export class ServiceDownError extends Error {
   }
 }
 
+// Matches the desktop helper: a thrown non-Error object (e.g. an API error body) serializes to JSON
+// rather than the useless "[object Object]" that String() yields.
 export function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }

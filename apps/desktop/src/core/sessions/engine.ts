@@ -161,7 +161,14 @@ export class SessionEngine {
     if (getStreamingIds().has(parentSid)) return; // busy — retained; turn:end will pump again
     const entries = [...q];
     this.deliveries.delete(parentSid);
-    void this.deliver(parentSid, entries).catch(() => {});
+    // A throw here (e.g. the history read fails) would otherwise drop the child's result for good —
+    // the entries are already off the queue. Re-queue so the parent's next turn:end retries delivery.
+    // Real throws only happen BEFORE the synthetic turn is emitted (drive/sendTo are self-guarding and
+    // resolve rather than throw), so re-queuing can't double-deliver.
+    void this.deliver(parentSid, entries).catch((e) => {
+      for (const [cid, n] of entries) this.enqueueDelivery(parentSid, cid, n);
+      llmLog.warn("agent:deliver-failed", { parentSid, error: errorMessage(e) });
+    });
   }
 
   // One delivery. Synthetic (default): a getAgentContent call+result fabricated into history so the model
@@ -362,10 +369,12 @@ export class SessionEngine {
         const system =
           [
             baseSystem,
+            // Plugin guidance goes BEFORE the built-in capability blocks so workspace/browser/memory keep
+            // recency advantage — a plugin prompt can't lean on recency bias to override their constraints.
+            ...enabledPluginPrompts(), // each enabled plugin's own tool guidance
             fsAccess ? pt("workspace.system") : undefined,
             browserAccess ? pt("browser.system") : undefined,
             isConnected() ? pt("memory.system") : undefined,
-            ...enabledPluginPrompts(), // each enabled plugin's own tool guidance
           ]
             .filter(Boolean)
             .join("\n\n") || undefined;

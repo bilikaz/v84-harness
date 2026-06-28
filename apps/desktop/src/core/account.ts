@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { errorMessage } from "../lib/errors.ts";
 import { createListeners, hydrateConsumers } from "./storage/consumer.ts";
 import { hydrate as hydrateSessions } from "./sessions/store.ts";
 import { hydrateContainers } from "./containers.ts";
@@ -124,7 +125,7 @@ async function authPost(
     }
     return { ok: true, tokens: { accessToken: data.accessToken, refreshToken: data.refreshToken } };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 

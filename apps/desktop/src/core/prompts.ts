@@ -42,7 +42,7 @@ const PROMPTS: Tree = {
   },
   chatTitle: {
     user:
-      "Generate a concise 3-6 word title for THIS conversation. Do not add conversation word in it" +
+      "Generate a concise 3-6 word title for THIS conversation. Do not add the word \"conversation\" in it. " +
       "Reply with ONLY the title — no quotes, no trailing punctuation.",
   },
   compact: {

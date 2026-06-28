@@ -106,6 +106,7 @@ class BrowserFleetStore extends Consumer<FleetState> {
   // Session-close cleanup: a deleted session's windows have no owner left to drive them.
   async closeForSession(sid: string): Promise<void> {
     for (const w of this.state.windows.filter((w) => w.ownerSessionId === sid)) await this.close(w.id);
+    this.aliasSeq.delete(sid); // the session is gone — drop its alias counter (no window will reference it again)
   }
 
   // Surface a window as the overlay (the overlay component then reports its bounds to show()).
