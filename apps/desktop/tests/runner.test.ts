@@ -110,6 +110,19 @@ describe("drop", () => {
   });
 });
 
+describe("dispose", () => {
+  it("settles queued waiters with null instead of stranding them", async () => {
+    const { engine } = harness({ main: [slot("A", 1)] });
+    await engine.acquire("main", "holder", 0); // A full
+    const pending = engine.acquire("main", "waiter", 0); // queued
+    expect(engine.isWaiting("waiter")).toBe(true);
+
+    engine.dispose();
+    expect(await pending).toBeNull(); // resolved, not hung forever
+    expect(engine.isWaiting("waiter")).toBe(false);
+  });
+});
+
 describe("priority fill", () => {
   it("fills the top model first, spills to the next when it's saturated", async () => {
     const { engine } = harness({ main: [slot("A", 1), slot("B", 5)] });
