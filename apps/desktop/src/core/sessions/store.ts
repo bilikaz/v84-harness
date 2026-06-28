@@ -302,6 +302,10 @@ export function deleteSession(id: string): void {
     if (rest.length) prunedRuns[tcId] = rest;
   }
   childRuns = prunedRuns;
+  if (id in lastSystem) {
+    const { [id]: _gone, ...rest } = lastSystem;
+    lastSystem = rest;
+  }
   if (data && gone) {
     const repos = data.repos();
     void repos.sessions.remove(id).catch((e: unknown) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
@@ -420,6 +424,19 @@ export function addChildRun(toolCallId: string, childSessionId: string): void {
 }
 export function getChildRuns(): Record<string, string[]> {
   return childRuns;
+}
+
+// The FULL system prompt the engine last sent for a session (base + the capability blocks it gated in
+// that turn). Transient — captured per turn so the SystemBanner shows what the model actually received,
+// not a UI reconstruction. Absent until a session has run a turn; the banner falls back to the base then.
+let lastSystem: Record<string, string> = {};
+export function setLastSystem(sid: string, system: string): void {
+  if (lastSystem[sid] === system) return; // unchanged across steps — skip the re-render
+  lastSystem = { ...lastSystem, [sid]: system };
+  notify();
+}
+export function getLastSystem(sid: string): string | undefined {
+  return lastSystem[sid];
 }
 
 // Feed tool-produced media back to the model as a hidden user turn (skipped in

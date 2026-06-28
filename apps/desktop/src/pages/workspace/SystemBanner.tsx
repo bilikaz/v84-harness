@@ -5,8 +5,9 @@ import { Bot, ChevronDown } from "lucide-react";
 import { Markdown } from "../../components/Markdown.tsx";
 import { cn } from "../../lib/cn.ts";
 
-// Collapsible "what is this session configured with" header for agent runs and agent-spawned chats.
-export function SystemBanner({ name, system, defaultOpen = false }: { name: string; system: string; defaultOpen?: boolean }) {
+// Collapsible "what is this session configured with" header. Shown atop every chat; `name` labels the
+// agent when there is one, else a plain "System" header for a regular chat.
+export function SystemBanner({ name, system, defaultOpen = false }: { name?: string; system: string; defaultOpen?: boolean }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -17,7 +18,7 @@ export function SystemBanner({ name, system, defaultOpen = false }: { name: stri
         className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium text-neutral-500"
       >
         <Bot size={13} />
-        {t("agents.systemBanner", { name })}
+        {name ? t("agents.systemBanner", { name }) : t("agents.system")}
         <ChevronDown size={13} className={cn("ml-auto transition-transform", open && "rotate-180")} />
       </button>
       {open &&

@@ -52,6 +52,7 @@
     "cancel": "Atšaukti",
     "confirmDelete": "Ištrinti šį agentą?",
     "systemBanner": "Sistema — {{name}}",
+    "system": "Sistema",
     "noSystem": "Nėra sisteminės žinutės.",
     "viewRun": "Žiūrėti vykdymą",
     "childRun": "Sub-agento vykdymas — tik peržiūra.",

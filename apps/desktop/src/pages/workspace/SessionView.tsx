@@ -4,6 +4,7 @@ import { ChevronDown, PanelRight, Pencil, RefreshCw, Trash2 } from "lucide-react
 
 import {
   contextLimit,
+  getLastSystem,
   isFull,
   renameSession,
   setActive,
@@ -15,6 +16,7 @@ import {
 } from "../../core/sessions/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import { getAgent } from "../../core/agents.ts";
+import { baseSystemFor } from "../../core/sessions/system.ts";
 import { useProvider } from "../../core/settings.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { fmtTokens } from "../../lib/format.ts";
@@ -178,7 +180,7 @@ export function SessionView() {
 
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-3xl space-y-6">
-          {agentName !== null && <SystemBanner name={agentName} system={session.system} />}
+          <SystemBanner name={agentName ?? undefined} system={getLastSystem(session.id) ?? baseSystemFor(session)} />
           {session.loaded === false && (
             <p className="flex items-center justify-center gap-1.5 py-8 text-xs text-neutral-400">
               <RefreshCw size={12} className="animate-spin" /> {t("session.loading")}

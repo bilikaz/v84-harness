@@ -52,6 +52,7 @@
     "cancel": "Cancel",
     "confirmDelete": "Delete this agent?",
     "systemBanner": "System — {{name}}",
+    "system": "System",
     "noSystem": "No system prompt.",
     "viewRun": "View run",
     "childRun": "Sub-agent run — read-only.",

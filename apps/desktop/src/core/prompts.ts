@@ -40,6 +40,21 @@ const PROMPTS: Tree = {
       "pass a regex as `sparse` and/or a natural-language description as `dense`. SearchMemory returns snippets + record ids; " +
       "read a full record with GetMemory, and use EditMemory / DeleteMemory to keep it current.",
   },
+  agents: {
+    // Always shown when the agent tools are advertised (top-level sessions; children don't orchestrate).
+    system:
+      "You can delegate work to sub-agents. A built-in General agent is always available, alongside any custom " +
+      "agents the user has defined — call ListAgents to see what's there (each agent's name, what it does, and the " +
+      "input it expects) before picking one. Start a run with RunAgent; pass several runs in one call to fan work " +
+      "out concurrently. Each sub-agent runs in its own fresh session and can't see this conversation, so make every " +
+      "task self-contained — include the content to work on, the constraints, and the output you want back.",
+    // Appended ONLY when async delivery is on; in sync mode RunAgent blocks and returns the answer, so there's
+    // nothing to "not wait" for.
+    async:
+      "Sub-agent runs are asynchronous: RunAgent returns as soon as they've started, so don't wait or stall for " +
+      "them — carry on with other work. When one finishes you'll get a [runtime] notice telling you to read its " +
+      "result with getAgentContent.",
+  },
   chatTitle: {
     user:
       "Generate a concise 3-6 word title for THIS conversation. Do not add the word \"conversation\" in it. " +
