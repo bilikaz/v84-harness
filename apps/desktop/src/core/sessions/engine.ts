@@ -10,9 +10,10 @@ import { getAgent, type Agent } from "../agents.ts";
 import { getActiveContainerId, getContainer, type Container } from "../containers.ts";
 import { isConnected } from "../account.ts";
 import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
-import { pt, fill, deliveryNudge } from "../prompts.ts";
+import { pt, deliveryNudge } from "../prompts.ts";
+import { baseSystemFor } from "./system.ts";
 import { engineToolSchemas, isEngineTool, runEngineTool } from "../tools/engine/dispatch.ts";
-import { GET_AGENT_CONTENT, aliasOf, collectAgentContent, lastAgentText } from "../tools/helpers/agents/catalog.ts";
+import { GET_AGENT_CONTENT, RUN_AGENT, aliasOf, collectAgentContent, lastAgentText } from "../tools/helpers/agents/catalog.ts";
 import type { EngineCtx } from "../tools/engine/base.ts";
 import { browserFleet } from "../browser.ts";
 import { enabledPluginPrompts } from "../plugins/config.ts";
@@ -27,6 +28,7 @@ import {
   getStreamingIds,
   isFull,
   removeToolCall,
+  setLastSystem,
   setUserPaused,
   toChatMessages,
 } from "./store.ts";
@@ -161,7 +163,14 @@ export class SessionEngine {
     if (getStreamingIds().has(parentSid)) return; // busy — retained; turn:end will pump again
     const entries = [...q];
     this.deliveries.delete(parentSid);
-    void this.deliver(parentSid, entries).catch(() => {});
+    // A throw here (e.g. the history read fails) would otherwise drop the child's result for good —
+    // the entries are already off the queue. Re-queue so the parent's next turn:end retries delivery.
+    // Real throws only happen BEFORE the synthetic turn is emitted (drive/sendTo are self-guarding and
+    // resolve rather than throw), so re-queuing can't double-deliver.
+    void this.deliver(parentSid, entries).catch((e) => {
+      for (const [cid, n] of entries) this.enqueueDelivery(parentSid, cid, n);
+      llmLog.warn("agent:deliver-failed", { parentSid, error: errorMessage(e) });
+    });
   }
 
   // One delivery. Synthetic (default): a getAgentContent call+result fabricated into history so the model
@@ -328,8 +337,10 @@ export class SessionEngine {
     });
     const toolSpecs: ToolSpec[] = [...Object.values(filtered).map((e) => e.schema as ToolSpec), ...engineToolSchemas(ec)];
     llmLog.debug("turn", { workspace: ws?.name ?? null, tools: toolSpecs.map((t) => t.function.name) });
-    // The virtual-root convention (ADR-0007) is invisible otherwise — tell the model only when file tools are actually advertised.
-    const fsAccess = Object.values(filtered).some((e) => e.permissioned);
+    // The virtual-root convention (ADR-0007) is invisible otherwise — tell the model only when FILE tools are
+    // actually advertised. Gate on needsWorkspace, not permissioned: a permissioned-but-workspaceless tool (an
+    // MCP tool) must not drag the /workspace prompt into a plain chat.
+    const fsAccess = Object.values(filtered).some((e) => e.needsWorkspace);
     // Browser guidance (reuse windows, short ids, ask the user for logins) — only when the fleet is live and
     // the browser tools are actually advertised (top-level sessions on the electron host).
     const browserAccess = !isChild && browserFleet().available();
@@ -347,28 +358,33 @@ export class SessionEngine {
         if (controller.signal.aborted) break;
         // History is re-filtered against the CURRENT model's inputs each step — the model can change mid-session, and yesterday's images must not 400 today's text-only endpoint.
         const history = toChatMessages(getSession(sid)?.messages ?? [], turnInput);
-        // The overridable BASE block, resolved live: the agent's baked system → the session's container
-        // (workspace) message → the user's global system prompt (Settings) → the built-in default. Read the
-        // session's OWN container (not the fs-masked `ws`) so a workspace message applies even when its file
-        // tools are masked. The capability blocks below (workspace fs / browser / memory) append on top
-        // regardless, to enforce proper tool usage.
-        const containerMessage = getContainer(getSession(sid)?.containerId)?.config.instructions as string | undefined;
-        // fill() so {{language}} (and any vars) expand in user/workspace messages too, not just built-ins.
-        const baseSystem = fill(
-          getSession(sid)?.system || containerMessage || getAppConfig().systemPrompt || pt("defaultChat.system"),
-        );
+        // The overridable BASE block, resolved live (agent system → container message → global prompt →
+        // default) via the shared resolver, so the SystemBanner shows exactly this. The capability blocks
+        // below (workspace fs / browser / memory) append on top regardless, to enforce proper tool usage.
+        const baseSystem = baseSystemFor(getSession(sid));
         // Append the workspace prompt when file tools are advertised, and the memory
         // prompt when the account is connected (same gate that advertises the memory tools).
+        // Sub-agent guidance when the orchestration tools are advertised (top-level sessions). The async
+        // addendum (don't wait, getAgentContent, AskAgent) only applies when async delivery is on — in sync
+        // mode RunAgent blocks and returns the answer, so there's nothing to not-wait for.
+        const agentsAdvertised = toolSpecs.some((t) => t.function.name === RUN_AGENT);
         const system =
           [
             baseSystem,
+            // Plugin guidance goes BEFORE the built-in capability blocks so workspace/browser/memory keep
+            // recency advantage — a plugin prompt can't lean on recency bias to override their constraints.
+            ...enabledPluginPrompts(), // each enabled plugin's own tool guidance
             fsAccess ? pt("workspace.system") : undefined,
             browserAccess ? pt("browser.system") : undefined,
             isConnected() ? pt("memory.system") : undefined,
-            ...enabledPluginPrompts(), // each enabled plugin's own tool guidance
+            agentsAdvertised ? pt("agents.system") : undefined,
+            agentsAdvertised && getAppConfig().session.asyncAgents ? pt("agents.async") : undefined,
           ]
             .filter(Boolean)
             .join("\n\n") || undefined;
+        // Record the FULL assembled prompt (base + capability blocks, exactly as gated this turn) so the
+        // SystemBanner shows what the model actually received — not a reconstruction the UI would have to guess.
+        setLastSystem(sid, system ?? "");
 
         // Heal stays driver-driven (the correction is a SESSION turn via the store), so the handler never throws HealError.
         const { text, thinking, calls } = await this.ctx.llm.call({

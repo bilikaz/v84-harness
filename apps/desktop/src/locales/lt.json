@@ -10,7 +10,9 @@
     "remote": "Nuotoliniai",
     "add": "Pridėti",
     "newChat": "Naujas pokalbis",
-    "waitingSlot": "Laukiama laisvos vietos…"
+    "waitingSlot": "Laukiama laisvos vietos…",
+    "streaming": "Generuojamas atsakymas…",
+    "unread": "Neperskaityta"
   },
   "container": {
     "title": "Darbo srities nustatymai",
@@ -52,6 +54,7 @@
     "cancel": "Atšaukti",
     "confirmDelete": "Ištrinti šį agentą?",
     "systemBanner": "Sistema — {{name}}",
+    "system": "Sistema",
     "noSystem": "Nėra sisteminės žinutės.",
     "viewRun": "Žiūrėti vykdymą",
     "childRun": "Sub-agento vykdymas — tik peržiūra.",

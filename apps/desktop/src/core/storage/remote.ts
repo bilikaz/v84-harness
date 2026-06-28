@@ -13,6 +13,13 @@ export type AuthedFetch = (path: string, init?: RequestInit) => Promise<Response
 
 const enc = encodeURIComponent;
 
+// Surface the server's error body (truncated) next to the status — a bare "500" can't say WHY,
+// and a 403 vs a 500 otherwise read identically. Best-effort: an unreadable body just omits it.
+async function httpError(res: Response, what: string): Promise<Error> {
+  const body = await res.text().catch(() => "");
+  return new Error(`${what}: ${res.status}${body ? ` — ${body.slice(0, 500)}` : ""}`);
+}
+
 export function remoteRepos(fetch: AuthedFetch): StorageRepos {
   const send = (p: string, method: string, body?: unknown): Promise<Response> =>
     fetch(p, {
@@ -25,23 +32,23 @@ export function remoteRepos(fetch: AuthedFetch): StorageRepos {
     return {
       async list() {
         const res = await fetch(base);
-        if (!res.ok) throw new Error(`remote list ${base}: ${res.status}`);
+        if (!res.ok) throw await httpError(res, `remote list ${base}`);
         const data = (await res.json()) as Record<string, unknown[]>;
         return (data[listKey] ?? []).map(map);
       },
       async get(id) {
         const res = await fetch(`${base}/${enc(id)}`);
         if (res.status === 404) return null;
-        if (!res.ok) throw new Error(`remote get ${base}: ${res.status}`);
+        if (!res.ok) throw await httpError(res, `remote get ${base}`);
         return map(await res.json());
       },
       async put(entity) {
         const res = await send(`${base}/${enc(entity.id)}`, "PUT", entity);
-        if (!res.ok) throw new Error(`remote put ${base}: ${res.status}`);
+        if (!res.ok) throw await httpError(res, `remote put ${base}`);
       },
       async remove(id) {
         const res = await send(`${base}/${enc(id)}`, "DELETE");
-        if (!res.ok && res.status !== 404) throw new Error(`remote del ${base}: ${res.status}`);
+        if (!res.ok && res.status !== 404) throw await httpError(res, `remote del ${base}`);
       },
     };
   }
@@ -49,66 +56,66 @@ export function remoteRepos(fetch: AuthedFetch): StorageRepos {
   const messages: MessageRepo = {
     async listBySession(sid) {
       const res = await fetch(`/messages?session=${enc(sid)}`);
-      if (!res.ok) throw new Error(`remote list messages: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote list messages");
       return ((await res.json()) as { messages?: Message[] }).messages ?? [];
     },
     async replaceForSession(sid, msgs) {
       const res = await send("/messages", "PUT", { sessionId: sid, messages: msgs });
-      if (!res.ok) throw new Error(`remote put messages: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote put messages");
     },
   };
 
   const media: MediaRepo = {
     async listBySession(sid) {
       const res = await fetch(`/media?session=${enc(sid)}`);
-      if (!res.ok) throw new Error(`remote list media: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote list media");
       return ((await res.json()) as { media?: MediaRow[] }).media ?? [];
     },
     async put(m) {
       const res = await send(`/media/${enc(m.id)}`, "PUT", m);
-      if (!res.ok) throw new Error(`remote put media: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote put media");
     },
     async remove(id) {
       const res = await send(`/media/${enc(id)}`, "DELETE");
-      if (!res.ok && res.status !== 404) throw new Error(`remote del media: ${res.status}`);
+      if (!res.ok && res.status !== 404) throw await httpError(res, "remote del media");
     },
   };
 
   const settings: SettingRepo = {
     async list() {
       const res = await fetch("/settings");
-      if (!res.ok) throw new Error(`remote list settings: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote list settings");
       return ((await res.json()) as { settings?: SettingRow[] }).settings ?? [];
     },
     async get(key) {
       const res = await fetch(`/settings/${enc(key)}`);
       if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`remote get settings: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote get settings");
       return (await res.json()) as SettingRow;
     },
     async put(s) {
       const res = await send(`/settings/${enc(s.key)}`, "PUT", { scope: s.scope, value: s.value });
-      if (!res.ok) throw new Error(`remote put settings: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote put settings");
     },
     async remove(key) {
       const res = await send(`/settings/${enc(key)}`, "DELETE");
-      if (!res.ok && res.status !== 404) throw new Error(`remote del settings: ${res.status}`);
+      if (!res.ok && res.status !== 404) throw await httpError(res, "remote del settings");
     },
   };
 
   const pluginData: PluginDataRepo = {
     async list(pluginId, collection) {
       const res = await fetch(`/plugin-data?plugin=${enc(pluginId)}&collection=${enc(collection)}`);
-      if (!res.ok) throw new Error(`remote list plugin-data: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote list plugin-data");
       return ((await res.json()) as { rows?: PluginDataRow[] }).rows ?? [];
     },
     async put(row) {
       const res = await send("/plugin-data", "PUT", row);
-      if (!res.ok) throw new Error(`remote put plugin-data: ${res.status}`);
+      if (!res.ok) throw await httpError(res, "remote put plugin-data");
     },
     async remove(pluginId, collection, key) {
       const res = await send(`/plugin-data?plugin=${enc(pluginId)}&collection=${enc(collection)}&key=${enc(key)}`, "DELETE");
-      if (!res.ok && res.status !== 404) throw new Error(`remote del plugin-data: ${res.status}`);
+      if (!res.ok && res.status !== 404) throw await httpError(res, "remote del plugin-data");
     },
   };
 

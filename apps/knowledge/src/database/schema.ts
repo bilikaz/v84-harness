@@ -12,6 +12,13 @@ import type { ColumnType, Generated } from "kysely";
 type Json = string; // stored JSON text
 type Timestamps = { created_at: Generated<Date>; updated_at: ColumnType<Date, Date | undefined, Date>; deleted_at: ColumnType<Date | null, Date | null | undefined, Date | null> };
 
+// Applied-migration ledger. Created + written by the migration runner (not a migrations/ file), but
+// typed here so the runner's queries are checked like any other table instead of cast through `never`.
+export interface SchemaMigrationsTable {
+  filename: string;
+  applied_at: Generated<Date>;
+}
+
 // Login identities.
 export interface UsersTable {
   id: Generated<number>;
@@ -25,6 +32,9 @@ export interface AuthSessionsTable {
   id: string;
   user_id: number;
   refresh_token_hash: string;
+  // The hash rotated out on the last refresh — replaying it signals token theft. Optional on insert
+  // (a fresh session has no prior), written on every rotate, read by the reuse check.
+  prev_refresh_token_hash: ColumnType<string | null, string | null | undefined, string | null>;
   device_name: string | null;
   ip_address: string | null;
   expires_at: ColumnType<Date, Date, Date>;
@@ -121,6 +131,7 @@ export interface PluginDataTable {
 }
 
 export interface DB {
+  schema_migrations: SchemaMigrationsTable;
   users: UsersTable;
   auth_sessions: AuthSessionsTable;
   containers: ContainersTable;

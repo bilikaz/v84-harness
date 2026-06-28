@@ -8,7 +8,7 @@ import i18n, { LANGUAGES } from "../lib/i18n.ts";
 type Vars = Record<string, string>;
 type Tree = { [k: string]: string | Tree };
 
-const PROMPTS: Tree = {
+const PROMPTS = {
   defaultChat: {
     system:
       "You are a helpful assistant serving a {{language}}-speaking user. " +
@@ -40,9 +40,24 @@ const PROMPTS: Tree = {
       "pass a regex as `sparse` and/or a natural-language description as `dense`. SearchMemory returns snippets + record ids; " +
       "read a full record with GetMemory, and use EditMemory / DeleteMemory to keep it current.",
   },
+  agents: {
+    // Always shown when the agent tools are advertised (top-level sessions; children don't orchestrate).
+    system:
+      "You can delegate work to sub-agents. A built-in General agent is always available, alongside any custom " +
+      "agents the user has defined — call ListAgents to see what's there (each agent's name, what it does, and the " +
+      "input it expects) before picking one. Start a run with RunAgent; pass several runs in one call to fan work " +
+      "out concurrently. Each sub-agent runs in its own fresh session and can't see this conversation, so make every " +
+      "task self-contained — include the content to work on, the constraints, and the output you want back.",
+    // Appended ONLY when async delivery is on; in sync mode RunAgent blocks and returns the answer, so there's
+    // nothing to "not wait" for.
+    async:
+      "Sub-agent runs are asynchronous: RunAgent returns as soon as they've started, so don't wait or stall for " +
+      "them — carry on with other work. When one finishes you'll get a [runtime] notice telling you to read its " +
+      "result with getAgentContent.",
+  },
   chatTitle: {
     user:
-      "Generate a concise 3-6 word title for THIS conversation. Do not add conversation word in it" +
+      "Generate a concise 3-6 word title for THIS conversation. Do not add the word \"conversation\" in it. " +
       "Reply with ONLY the title — no quotes, no trailing punctuation.",
   },
   compact: {
@@ -53,7 +68,10 @@ const PROMPTS: Tree = {
       "file/code state and paths touched, tool results that still matter, and any open tasks or next steps. Use " +
       "clear sections. Omit nothing the assistant would need to continue seamlessly. Output only the summary.",
   },
-};
+} satisfies Record<string, Record<string, string>>;
+
+// The valid `category.key` strings, derived from PROMPTS — so pt("workspce.system") is a compile error.
+type PromptKey = { [C in keyof typeof PROMPTS]: `${C & string}.${keyof (typeof PROMPTS)[C] & string}` }[keyof typeof PROMPTS];
 
 function resolve(key: string): string | undefined {
   let node: string | Tree | undefined = PROMPTS;
@@ -75,8 +93,9 @@ export function fill(text: string, vars?: Vars): string {
   return text.replace(/\{\{(\w+)\}\}/g, (_, k) => all[k] ?? "");
 }
 
-// Named `pt` (not `prompt`) to avoid colliding with the global window.prompt.
-export function pt(key: string, vars?: Vars): string {
+// Named `pt` (not `prompt`) to avoid colliding with the global window.prompt. `key` is constrained to
+// the real prompt keys, so a typo fails to compile instead of silently rendering the key string.
+export function pt(key: PromptKey, vars?: Vars): string {
   return fill(resolve(key) ?? key, vars);
 }
 
@@ -91,6 +110,8 @@ export function defaultSystemPrompt(): string {
 export function deliveryNudge(aliases: number[]): string {
   const one = aliases.length === 1;
   const list = aliases.map((n) => `#${n}`).join(", ");
-  const call = one ? `getAgentContent(${aliases[0]})` : `getAgentContent([${aliases.join(", ")}])`;
+  // Always the array form — getAgentContent's schema takes `ids: [...]`, so a bare `getAgentContent(1)`
+  // shorthand would invite the model to call it with a non-array.
+  const call = `getAgentContent([${aliases.join(", ")}])`;
   return `[runtime] Sub-agent${one ? "" : "s"} ${list} ${one ? "has" : "have"} finished. Call ${call} to read ${one ? "its result" : "their results"}.`;
 }

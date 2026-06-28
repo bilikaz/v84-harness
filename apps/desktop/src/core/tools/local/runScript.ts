@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 import { type ToolResult, type ToolSpec, type ToolPermission } from "../types.ts";
 import { BaseWorkspaceTool } from "./base.ts";
+import { errorMessage } from "../../../lib/errors.ts";
 
 // RunScript — execute a JavaScript file from the workspace in a REAL, SEPARATE Node process (never eval'd
 // into the harness: a runaway/crashing script kills the child, not the app, and can't reach in-process state).
@@ -46,7 +47,7 @@ export class RunScript extends BaseWorkspaceTool {
     try {
       scriptPath = this.resolvePath(p, cwd);
     } catch (e) {
-      return { ok: false, output: e instanceof Error ? e.message : String(e) };
+      return { ok: false, output: errorMessage(e) };
     }
     const extra = Array.isArray(args.args) ? args.args.map(String) : [];
     const timeoutMs = typeof args.timeout_seconds === "number" ? args.timeout_seconds * 1000 : 60_000;

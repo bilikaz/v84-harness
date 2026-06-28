@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { errorMessage } from "../lib/errors.ts";
 import { createListeners, hydrateConsumers } from "./storage/consumer.ts";
 import { hydrate as hydrateSessions } from "./sessions/store.ts";
 import { hydrateContainers } from "./containers.ts";
@@ -124,7 +125,7 @@ async function authPost(
     }
     return { ok: true, tokens: { accessToken: data.accessToken, refreshToken: data.refreshToken } };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, error: errorMessage(e) };
   }
 }
 
@@ -182,6 +183,10 @@ async function doRefresh(): Promise<boolean> {
   const { endpoint, refreshToken } = state;
   if (!endpoint || !refreshToken) return false;
   const r = await authPost(endpoint, "/auth/refresh", { refreshToken });
+  // A logout can land while this refresh is in flight (it clears tokens + goes offline). Re-check the
+  // LIVE state before touching it, either way — otherwise a successful refresh resurrects tokens onto
+  // an offline account ("offline but has tokens"), and the failure path fires a redundant teardown.
+  if (state.connection !== "connected") return false;
   if (!r.ok) {
     set({ connection: "offline", accessToken: undefined, refreshToken: undefined });
     return false;

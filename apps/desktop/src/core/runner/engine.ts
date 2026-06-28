@@ -77,11 +77,36 @@ export class RunnerEngine {
   private readonly queue: Waiter[] = [];
   private readonly now: () => number;
   private readonly newId: () => string;
+  private readonly reaper?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: RunnerDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.newId = deps.newId ?? (() => crypto.randomUUID());
-    if (deps.reaperMs) setInterval(() => this.pump(), deps.reaperMs);
+    if (deps.reaperMs) this.reaper = setInterval(() => this.tick(), deps.reaperMs);
+  }
+
+  // The reaper tick: drop dead bindings, then re-pump so deadline-expired waiters roam.
+  private tick(): void {
+    this.sweepBindings();
+    this.pump();
+  }
+
+  // Expired affinity bindings are already ignored by acquire(), but they linger forever for a session that
+  // ran once and was never deleted (drop() removes them on delete; nothing else does). Prune them so the
+  // map stays bounded over a long-running app. (Map deletion mid-iteration is well-defined.)
+  private sweepBindings(): void {
+    const now = this.now();
+    for (const [id, b] of this.bindings) if (b.expiresAt <= now) this.bindings.delete(id);
+  }
+
+  // Stop the TTL reaper AND settle anything still queued — a dispose (tests / HMR teardown) must not strand
+  // callers on an acquire() Promise that never resolves.
+  dispose(): void {
+    if (this.reaper) clearInterval(this.reaper);
+    for (const w of this.queue.splice(0)) {
+      if (w.signal && w.onAbort) w.signal.removeEventListener("abort", w.onAbort);
+      w.resolve(null);
+    }
   }
 
   private emit(e: RunnerEvent): void {
@@ -147,13 +172,15 @@ export class RunnerEngine {
 
   // Acquirer gone: drop its live lease, binding, and any queued waiter.
   drop(id: string): void {
-    this.release(id);
     this.bindings.delete(id);
-    const w = this.queue.find((x) => x.id === id);
-    if (w) {
+    // Resolve any queued waiter(s) for this id BEFORE releasing: release() pumps the queue, and a
+    // still-queued same-id waiter (e.g. a double-acquire) could otherwise be granted a fresh lease
+    // that then escapes this cleanup, leaking a slot.
+    for (const w of this.queue.filter((x) => x.id === id)) {
       this.removeWaiter(w);
       w.resolve(null);
     }
+    this.release(id);
   }
 
   // Try to satisfy waiters against current free capacity. A warm waiter holds out for its bound

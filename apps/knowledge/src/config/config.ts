@@ -9,15 +9,20 @@ function num(v: string | undefined, fallback: number): number {
 
 const isDev = process.env.NODE_ENV !== "production";
 
+const DEV_JWT_SECRET = "dev-insecure-change-me";
+
 export const config = {
   api: { port: num(process.env.API_PORT, 3000) },
   database: { url: process.env.DATABASE_URL ?? "" },
   log: { level: process.env.LOG_LEVEL ?? (isDev ? "debug" : "info") },
   runtime: { isDev },
   auth: {
-    jwtSecret: process.env.JWT_SECRET ?? "dev-insecure-change-me",
+    jwtSecret: process.env.JWT_SECRET ?? DEV_JWT_SECRET,
     accessTtl: num(process.env.ACCESS_TTL, 900), // access token lifetime, seconds (15 min)
     refreshTtl: num(process.env.REFRESH_TTL, 60 * 60 * 24 * 30), // refresh/session lifetime, seconds (30 days)
+    // Grace window (ms) after a rotation in which the just-rotated-out token is accepted as a lost-response
+    // retry rather than treated as theft — keeps a flaky client from being logged out on a dropped response.
+    refreshReuseGraceMs: num(process.env.REFRESH_REUSE_GRACE_MS, 30_000),
   },
   // Knowledgebase: OpenSearch (vector index) + an OpenAI-compatible embedding
   // server. Model/dim/prefixes are docker config; dim is baked into the index.
@@ -34,3 +39,8 @@ export const config = {
     chunkChars: num(process.env.EMBED_CHUNK_CHARS, 2000),
   },
 };
+
+// Production must supply a real signing secret — the dev default is public, so any token would be forgeable.
+if (!isDev && config.auth.jwtSecret === DEV_JWT_SECRET) {
+  throw new Error("JWT_SECRET must be set in production (refusing the insecure dev default)");
+}

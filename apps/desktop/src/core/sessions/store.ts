@@ -20,7 +20,7 @@ const log = rootLog.child("session.store");
 // The durable tier — the StorageEngine (per-entity repos over the active provider), injected by init()
 // after ctx.storage is built. Null before injection; persistence is a no-op until set, hydrate runs once it is.
 let data: StorageEngine | null = null;
-export function useStorage(e: StorageEngine): void {
+export function setSessionStorage(e: StorageEngine): void {
   data = e;
 }
 
@@ -289,6 +289,23 @@ export function deleteSession(id: string): void {
   const gone = getSession(id);
   sessions = sessions.filter((s) => s.id !== id);
   if (activeId === id) activeId = sessions[0]?.id ?? "";
+  // Drop the deleted id from the per-session scratch maps so they don't accumulate dead entries over
+  // the app's life. childRuns is keyed by tool-call id, so prune the id from every list and discard
+  // any that empty out (a parent's lists empty as its children are deleted in the cascade).
+  if (userPausedIds.has(id)) {
+    userPausedIds = new Set(userPausedIds);
+    userPausedIds.delete(id);
+  }
+  const prunedRuns: Record<string, string[]> = {};
+  for (const [tcId, kids] of Object.entries(childRuns)) {
+    const rest = kids.filter((k) => k !== id);
+    if (rest.length) prunedRuns[tcId] = rest;
+  }
+  childRuns = prunedRuns;
+  if (id in lastSystem) {
+    const { [id]: _gone, ...rest } = lastSystem;
+    lastSystem = rest;
+  }
   if (data && gone) {
     const repos = data.repos();
     void repos.sessions.remove(id).catch((e: unknown) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
@@ -407,6 +424,19 @@ export function addChildRun(toolCallId: string, childSessionId: string): void {
 }
 export function getChildRuns(): Record<string, string[]> {
   return childRuns;
+}
+
+// The FULL system prompt the engine last sent for a session (base + the capability blocks it gated in
+// that turn). Transient — captured per turn so the SystemBanner shows what the model actually received,
+// not a UI reconstruction. Absent until a session has run a turn; the banner falls back to the base then.
+let lastSystem: Record<string, string> = {};
+export function setLastSystem(sid: string, system: string): void {
+  if (lastSystem[sid] === system) return; // unchanged across steps — skip the re-render
+  lastSystem = { ...lastSystem, [sid]: system };
+  notify();
+}
+export function getLastSystem(sid: string): string | undefined {
+  return lastSystem[sid];
 }
 
 // Feed tool-produced media back to the model as a hidden user turn (skipped in

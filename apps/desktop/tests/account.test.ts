@@ -5,7 +5,7 @@
 // the failure path clears the credentials and drops the whole session.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { authedFetch, saveAccount } from "../src/core/account.ts";
+import { authedFetch, getAccount, saveAccount } from "../src/core/account.ts";
 
 const origFetch = globalThis.fetch;
 let refreshCalls: number;
@@ -47,5 +47,28 @@ describe("authedFetch refresh", () => {
     expect(refreshCalls).toBe(1); // not 2 — the rotating token is refreshed once
     expect(a.status).toBe(200);
     expect(b.status).toBe(200);
+  });
+
+  it("a logout mid-refresh does not resurrect tokens onto the offline account", async () => {
+    // Hold /auth/refresh open so we can log out while the refresh is in flight.
+    let releaseRefresh!: () => void;
+    const gate = new Promise<void>((r) => (releaseRefresh = r));
+    globalThis.fetch = (async (url: string | URL): Promise<Response> => {
+      if (String(url).endsWith("/auth/refresh")) {
+        await gate;
+        return new Response(JSON.stringify({ accessToken: "new", refreshToken: "r2" }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ error: "expired" }), { status: 401, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    const inflight = authedFetch("/kb/x"); // 401 → refresh starts, parks on the gate
+    await new Promise((r) => setTimeout(r, 0)); // let the refresh capture r1 and reach the gate
+    saveAccount({ connection: "offline", accessToken: undefined, refreshToken: undefined }); // logout
+    releaseRefresh(); // refresh now completes successfully
+    await inflight;
+
+    expect(getAccount().connection).toBe("offline");
+    expect(getAccount().accessToken).toBeUndefined(); // not resurrected to "new"
+    expect(getAccount().refreshToken).toBeUndefined();
   });
 });

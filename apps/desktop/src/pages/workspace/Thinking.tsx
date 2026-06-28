@@ -12,15 +12,16 @@ export const Thinking = memo(function Thinking({ text, streaming }: { text: stri
     if (streaming) setOpen(true);
   }, [streaming]);
   return (
-    <div
-      onClick={() => setOpen((o) => !o)}
-      className="cursor-pointer select-none rounded-lg border border-violet-100 bg-violet-50/60"
-    >
-      <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-violet-500">
+    <div className="select-none rounded-lg border border-violet-100 bg-violet-50/60">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium text-violet-500"
+      >
         <Sparkles size={13} className={streaming ? "animate-pulse" : ""} />
         {streaming ? t("session.thinking") : t("session.thoughts")}
         <ChevronDown size={13} className={cn("ml-auto transition-transform", open && "rotate-180")} />
-      </div>
+      </button>
       {open && (
         <div className="whitespace-pre-wrap px-3 pb-3 text-xs italic leading-relaxed text-violet-500/90">
           {text}

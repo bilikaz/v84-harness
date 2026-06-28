@@ -11,6 +11,7 @@ export {
   renameSession,
   unlinkAgent,
   getSessionsForContainer,
+  getLastSystem,
 } from "./store.ts";
 export { SessionEngine } from "./engine.ts";
 export type { TurnResult, SendOptions, OutputValidator } from "./engine.ts";

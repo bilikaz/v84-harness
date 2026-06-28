@@ -10,7 +10,9 @@
     "remote": "Remote",
     "add": "Add",
     "newChat": "New chat",
-    "waitingSlot": "Waiting for a free slot…"
+    "waitingSlot": "Waiting for a free slot…",
+    "streaming": "Generating a response…",
+    "unread": "Unread"
   },
   "container": {
     "title": "Workspace settings",
@@ -52,6 +54,7 @@
     "cancel": "Cancel",
     "confirmDelete": "Delete this agent?",
     "systemBanner": "System — {{name}}",
+    "system": "System",
     "noSystem": "No system prompt.",
     "viewRun": "View run",
     "childRun": "Sub-agent run — read-only.",

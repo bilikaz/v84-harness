@@ -45,6 +45,7 @@ export class RunAgent extends BaseEngineTool {
       containerId: getSession(ec.sessionId)?.containerId ?? "",
       activate: false,
     });
-    return { childSid, alias: aliasOf(getSession(childSid) ?? ({} as never)), name: resolved.name, dispatch: result };
+    const child = getSession(childSid);
+    return { childSid, alias: child ? aliasOf(child) : 0, name: resolved.name, dispatch: result };
   }
 }
