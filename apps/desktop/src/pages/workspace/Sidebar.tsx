@@ -73,7 +73,8 @@ export function Sidebar() {
 
   // Inline rename handles both containers and sessions — branch on which kind the id is.
   function commitRename(id: string) {
-    if (getContainer(id)) void updateContainer(id, { name: draft.trim() || getContainer(id)!.name });
+    const container = getContainer(id);
+    if (container) void updateContainer(id, { name: draft.trim() || container.name });
     else renameSession(id, draft);
     setRenamingId(null);
   }
@@ -356,9 +357,14 @@ function Row(props: {
 
 function StatusDot({ waiting, streaming, unread }: { waiting: boolean; streaming: boolean; unread: boolean }) {
   const { t } = useTranslation();
+  // The dot is the only cue for these states — label it so it's not a silent <span> to a screen reader.
+  const label = waiting ? t("sidebar.waitingSlot") : streaming ? t("sidebar.streaming") : unread ? t("sidebar.unread") : undefined;
   return (
     <span
-      title={waiting ? t("sidebar.waitingSlot") : undefined}
+      title={label}
+      aria-label={label}
+      role={label ? "img" : undefined}
+      aria-hidden={label ? undefined : true}
       className={cn(
         "h-2 w-2 shrink-0 rounded-full",
         waiting ? "animate-pulse bg-sky-400" : streaming ? "animate-pulse bg-amber-400" : unread ? "bg-emerald-500" : "bg-transparent",

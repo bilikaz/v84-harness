@@ -29,7 +29,7 @@ export default function App() {
       </main>
 
       {rightPanel && (
-        <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-neutral-200 bg-neutral-50 p-4">
+        <aside aria-label="Tools panel" className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-neutral-200 bg-neutral-50 p-4">
           <Slot region="right-panel" />
         </aside>
       )}

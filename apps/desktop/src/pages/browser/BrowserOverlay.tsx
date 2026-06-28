@@ -46,7 +46,7 @@ export function BrowserOverlay() {
   async function forward(text: string): Promise<void> {
     const fwd = await buildForward(id, text);
     if (fwd && win) void ctx.sessions.sendTo(win.ownerSessionId, fwd.text, { context: fwd.context });
-    await browserFleet().unview();
+    await browserFleet().unview().catch(() => {}); // hide() can reject if the window's already gone — best-effort
   }
 
   return (

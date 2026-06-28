@@ -10,7 +10,9 @@
     "remote": "Nuotoliniai",
     "add": "Pridėti",
     "newChat": "Naujas pokalbis",
-    "waitingSlot": "Laukiama laisvos vietos…"
+    "waitingSlot": "Laukiama laisvos vietos…",
+    "streaming": "Generuojamas atsakymas…",
+    "unread": "Neperskaityta"
   },
   "container": {
     "title": "Darbo srities nustatymai",

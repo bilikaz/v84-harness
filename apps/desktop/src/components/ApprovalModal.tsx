@@ -28,7 +28,7 @@ export function ApprovalModal() {
         <p className="mt-1 text-sm text-neutral-500">
           This tool isn’t confined to the workspace folder. Review it before allowing.
         </p>
-        <pre className="mt-3 max-h-64 overflow-auto rounded-lg bg-neutral-900 px-3 py-2.5 font-mono text-xs leading-relaxed text-neutral-100">
+        <pre aria-label="Tool call arguments" className="mt-3 max-h-64 overflow-auto rounded-lg bg-neutral-900 px-3 py-2.5 font-mono text-xs leading-relaxed text-neutral-100">
           {detail}
         </pre>
         <div className="mt-4 flex justify-end gap-2">
