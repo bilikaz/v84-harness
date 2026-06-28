@@ -61,7 +61,7 @@ const reg = createListeners();
 // when connected, local offline), and re-hydrate on each swap. Seed-on-empty fills a fresh realm.
 const repo = () => data?.repos().agents ?? null;
 
-export function useAgentData(e: StorageEngine): void {
+export function setAgentStorage(e: StorageEngine): void {
   data = e;
 }
 
@@ -122,5 +122,5 @@ export const useAgents = (): Agent[] => useSyncExternalStore(reg.subscribe, () =
 
 // Wired at init: inject ctx.storage. Hydration is awaited by init() (after ctx.storage is installed).
 export function initAgents(ctx: Ctx): void {
-  useAgentData(ctx.storage);
+  setAgentStorage(ctx.storage);
 }

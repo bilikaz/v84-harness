@@ -39,7 +39,7 @@ let activeId: string | null = null;
 let hydrated = false;
 const reg = createListeners();
 
-export function useContainerData(e: StorageEngine): void {
+export function setContainerStorage(e: StorageEngine): void {
   data = e;
 }
 
@@ -131,5 +131,5 @@ export const useActiveContainerId = (): string | null =>
 // Wired at init: inject the host storage. Hydration is orchestrated by init() (containers
 // before sessions), so it's not fired here.
 export function initContainers(ctx: Ctx): void {
-  useContainerData(ctx.storage);
+  setContainerStorage(ctx.storage);
 }

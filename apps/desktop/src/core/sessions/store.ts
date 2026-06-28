@@ -20,7 +20,7 @@ const log = rootLog.child("session.store");
 // The durable tier — the StorageEngine (per-entity repos over the active provider), injected by init()
 // after ctx.storage is built. Null before injection; persistence is a no-op until set, hydrate runs once it is.
 let data: StorageEngine | null = null;
-export function useStorage(e: StorageEngine): void {
+export function setSessionStorage(e: StorageEngine): void {
   data = e;
 }
 

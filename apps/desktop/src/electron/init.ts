@@ -24,7 +24,7 @@ import { initAgents, hydrateAgents } from "../core/agents.ts";
 import { initUi } from "../core/ui.ts";
 import { initBrowser, browserFleet } from "../core/browser.ts";
 import { initContainers, hydrateContainers } from "../core/containers.ts";
-import { hydrate as hydrateSessions, useStorage as useSessionData } from "../core/sessions/store.ts";
+import { hydrate as hydrateSessions, setSessionStorage } from "../core/sessions/store.ts";
 import { StorageEngine } from "../core/storage/engine.ts";
 import { idbRepos } from "../core/storage/idb.ts";
 import { remoteRepos } from "../core/storage/remote.ts";
@@ -37,7 +37,7 @@ export async function init(): Promise<Ctx> {
   // remote = the API client when connected.
   const local = (await api!.storage.available()) ? sqliteRepos() : await idbRepos();
   ctx.storage = new StorageEngine(local, isConnected() ? remoteRepos(authedFetch) : null);
-  useSessionData(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
+  setSessionStorage(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
 
   // Register plugin manifests before config derives config.plugins from them.
   registerPluginManifests();
