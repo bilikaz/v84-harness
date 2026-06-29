@@ -4,7 +4,14 @@
     "runs": "Active runs",
     "empty": "Enable a flow plugin to run one.",
     "stop": "Stop",
-    "continue": "Continue"
+    "continue": "Continue",
+    "help": {
+      "unknown": "Unknown command.",
+      "badJson": "Couldn't parse the JSON input.",
+      "nothingToContinue": "Nothing to continue — send `start` to begin.",
+      "commands": "Commands: `start`, `continue`, or a node name with optional JSON input.",
+      "nodes": "Nodes: {{nodes}}"
+    }
   },
   "select": {
     "confirm": "Confirm",

@@ -50,12 +50,12 @@ export interface AgentSpec {
   seedFiles?: string[];
 }
 
-// Where a node's end() routes the result.
+// Where a node's end() routes the result. Termination is routing to the reserved `exit` node (BaseGraph
+// owns it) — there is no terminal route value; the exit node renders the final output to chat.
 export type Route =
   | { goTo: string; input?: unknown } // solo — continue as node `goTo` (1:1), keeps this head's name + group
   | { splitTo: string; inputs: FanMember[] } // fan out a NEW sibling group into node `splitTo`, one head per input
-  | { goToAll: string; input?: unknown } // join — go to `goToAll` once EVERY member of this head's group has arrived
-  | { done: string }; // terminal — this text is the graph's final message
+  | { goToAll: string; input?: unknown }; // join — go to `goToAll` once EVERY member of this head's group has arrived
 
 export interface FanMember {
   name: string; // the head's member name (its chart label + routing identity)
@@ -71,6 +71,10 @@ export interface NodeCtx {
   // Enumerate workspace file paths (under /workspace/), skipping `ignore`d dir names and keeping only the
   // given `extensions`. Walks via the directory list tool, so ignored trees (node_modules) are never entered.
   scan(opts?: { ignore?: string[]; extensions?: string[] }): Promise<string[]>;
+  // Reject the response and PARK the run at this node (resume state). The engine posts `message` to chat and
+  // waits; a `continue` re-runs this node's start (e.g. re-surfaces a Select). Use for required input the
+  // user left empty — never a silent default. Throws, so it does not return.
+  break(message: string): never;
 }
 
 // A named node — the start/end pair. `start(input)` kicks off the work; `end(input, response)` gets BOTH the

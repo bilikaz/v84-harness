@@ -4,7 +4,14 @@
     "runs": "Aktyvūs vykdymai",
     "empty": "Įjunkite srauto papildinį, kad galėtumėte jį paleisti.",
     "stop": "Stabdyti",
-    "continue": "Tęsti"
+    "continue": "Tęsti",
+    "help": {
+      "unknown": "Nežinoma komanda.",
+      "badJson": "Nepavyko apdoroti JSON įvesties.",
+      "nothingToContinue": "Nėra ką tęsti — siųskite `start`, kad pradėtumėte.",
+      "commands": "Komandos: `start`, `continue` arba mazgo pavadinimas su neprivaloma JSON įvestimi.",
+      "nodes": "Mazgai: {{nodes}}"
+    }
   },
   "select": {
     "confirm": "Patvirtinti",

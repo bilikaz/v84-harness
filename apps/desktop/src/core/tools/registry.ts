@@ -61,11 +61,14 @@ export class ToolRegistry {
       const needsWorkspace = tool.needsWorkspace();
       const defaultMode = tool.defaultPermission();
 
-      // workspace + agent policy: only applies to permissioned tools (stricter of grant and ceiling wins)
+      // workspace + agent policy: only applies to permissioned tools (stricter of grant and ceiling wins).
+      // The agent ceiling falls back to a `*` wildcard before the default — an agent sets `{ "*": 0, Read: 2 }`
+      // to GROUND itself to a fixed toolset (everything unlisted disabled), instead of inheriting the
+      // workspace's full set. No wildcard → unlisted tools default to 2 (inherit), the prior behaviour.
       let effectiveMode: ToolPermission = 2;
       if (permissioned) {
         const wsMode = params?.workspacePermissions?.[name] ?? defaultMode;
-        const agentCeiling = params?.agentPermissions?.[name] ?? 2;
+        const agentCeiling = params?.agentPermissions?.[name] ?? params?.agentPermissions?.["*"] ?? 2;
         effectiveMode = Math.min(wsMode, agentCeiling) as ToolPermission;
       }
       // A tool that needs a workspace is off when none is in context.

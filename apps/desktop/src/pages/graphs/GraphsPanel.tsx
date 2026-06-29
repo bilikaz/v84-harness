@@ -61,6 +61,9 @@ export function GraphsPanel() {
           <div className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">{t("graphs.runs")}</div>
           {runs.map((s) => {
             const live = streaming.has(s.id);
+            // A paused/parked run (alive but not streaming) can be continued; a finished run cannot — it shows
+            // no control. Continue sends a `continue` MESSAGE (same path as typing it), never a magic resume.
+            const paused = !live && ctx.graph.hasRun(s.id);
             return (
               <div key={s.id} className="group flex items-center gap-0.5 rounded-lg pr-1 hover:bg-neutral-100/70">
                 <button type="button" onClick={() => open(s.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left text-sm text-neutral-600">
@@ -71,11 +74,11 @@ export function GraphsPanel() {
                   <button type="button" onClick={() => ctx.graph.stop(s.id)} title={t("graphs.stop")} className="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-900">
                     <Square size={13} />
                   </button>
-                ) : (
-                  <button type="button" onClick={() => void ctx.graph.continue(s.id)} title={t("graphs.continue")} className="shrink-0 rounded-md p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-900 group-hover:opacity-100">
+                ) : paused ? (
+                  <button type="button" onClick={() => void ctx.sessions.sendTo(s.id, "continue", { autoName: false })} title={t("graphs.continue")} className="shrink-0 rounded-md p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-900 group-hover:opacity-100">
                     <RotateCw size={13} />
                   </button>
-                )}
+                ) : null}
               </div>
             );
           })}

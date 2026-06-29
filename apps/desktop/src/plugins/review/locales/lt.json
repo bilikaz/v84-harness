@@ -14,6 +14,5 @@
     "conventions": "Konvencijos",
     "performance": "Našumas"
   },
-  "none": "Problemų nerasta.",
-  "done": "Peržiūra baigta."
+  "pickRequired": "Turite pasirinkti bent vieną parinktį / recenzentą. Siųskite `continue`, kad tęstumėte procesą."
 }

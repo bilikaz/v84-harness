@@ -13,6 +13,9 @@ import { errorMessage } from "../lib/errors.ts";
 // selectors (the engine reads getAgent() during a turn), async persist/hydrate that re-runs on swap.
 const log = rootLog.child("agents");
 
+// Per-tool ceiling (tool name → max permission). The reserved `*` key is the ceiling for every tool not
+// listed — set `{ "*": 0 }` to GROUND an agent to only the tools it names (or to none), so it can't reach
+// into the workspace's full toolset. Absent `*` → unlisted tools inherit (ceiling 2).
 export type AgentTools = Record<ToolName, ToolPermission>;
 export const AGENT_TOOLS_DEFAULT: AgentTools = {};
 

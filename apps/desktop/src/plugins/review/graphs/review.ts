@@ -2,7 +2,7 @@
 //   scope (pick files) → mode (split | several)
 //     split    → how-many → split the files across N `review:general` heads
 //     several  → pick which specialist reviewers → one head each, all files
-//   → each reviewer → verify (re-examine) → goToAll → consolidate → present.
+//   → each reviewer → verify (re-examine) → goToAll → consolidate → exit (final ```json output).
 // Each node is a start/end pair. `start(input)` kicks off the work; `end(input, response)` has both the input
 // it started with and the agent/modal response, and composes the next input — nothing reads another node.
 
@@ -41,10 +41,11 @@ export default class ReviewGraph extends BaseGraph {
         return { modal: { id: "scope", prompt: i18n.t("plugins.review.scopePrompt"), view: "tree", source: "user", multi: true, options } };
       },
       end: async (ctx, _input, response) => {
-        const s = reviewSettings();
         const picked = sel(response);
+        if (!picked.length) ctx.break(i18n.t("plugins.review.pickRequired"));
+        const s = reviewSettings();
         const all = await ctx.scan({ ignore: s.ignore, extensions: s.extensions });
-        const files = !picked.length || picked.includes("/workspace") ? all : all.filter((f) => picked.some((d) => f === d || f.startsWith(`${d}/`)));
+        const files = picked.includes("/workspace") ? all : all.filter((f) => picked.some((d) => f === d || f.startsWith(`${d}/`)));
         return { goTo: "mode", input: { files } satisfies Scoped };
       },
     },
@@ -54,15 +55,21 @@ export default class ReviewGraph extends BaseGraph {
       start: () => ({
         modal: { id: "mode", prompt: i18n.t("plugins.review.modePrompt"), source: "user", options: [{ id: "split", label: i18n.t("plugins.review.modeSplit") }, { id: "several", label: i18n.t("plugins.review.modeSeveral") }] },
       }),
-      end: (_ctx, input, response) => (sel(response)[0] === "split" ? { goTo: "splitCount", input } : { goTo: "pickReviewers", input }),
+      end: (ctx, input, response) => {
+        const mode = sel(response)[0];
+        if (!mode) ctx.break(i18n.t("plugins.review.pickRequired"));
+        return mode === "split" ? { goTo: "splitCount", input } : { goTo: "pickReviewers", input };
+      },
     },
 
     // split → how many slices.
     splitCount: {
       start: () => ({ modal: { id: "count", prompt: i18n.t("plugins.review.countPrompt"), source: "user", options: ["2", "3", "4"].map((n) => ({ id: n, label: n })) } }),
-      end: (_ctx, input, response) => {
+      end: (ctx, input, response) => {
+        const picked = sel(response)[0];
+        if (!picked) ctx.break(i18n.t("plugins.review.pickRequired"));
         const files = (input as Scoped).files;
-        const n = clamp(Number(sel(response)[0] ?? "2"), 1, 8);
+        const n = clamp(Number(picked), 1, 8);
         const inputs: FanMember[] = partition(files, n).map((slice, i) => ({ name: `files-${i + 1}`, input: { role: "general", files: slice } satisfies HeadIn }));
         return { splitTo: "review", inputs };
       },
@@ -71,9 +78,10 @@ export default class ReviewGraph extends BaseGraph {
     // several → pick which specialist reviewers run.
     pickReviewers: {
       start: () => ({ modal: { id: "reviewers", prompt: i18n.t("plugins.review.pickPrompt"), source: "user", multi: true, options: ROSTER.map((r) => ({ id: r, label: i18n.t(`plugins.review.reviewer.${r}`) })) } }),
-      end: (_ctx, input, response) => {
+      end: (ctx, input, response) => {
+        const roles = sel(response);
+        if (!roles.length) ctx.break(i18n.t("plugins.review.pickRequired"));
         const files = (input as Scoped).files;
-        const roles = sel(response).length ? sel(response) : ROSTER.slice(0, 3);
         const inputs: FanMember[] = roles.map((role) => ({ name: role, input: { role, files } satisfies HeadIn }));
         return { splitTo: "review", inputs };
       },
@@ -96,10 +104,11 @@ export default class ReviewGraph extends BaseGraph {
     },
 
     // Fires once EVERY reviewer in the group has arrived; the consolidator merges/de-dups into one findings
-    // set (same shape as reviewers), and the graph formats the final report deterministically.
+    // set (same shape as reviewers). The consolidated JSON flows straight to the exit node, which renders it
+    // as the final ```json block.
     consolidate: {
       start: (_ctx, input) => ({ agent: { agentId: "review:consolidator", task: synthTask((input as string[]).join("\n\n")), schema: FINDINGS } }),
-      end: (_ctx, _input, response) => ({ done: formatReport((response as Resp).text) }),
+      end: (_ctx, _input, response) => ({ goTo: "exit", input: (response as Resp).text }),
     },
   };
 }
@@ -114,43 +123,6 @@ function synthTask(verified: string): string {
   return `Here are the verified findings from all reviewers:\n\n${verified}\n\nMerge, de-duplicate, group by file, and produce the report as the strict JSON object described in your instructions.`;
 }
 
-interface Finding {
-  file?: string;
-  line?: number;
-  severity?: string;
-  claim?: string;
-  rationale?: string;
-}
-// Format the consolidator's merged findings into ONE clean report — deterministically, in the graph, so the
-// presentation is consistent (not whatever markdown the model felt like emitting). Grouped by file, by severity.
-function formatReport(text: string): string {
-  let findings: Finding[] = [];
-  try {
-    const o = JSON.parse(text) as { findings?: Finding[] };
-    if (Array.isArray(o.findings)) findings = o.findings;
-  } catch {
-    /* fall through to none */
-  }
-  if (!findings.length) return i18n.t("plugins.review.none");
-  const rank: Record<string, number> = { high: 0, medium: 1, low: 2 };
-  const byFile = new Map<string, Finding[]>();
-  for (const f of findings) {
-    const file = f.file ?? "(unknown)";
-    const arr = byFile.get(file) ?? [];
-    arr.push(f);
-    byFile.set(file, arr);
-  }
-  const out: string[] = [`**${findings.length} finding(s)**`];
-  for (const file of [...byFile.keys()].sort()) {
-    out.push("", `### ${file}`);
-    const sorted = byFile.get(file)!.sort((a, b) => (rank[a.severity ?? "low"] ?? 3) - (rank[b.severity ?? "low"] ?? 3));
-    for (const f of sorted) {
-      const loc = f.line ? `:${f.line}` : "";
-      out.push(`- **${(f.severity ?? "low").toUpperCase()}**${loc} — ${f.claim ?? ""}${f.rationale ? ` _(${f.rationale})_` : ""}`);
-    }
-  }
-  return out.join("\n");
-}
 function clamp(n: number, lo: number, hi: number): number {
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.floor(n))) : lo;
 }

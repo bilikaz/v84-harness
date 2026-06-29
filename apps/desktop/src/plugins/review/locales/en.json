@@ -14,6 +14,5 @@
     "conventions": "Conventions",
     "performance": "Performance"
   },
-  "none": "No issues found.",
-  "done": "Review complete."
+  "pickRequired": "You must pick at least one option / reviewer. Send `continue` to resume process."
 }

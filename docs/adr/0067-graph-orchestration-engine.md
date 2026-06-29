@@ -1,7 +1,12 @@
 # ADR-0067: Graph orchestration engine — event-driven named-node graphs
 
-Status: Accepted
+Status: Accepted (control model superseded by [ADR-0069](0069-message-driven-graph-control.md))
 Date: 2026-06-28
+The node model, arrival-driven joins, seeded heads + JSON heal below stand. The **control/termination** parts —
+the `run(sid)` seam, the `done` route, "stop/continue act only on children", and the `ai`-Select placeholder —
+are superseded by [ADR-0069](0069-message-driven-graph-control.md) (message-driven commands, the `exit` node,
+node-validated breaks).
+
 Adds a second orchestration mode alongside ReAct sub-agents ([ADR-0022](0022-subagent-orchestration.md) /
 [ADR-0058](0058-conversational-sub-agent-orchestration.md) / [ADR-0060](0060-async-subagent-delivery.md)).
 Reuses the sessions turn loop ([ADR-0019](0019-reference-stable-transcript.md)/[ADR-0020](0020-persist-at-turn-completion.md)),

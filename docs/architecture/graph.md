@@ -33,7 +33,9 @@ Routes (`Route`):
 - `{ goTo, input }` — solo: continue as another node (1:1), keeping this head's name + group.
 - `{ splitTo, inputs }` — fan out a **new sibling group**, one head per input.
 - `{ goToAll, input }` — **join**: go to a node once **every member of this head's group has arrived**.
-- `{ done }` — terminal; the text is the graph's final message.
+
+**Termination is routing to the reserved `exit` node** — there is no terminal route value. `end` can also
+**break** the run: `ctx.break(message)` rejects the response and parks the run at this node (see control, below).
 
 **Data flows by passing, never by reading.** A node never reads another node's data — everything a step needs
 is in its `input`/`response`. `end` composes the next `input` (the response is *not* automatically the next
@@ -55,9 +57,9 @@ mid-pipeline simply hasn't arrived. The group propagates through `goTo`; `splitT
 The GraphEngine keeps a per-session run state in memory (`runs`, keyed by sid). Its **only** durable-shaped
 storage is the **`goToAll` join buckets** (`arrivals` — accumulate a group's responses until it's full).
 Everything else is pure input → output; nothing is stored or read back. (`running` — head name → child sid —
-is live tracking for the chart + stop/continue.) There is **no persistence blob** — only the router needs
-memory, and only for the join. A full app restart mid-run therefore does not resume (in-session stop/continue
-does).
+and `parked` — the broken node a `continue` re-runs — are live tracking for the chart + stop/break/continue.)
+There is **no persistence blob** — only the router needs memory, and only for the join. A full app restart
+mid-run therefore does not resume (in-session stop/break + continue do).
 
 ## Heads, seeding, and the JSON heal
 
@@ -81,22 +83,39 @@ garbage — so it's dropped, not pooled or passed to the verifier.
 
 A selection is one registered concept resolved by `source`: `user` raises a pending entry the **SelectModal**
 settles (the same Promise bridge as approvals, [ADR-0013](../adr/0013-approval-promise-bridge.md) —
-`requestSelect`/`resolveSelect`/`cancelSelectsForSession`); `pattern` is graph-provided; `ai` is a placeholder.
+`requestSelect`/`resolveSelect`/`cancelSelectsForSession`); `pattern` is graph-provided; `ai` resolves to an
+empty selection (a TODO until model-consulted resolution lands — **never** a silent auto-pick). An empty answer
+is honoured: the node's `end` decides (typically `ctx.break`), it is not defaulted away.
 `view: list | tree` is a renderer hint over the same `{ id, selected[] }` result: `list` is single/multi;
 `tree` renders nested `options.children` as a cascading checkbox tree (checking a parent checks all
 descendants, indeterminate for partial) — used by the scope folder picker.
 
-## The seam, stop/continue, the chart
+## Control: commands, breaks, the chart ([ADR-0069](../adr/0069-message-driven-graph-control.md))
 
-- **The seam**: the sessions turn loop's `drive()` branches on `session.graphId` → `ctx.graph.run(sid)` (used
-  by resume); `start()` calls `run()` directly. That one branch is the whole core extension; everything
-  downstream (transcript via the bus, persistence at turn end, the sidebar) is reused.
-- **Stop / Continue act only on the children.** Stop pauses the running child sessions (`stopChild`); the
-  graph is untouched — its `awaitSettled` *rides* the pause, so nothing advances. `sessions.stopTurn`
-  delegates to `ctx.graph.stop` for a graph session. Continue resumes the children; each one finishing fires
-  its `end` and the flow proceeds. No graph restart.
-- **The chart** is the normal transcript: each head opens a tool card on the orchestrator session linking its
-  child, so the run reads as one chat with visible heads.
+Control is **message-driven** — a graph never drives itself.
+
+- **The seam**: the sessions turn loop's `drive()` branches on `session.graphId` → `ctx.graph.command(sid,
+  text)`. That one branch is the whole core extension; everything downstream (transcript via the bus,
+  persistence at turn end, the sidebar) is reused.
+- **Commands** (the message text): `start` (kill any live run, fresh from `entry`, no input), `continue`
+  (resume the live run), `<nodeName> {json}` (kill, jump into that node with the JSON as input). An **empty**
+  drive (a stray resume) is a no-op — never a restart. Anything else returns a **help** message (the commands +
+  the graph's node names). The **Flows** buttons send `start`/`continue` *messages*, so buttons and typing are
+  one path.
+- **Graph orchestrators are not delivery parents.** The async child-delivery hook ([ADR-0060](../adr/0060-async-subagent-delivery.md))
+  skips a child whose parent is a graph session — heads are consumed by `awaitHead`, not the pump. This (plus
+  the empty-drive no-op) is what stops a finished run re-driving itself.
+- **Stop, break, and `continue`.** A run can pause without ending; `continue` resumes it wherever it is parked:
+  - **Stop** pauses the running child sessions (`stopChild`) and ends the turn; the graph rides the pause.
+    `sessions.stopTurn` delegates to `ctx.graph.stop` for a graph session. `continue` resumes the children.
+  - **Break**: a node's `end` calls `ctx.break(message)` (throws `GraphBreak`) to reject its response (e.g. an
+    empty required Select). The engine **parks** the run at that node — RunState stays alive, the message is
+    posted, the turn ends (not an error). `continue` re-runs the parked node, re-surfacing the Select.
+  - A finished run has no live state; `continue` then says "nothing to continue — send `start`".
+- **The exit node** (owned by `BaseGraph`, reserved name, symmetric to `entry`) is reached by `{ goTo: "exit" }`.
+  It renders its input as a fenced ` ```json ` block — the run's final chat output — then the engine settles.
+- **The chart** is the normal transcript: each head (and the exit endpoint) opens a tool card on the
+  orchestrator session linking its child, so the run reads as one chat with visible heads.
 
 ## Registration + launch
 

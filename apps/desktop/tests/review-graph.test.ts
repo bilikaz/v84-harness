@@ -4,7 +4,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 
 import "../src/core/sessions/listeners.ts";
-import { getSession } from "../src/core/sessions/store.ts";
+import { createSession, getSession } from "../src/core/sessions/store.ts";
 import { GraphEngine, registerGraph, clearGraphs, getPendingSelects, resolveSelect } from "../src/core/graph/index.ts";
 import ReviewGraph from "../src/plugins/review/graphs/review.ts";
 import type { TurnResult } from "../src/core/sessions/index.ts";
@@ -25,8 +25,8 @@ function stubCtx(head: (task: string) => TurnResult): Ctx {
   } as unknown as Ctx;
 }
 
-// Reviewers, verifier, AND the consolidator all return the same findings shape now; the final report is
-// formatted deterministically by the graph.
+// Reviewers, verifier, AND the consolidator all return the same findings shape; the consolidated JSON is
+// rendered by the exit node as the final ```json output.
 const FINDINGS = JSON.stringify({ findings: [{ file: "foo.ts", line: 12, severity: "high", claim: "off-by-one", rationale: "loop bound" }] });
 
 function head(): TurnResult {
@@ -42,7 +42,8 @@ describe("review graph", () => {
     g.fileName = "review";
     registerGraph(g);
 
-    const { sid, result } = new GraphEngine(stubCtx(head)).start("review:review");
+    const sid = createSession({ graphId: "review:review" });
+    const result = new GraphEngine(stubCtx(head)).command(sid, "start");
 
     // Answer the user selects through the bridge as they appear: scope → mode(several) → pick two reviewers.
     const answers: Record<string, string[]> = { scope: ["/workspace"], mode: ["several"], reviewers: ["logic", "security"] };
@@ -57,7 +58,7 @@ describe("review graph", () => {
 
     const turn = await result;
     expect(turn.errored).toBe(false);
-    // The graph formats the consolidated findings into the report.
+    // The consolidated findings are rendered as the final json block.
     expect(turn.text).toContain("foo.ts");
     expect(turn.text).toContain("off-by-one");
     // count=2 → two reviewer heads spawned as children under the orchestrator.

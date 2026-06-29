@@ -81,7 +81,9 @@ export class SessionEngine {
       // A child whose turn just FINISHED delivers its result up to its parent — but ONLY in async mode.
       // Sync mode delivers via awaitSettled's own turn:end subscription instead; pushing here too would
       // double-deliver. Skip aborts (a user pause / cascade) — only a terminal success/error is delivered.
-      if (s?.parentId && getAppConfig().session.asyncAgents) {
+      // A GRAPH orchestrator is never a delivery parent: it consumes its heads via awaitHead, so a delivery
+      // here would re-drive (and restart) the run. Exclude children whose parent is a graph session.
+      if (s?.parentId && getAppConfig().session.asyncAgents && !getSession(s.parentId)?.graphId) {
         llmLog.debug("agent:child-end", { childSid: e.sessionId, parentSid: s.parentId, errored: e.errored, aborted: e.aborted });
         if (!e.aborted) this.onChildSettled(s.parentId, e.sessionId, aliasOf(s));
       }
@@ -309,10 +311,10 @@ export class SessionEngine {
   // resume (after re-opening the tail) call it — the only difference is how the turn was opened above.
   private async drive(sid: string, opts: SendOptions, meta: { firstExchange: boolean; autoName: boolean; userText: string }): Promise<TurnResult> {
     const { firstExchange, autoName, userText } = meta;
-    // The seam: a graph session's turns are produced by the owning graph, not the model. resume() lands here
-    // and delegates to the GraphEngine (start goes straight to run()). Everything below — config, lease, the
-    // model step loop — is the model path only.
-    if (getSession(sid)?.graphId) return this.ctx.graph.run(sid);
+    // The seam: a graph session's turns are produced by the owning graph, not the model. Every turn is a
+    // command message (`start` / `continue` / `<nodeName>`); an empty drive (a stray resume) is a no-op there,
+    // never a restart. Everything below — config, lease, the model step loop — is the model path only.
+    if (getSession(sid)?.graphId) return this.ctx.graph.command(sid, userText);
     // First thing to sanity-check: the live config (is async on? which delivery? connected?). Logged once.
     if (!this.tracedConfig) {
       this.tracedConfig = true;

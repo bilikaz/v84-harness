@@ -1,11 +1,12 @@
 // Graph engine proof (event-driven node model): runs graphs through the GraphEngine with a stubbed ctx (no
-// live LLM) and asserts the contract — goTo chains, fan-out + arrival-driven goToAll join, pattern Select,
-// and the strict-JSON heal on an agent head.
+// live LLM) and asserts the contract — message-driven control (`start` / `continue`), goTo chains, fan-out +
+// arrival-driven goToAll join, the reserved exit node's ```json output, a node break that parks the run (with
+// `continue` re-surfacing it), and the strict-JSON heal on an agent head.
 import { describe, expect, it, beforeEach } from "vitest";
 
 import "../src/core/sessions/listeners.ts";
-import { getSession, getStreamingIds } from "../src/core/sessions/store.ts";
-import { BaseGraph, GraphEngine, registerGraph, clearGraphs } from "../src/core/graph/index.ts";
+import { createSession, getSession, getStreamingIds } from "../src/core/sessions/store.ts";
+import { BaseGraph, GraphEngine, registerGraph, clearGraphs, getPendingSelects, resolveSelect } from "../src/core/graph/index.ts";
 import type { GraphNode, SelectAnswer } from "../src/core/graph/types.ts";
 import type { TurnResult } from "../src/core/sessions/index.ts";
 import type { Ctx } from "../src/core/ctx.ts";
@@ -25,6 +26,22 @@ function stubCtx(head: (task: string) => TurnResult = () => ok("")): Ctx {
   } as unknown as Ctx;
 }
 
+// Drive a graph the way the seam does: create the session, then send it the `start` command.
+function run(engine: GraphEngine, graphId: string): { sid: string; result: Promise<TurnResult> } {
+  const sid = createSession({ graphId });
+  return { sid, result: engine.command(sid, "start") };
+}
+
+// Answer the next pending Select for a session (polls — selects are raised asynchronously mid-run).
+async function answer(sid: string, selected: string[]): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    const p = getPendingSelects().find((x) => x.sessionId === sid);
+    if (p) return resolveSelect(p.id, selected);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  throw new Error("no pending select appeared");
+}
+
 class TwoNode extends BaseGraph {
   constructor() {
     super();
@@ -34,7 +51,7 @@ class TwoNode extends BaseGraph {
   readonly entry = "a";
   readonly nodes: Record<string, GraphNode> = {
     a: { start: () => ({ value: 1 }), end: () => ({ goTo: "b" }) },
-    b: { start: () => ({ value: 1 }), end: () => ({ done: "done" }) },
+    b: { start: () => ({ value: 1 }), end: () => ({ goTo: "exit", input: "done" }) },
   };
 }
 
@@ -48,7 +65,7 @@ class FanJoin extends BaseGraph {
   readonly nodes: Record<string, GraphNode> = {
     split: { start: () => ({ value: 0 }), end: () => ({ splitTo: "work", inputs: [{ name: "x" }, { name: "y" }] }) },
     work: { start: () => ({ value: 0 }), end: (ctx) => ({ goToAll: "sum", input: ctx.name }) },
-    sum: { start: (_ctx, all) => ({ value: all }), end: (_ctx, res) => ({ done: (res as string[]).slice().sort().join(",") }) },
+    sum: { start: (_ctx, all) => ({ value: all }), end: (_ctx, res) => ({ goTo: "exit", input: (res as string[]).slice().sort().join(",") }) },
   };
 }
 
@@ -62,7 +79,27 @@ class SelPat extends BaseGraph {
   readonly nodes: Record<string, GraphNode> = {
     s: {
       start: () => ({ modal: { id: "pick", prompt: "?", options: [{ id: "x", label: "X" }, { id: "y", label: "Y" }], source: "pattern", patternAnswer: ["y"] } }),
-      end: (_ctx, _input, response) => ({ done: JSON.stringify((response as SelectAnswer | null)?.selected ?? []) }),
+      end: (_ctx, _input, response) => ({ goTo: "exit", input: (response as SelectAnswer | null)?.selected ?? [] }),
+    },
+  };
+}
+
+// A required user Select: empty → break (park); a pick → exit.
+class BreakG extends BaseGraph {
+  constructor() {
+    super();
+    this.pluginSlug = "t";
+    this.fileName = "brk";
+  }
+  readonly entry = "s";
+  readonly nodes: Record<string, GraphNode> = {
+    s: {
+      start: () => ({ modal: { id: "pick", prompt: "?", options: [{ id: "x", label: "X" }], source: "user" } }),
+      end: (ctx, _input, response) => {
+        const picked = (response as SelectAnswer | null)?.selected ?? [];
+        if (!picked.length) ctx.break("pick at least one");
+        return { goTo: "exit", input: picked };
+      },
     },
   };
 }
@@ -75,7 +112,7 @@ class HealG extends BaseGraph {
   }
   readonly entry = "r";
   readonly nodes: Record<string, GraphNode> = {
-    r: { start: () => ({ agent: { task: "go", schema: { required: ["x"] } } }), end: (_ctx, _input, response) => ({ done: (response as { text: string }).text }) },
+    r: { start: () => ({ agent: { task: "go", schema: { required: ["x"] } } }), end: (_ctx, _input, response) => ({ goTo: "exit", input: (response as { text: string }).text }) },
   };
 }
 
@@ -84,42 +121,56 @@ describe("GraphEngine", () => {
 
   it("drives a goTo chain and builds the transcript", async () => {
     registerGraph(new TwoNode());
-    const { sid, result } = new GraphEngine(stubCtx()).start("t:two");
+    const { sid, result } = run(new GraphEngine(stubCtx()), "t:two");
     expect(getSession(sid)?.graphId).toBe("t:two");
     expect((await result).text).toBe("done");
     expect(getStreamingIds().has(sid)).toBe(false);
   });
 
   it("errors (not hangs) when the graphId is not registered", async () => {
-    expect(await new GraphEngine(stubCtx()).start("t:missing").result).toMatchObject({ errored: true, errorKind: "other" });
+    expect(await run(new GraphEngine(stubCtx()), "t:missing").result).toMatchObject({ errored: true, errorKind: "other" });
   });
 
   it("fan-out + arrival-driven goToAll: join fires only once EVERY member arrives", async () => {
     registerGraph(new FanJoin());
-    expect((await new GraphEngine(stubCtx()).start("t:fan").result).text).toBe("x,y");
+    expect((await run(new GraphEngine(stubCtx()), "t:fan").result).text).toBe("x,y");
   });
 
-  it("resolves a pattern Select synthetically", async () => {
+  it("a pattern Select flows to the exit node's json block", async () => {
     registerGraph(new SelPat());
-    expect((await new GraphEngine(stubCtx()).start("t:sel").result).text).toBe(JSON.stringify(["y"]));
+    expect((await run(new GraphEngine(stubCtx()), "t:sel").result).text).toContain('"y"');
+  });
+
+  it("an empty required select breaks; the run parks and `continue` re-surfaces it", async () => {
+    registerGraph(new BreakG());
+    const engine = new GraphEngine(stubCtx());
+    const sid = createSession({ graphId: "t:brk" });
+    const first = engine.command(sid, "start");
+    await answer(sid, []); // cancel / pick nothing
+    expect((await first).text).toContain("pick at least one");
+    expect(engine.hasRun(sid)).toBe(true); // parked, not finished
+    const second = engine.command(sid, "continue");
+    await answer(sid, ["x"]); // the same select, re-surfaced
+    expect((await second).text).toContain('"x"');
+    expect(engine.hasRun(sid)).toBe(false); // finished
   });
 
   it("heals an agent head's bad JSON (missing field → correction → valid)", async () => {
     registerGraph(new HealG());
     const head = (task: string): TurnResult => ok(task === "go" ? "{}" : '{"x":1}');
-    expect((await new GraphEngine(stubCtx(head)).start("t:heal").result).text).toContain('"x":1');
+    expect((await run(new GraphEngine(stubCtx(head)), "t:heal").result).text).toContain('"x": 1');
   });
 
   it("heals UNPARSEABLE JSON via resume (never re-sends the broken reply)", async () => {
     registerGraph(new HealG());
     // First reply is broken JSON; the retry comes back valid. (resume() drops the broken one from history.)
     const head = (task: string): TurnResult => ok(task === "go" ? '{"x":' : '{"x":1}');
-    expect((await new GraphEngine(stubCtx(head)).start("t:heal").result).text).toContain('"x":1');
+    expect((await run(new GraphEngine(stubCtx(head)), "t:heal").result).text).toContain('"x": 1');
   });
 
   it("a failed (errored) head forwards nothing, not the error text", async () => {
     registerGraph(new HealG());
     const head = (): TurnResult => ({ text: "⚠️ 400 bad request", errored: true, aborted: false });
-    expect((await new GraphEngine(stubCtx(head)).start("t:heal").result).text).toBe("");
+    expect((await run(new GraphEngine(stubCtx(head)), "t:heal").result).text).toBe("");
   });
 });

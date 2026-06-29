@@ -66,7 +66,9 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   `tools/types.ts`). `effectiveMode` is computed inside `filter()` (in `registry.ts`):
   workspace/agent policies are partial maps (stricter of grant and ceiling wins), a missing
   entry falls back to the tool's `defaultPermission()`, and a `needsWorkspace` tool is forced
-  to mode 0 when no workspace is in context.
+  to mode 0 when no workspace is in context. The agent ceiling consults a reserved `*` wildcard
+  before the default, so an agent **grounds** itself with `{ "*": 0, … }` — only the listed tools
+  survive ([ADR-0070](../adr/0070-agent-tool-grounding-wildcard.md)).
 
 ## The engine tier — driver-level tools ([ADR-0050](../adr/0050-engine-tool-tier.md))
 
