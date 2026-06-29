@@ -50,7 +50,6 @@ export interface ContainersTable extends Timestamps {
   name: string;
   permissions: Json;
   config: Json;
-  placement: string;
 }
 
 // A conversation thread inside a container.
@@ -60,10 +59,14 @@ export interface SessionsTable extends Timestamps {
   container_id: string;
   parent_id: string | null;
   agent_id: string | null;
+  graph_id: string | null;
   title: string;
   system: string | null;
   tools: Json;
   used_tokens: number | null;
+  last_model: string | null;
+  error_kind: string | null;
+  bytes: number | null;
   unread: ColumnType<number, number | undefined, number>;
 }
 
@@ -79,6 +82,7 @@ export interface MessagesTable {
   child_session_ids: Json | null;
   images: Json | null;
   videos: Json | null;
+  files: Json | null;
   summary: number | null;
   hidden: number | null;
   created_at: Generated<Date>;
@@ -105,9 +109,8 @@ export interface AgentsTable extends Timestamps {
   description: string | null;
   system: string | null;
   user: string | null; // run template
-  requires_workspace: string | null;
-  permissions: Json;
-  placement: string;
+  workspace: ColumnType<number, number | undefined, number>; // harness Agent.workspace (TINYINT 0/1)
+  tools: Json; // harness Agent.tools — per-tool ceiling map
 }
 
 export interface SettingsTable {

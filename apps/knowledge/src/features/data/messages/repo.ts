@@ -17,6 +17,7 @@ export interface Message {
   childSessionIds: unknown;
   images: unknown;
   videos: unknown;
+  files: unknown;
   summary: boolean;
   hidden: boolean;
   createdAt: number;
@@ -61,6 +62,7 @@ export class MessagesRepo {
             child_session_ids: m.childSessionIds != null ? JSON.stringify(m.childSessionIds) : null,
             images: m.images != null ? JSON.stringify(m.images) : null,
             videos: m.videos != null ? JSON.stringify(m.videos) : null,
+            files: m.files != null ? JSON.stringify(m.files) : null,
             summary: m.summary ? 1 : 0,
             hidden: m.hidden ? 1 : 0,
             created_at: m.createdAt ? new Date(m.createdAt) : new Date(),
@@ -83,6 +85,7 @@ function toEntity(row: Selectable<MessagesTable>): Message {
     childSessionIds: row.child_session_ids != null ? JSON.parse(row.child_session_ids) : undefined,
     images: row.images != null ? JSON.parse(row.images) : undefined,
     videos: row.videos != null ? JSON.parse(row.videos) : undefined,
+    files: row.files != null ? JSON.parse(row.files) : undefined,
     summary: !!row.summary,
     hidden: !!row.hidden,
     createdAt: row.created_at.getTime(),

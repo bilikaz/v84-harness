@@ -1,5 +1,6 @@
 export { parseDataUrl } from "../lib/dataUrl.ts";
 
+// Returns {} (never throws) so malformed model-emitted tool-call arguments degrade to empty args, not a crashed turn.
 export function safeJson(s: string): unknown {
   try {
     return JSON.parse(s);

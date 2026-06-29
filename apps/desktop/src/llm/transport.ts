@@ -57,11 +57,12 @@ function retryDelay(e: unknown, attempt: number): number {
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
+    // Reject the already-aborted case directly — abort() refs `t`, which is still in its TDZ here.
+    if (signal.aborted) return reject(new DOMException("Aborted", "AbortError"));
     const abort = (): void => {
       clearTimeout(t);
       reject(new DOMException("Aborted", "AbortError"));
     };
-    if (signal.aborted) return abort();
     const t = setTimeout(() => {
       signal.removeEventListener("abort", abort);
       resolve();

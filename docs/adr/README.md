@@ -85,6 +85,7 @@ loading. Its index row below stays.
 | [0068](0068-plugin-agents-code-registry.md) | Plugin agents as a runtime-gated code registry (`agents.json` globbed, gated by enabled — not materialized into the user store) | accepted |
 | [0069](0069-message-driven-graph-control.md) | Message-driven graph control — `start`/`continue`/`<node>` command messages (no self-driving), reserved `exit` node with ```json output, node-validated `ctx.break` → park/resume | accepted |
 | [0070](0070-agent-tool-grounding-wildcard.md) | Agent tool grounding — a `*` wildcard ceiling in `AgentTools` (`{ "*": 0, … }` restricts a head to only the tools it lists) | accepted |
+| [0071](0071-remote-mirrors-harness-shapes.md) | Remote storage mirrors the harness canonical shapes (desktop is source of truth; typed-column backends thread every field; compile-time parity guard; placement deferred) | accepted |
 
 ## Needs review / important missing parts
 

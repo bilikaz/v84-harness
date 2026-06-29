@@ -30,10 +30,14 @@ sessionsRouter.put("/:id", async (c) => {
     containerId: String(b.containerId ?? ""),
     parentId: b.parentId ?? null,
     agentId: b.agentId ?? null,
+    graphId: b.graphId ?? null,
     title: String(b.title ?? ""),
     system: b.system ?? null,
     tools: b.tools ?? [],
     usedTokens: b.usedTokens ?? null,
+    lastModel: b.lastModel ?? null,
+    errorKind: b.errorKind ?? null,
+    bytes: b.bytes ?? null,
     unread: !!b.unread,
   });
   return c.body(null, 204);

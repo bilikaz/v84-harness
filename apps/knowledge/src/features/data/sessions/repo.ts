@@ -10,10 +10,14 @@ export interface ChatSession {
   containerId: string;
   parentId: string | null;
   agentId: string | null;
+  graphId: string | null;
   title: string;
   system: string | null;
   tools: unknown;
   usedTokens: number | null;
+  lastModel: string | null;
+  errorKind: string | null;
+  bytes: number | null;
   unread: boolean;
   createdAt: number;
   updatedAt: number;
@@ -55,10 +59,14 @@ export class ChatSessionsRepo {
       container_id: s.containerId,
       parent_id: s.parentId,
       agent_id: s.agentId,
+      graph_id: s.graphId,
       title: s.title,
       system: s.system,
       tools: JSON.stringify(s.tools ?? []),
       used_tokens: s.usedTokens,
+      last_model: s.lastModel,
+      error_kind: s.errorKind,
+      bytes: s.bytes,
       unread: s.unread ? 1 : 0,
     };
     await this.db
@@ -84,10 +92,14 @@ function toEntity(row: Selectable<SessionsTable>): ChatSession {
     containerId: row.container_id,
     parentId: row.parent_id,
     agentId: row.agent_id,
+    graphId: row.graph_id,
     title: row.title,
     system: row.system,
     tools: JSON.parse(row.tools),
     usedTokens: row.used_tokens,
+    lastModel: row.last_model,
+    errorKind: row.error_kind,
+    bytes: row.bytes,
     unread: !!row.unread,
     createdAt: row.created_at.getTime(),
     updatedAt: row.updated_at.getTime(),

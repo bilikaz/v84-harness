@@ -128,13 +128,14 @@ export class BrowserFleet {
     // WIN: a background view (not the visible overlay) has no usable surface on the host window. Move it into
     // the off-screen invisible shotHost and give it real bounds so Windows composites it, then move it back.
     const shot = process.platform === "win32" && this.visibleId !== id ? this.ensureShotHost() : null;
-    if (shot) {
-      this.host.contentView.removeChildView(entry.view);
-      shot.contentView.addChildView(entry.view);
-      entry.view.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
-      entry.view.setVisible(true);
-    }
     try {
+      // Reparent inside the try so a throw here is caught (degrades to nativeShot) and the finally still restores.
+      if (shot) {
+        this.host.contentView.removeChildView(entry.view);
+        shot.contentView.addChildView(entry.view);
+        entry.view.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
+        entry.view.setVisible(true);
+      }
       if (!dbg.isAttached()) {
         try {
           dbg.attach("1.3");
@@ -160,6 +161,7 @@ export class BrowserFleet {
       const offsets = shotOffsets(vh, ch, Math.max(1, shots));
       // Scroll the document and capture the viewport at each stop — fromSurface:false renders the renderer's
       // current (scrolled) view, so this is what actually moves down the page (a clip offset is ignored).
+      // `|| 0` coerces a non-numeric JS result to a usable offset; the timeout fallback is already 0.
       const origY = (await withTimeout(wc.executeJavaScript("window.scrollY", true) as Promise<number>, READ_TIMEOUT, 0)) || 0;
       const out: string[] = [];
       for (let i = 0; i < offsets.length; i++) {
@@ -174,8 +176,13 @@ export class BrowserFleet {
     } finally {
       if (overrode) await this.cmd(dbg, "Emulation.clearDeviceMetricsOverride");
       if (shot) {
+        // Two independent steps: a failed detach (e.g. it was never added) must not skip the re-add to host.
         try {
           shot.contentView.removeChildView(entry.view);
+        } catch {
+          /* may never have been added to the shot host */
+        }
+        try {
           this.host.contentView.addChildView(entry.view);
           entry.view.setVisible(false);
           entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });

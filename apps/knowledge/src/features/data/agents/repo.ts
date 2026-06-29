@@ -10,9 +10,8 @@ export interface Agent {
   description: string | null;
   system: string | null;
   user: string | null;
-  requiresWorkspace: string | null;
-  permissions: unknown;
-  placement: string;
+  workspace: boolean;
+  tools: unknown;
   createdAt: number;
   updatedAt: number;
 }
@@ -54,9 +53,8 @@ export class AgentsRepo {
       description: a.description,
       system: a.system,
       user: a.user,
-      requires_workspace: a.requiresWorkspace,
-      permissions: JSON.stringify(a.permissions ?? {}),
-      placement: a.placement,
+      workspace: a.workspace ? 1 : 0,
+      tools: JSON.stringify(a.tools ?? {}),
     };
     await this.db
       .insertInto("agents")
@@ -82,9 +80,8 @@ function toEntity(row: Selectable<AgentsTable>): Agent {
     description: row.description,
     system: row.system,
     user: row.user,
-    requiresWorkspace: row.requires_workspace,
-    permissions: JSON.parse(row.permissions),
-    placement: row.placement,
+    workspace: !!row.workspace,
+    tools: JSON.parse(row.tools),
     createdAt: row.created_at.getTime(),
     updatedAt: row.updated_at.getTime(),
   };

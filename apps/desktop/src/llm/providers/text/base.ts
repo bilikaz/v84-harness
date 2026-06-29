@@ -23,6 +23,8 @@ export abstract class BaseTextProvider extends BaseProvider {
     return this.callCtx.tools?.length ? this.callCtx.tools : undefined;
   }
 
+  // By design: for models that emit thinking in-band, these are consumed as structural markers — a literal
+  // occurrence in content has no escape, the accepted trade for surfacing inline reasoning.
   private static readonly OPEN_TAGS = [" thinking", "<thinking>"];
   private static readonly CLOSE_TAGS = [" response", "</thinking>"];
 

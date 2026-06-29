@@ -35,6 +35,21 @@ boundary. The fix is never a better translator; it's making the shapes agree.
    old-shape readers forever is the translation layer sneaking back in;
    resetting (with the owner's sign-off) is often cheaper than migrating
    low-value local state. Either way the decision is recorded, not implied.
+6. **Pick one canonical source; mind lossy backends and guard the round-trip.**
+   When one canonical shape spans interchangeable backends, name a single source
+   of truth and make every backend mirror it — backends adopt the canonical
+   shape, never the reverse. Backends are *not* equally shape-faithful: a
+   whole-object/blob store (a JSON column, an IndexedDB object store) is lossless
+   by construction — a new field rides along automatically — while a
+   typed-column store (a SQL schema with an explicit DTO mapping) silently
+   **drops** any field it has no column for. So a field added to the canonical
+   shape persists fine through the blob backend and vanishes through the typed
+   one, invisible until it changes behaviour. Add a round-trip / compile-time
+   **parity check** on the lossy backend so the next added field fails a check
+   instead of disappearing only when that backend is active. The trap that bit
+   us: `graphId` / agent `tools` / message `files` persisted locally (blobs) and
+   were silently lost on the remote (typed columns) — see
+   [ADR-0071](../adr/0071-remote-mirrors-harness-shapes.md).
 
 ## Example
 

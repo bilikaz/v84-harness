@@ -19,6 +19,8 @@ export function useOutsideClick(active: boolean, ref: RefObject<HTMLElement | nu
     }
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
+    // [active] only by design: ref is stable and read at event time; onOutside is caller-stable, so
+    // re-subscribing on its identity would only churn the listener.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 }
