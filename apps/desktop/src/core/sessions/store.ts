@@ -32,6 +32,7 @@ export interface SessionInit {
   system?: string;
   containerId?: string;
   agentId?: string;
+  graphId?: string;
   parentId?: string;
 }
 
@@ -47,6 +48,7 @@ function makeSession(init: SessionInit = {}): Session {
     system: init.system ?? "",
     containerId: init.containerId ?? "",
     agentId: init.agentId,
+    graphId: init.graphId,
     parentId: init.parentId,
     tools: [],
     messages: [],
@@ -295,6 +297,15 @@ export function deleteSession(id: string): void {
   if (userPausedIds.has(id)) {
     userPausedIds = new Set(userPausedIds);
     userPausedIds.delete(id);
+  }
+  // A session deleted mid-stream/compaction must also leave the streaming/compacting sets, or they keep a stale id.
+  if (streamingIds.has(id)) {
+    streamingIds = new Set(streamingIds);
+    streamingIds.delete(id);
+  }
+  if (compactingIds.has(id)) {
+    compactingIds = new Set(compactingIds);
+    compactingIds.delete(id);
   }
   const prunedRuns: Record<string, string[]> = {};
   for (const [tcId, kids] of Object.entries(childRuns)) {

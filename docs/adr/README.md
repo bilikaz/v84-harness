@@ -81,6 +81,8 @@ loading. Its index row below stays.
 | [0064](0064-mcp-oauth.md) | MCP OAuth — auth-code + PKCE, DCR or pre-registered app, in-app loopback window, machine-local tokens (refines 0063) | accepted |
 | [0065](0065-per-service-priority-pools.md) | Per-service priority pools + per-model concurrency caps (`services` → ordered lists, `c`/reserve/rating; refines 0042) | accepted |
 | [0066](0066-concurrency-runner.md) | Concurrency runner — turn-held slot leases + provider affinity (refines 0028/0032/0060; resolves the local-LLM eviction item) | accepted |
+| [0067](0067-graph-orchestration-engine.md) | Graph orchestration engine — event-driven named-node graphs (Start/End, goTo/splitTo/goToAll, arrival-driven joins, stop/continue on children) + the Select primitive | accepted |
+| [0068](0068-plugin-agents-code-registry.md) | Plugin agents as a runtime-gated code registry (`agents.json` globbed, gated by enabled — not materialized into the user store) | accepted |
 
 ## Needs review / important missing parts
 

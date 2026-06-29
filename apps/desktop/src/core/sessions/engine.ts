@@ -93,8 +93,23 @@ export class SessionEngine {
 
   // Also denies the session's queued approvals — an unanswered approval Promise would keep the turn pending forever.
   stopTurn(sid: string): void {
+    // A graph run's Stop is a soft pause of its children, not an orchestrator abort — the graph rides the
+    // pauses and continue() resumes them. Delegate to the graph engine when this session has a live run.
+    if (this.ctx.graph.hasRun(sid)) {
+      this.ctx.graph.stop(sid);
+      return;
+    }
     this.inflight.get(sid)?.abort();
     denyApprovalsForSession(sid);
+  }
+
+  // Shared turn-lifecycle hooks for the GraphEngine: a graph turn runs its own loop (core/graph/engine.ts)
+  // but registers its controller here so stopTurn (and the stop-cascade) abort it like any other turn.
+  registerInflight(sid: string, controller: AbortController): void {
+    this.inflight.set(sid, controller);
+  }
+  clearInflight(sid: string): void {
+    this.inflight.delete(sid);
   }
 
   // Per-child user stop: a PAUSE, not a failure. Marks the child user-paused (resume ownership stays
@@ -204,7 +219,9 @@ export class SessionEngine {
   // cascades to the children it spawned.
   deleteSession(id: string): void {
     for (const child of getSessions().filter((s) => s.parentId === id)) this.deleteSession(child.id);
-    this.stopTurn(id);
+    // Hard-abort the in-flight turn (a graph run's controller too — stopTurn would only soft-pause it).
+    this.inflight.get(id)?.abort();
+    denyApprovalsForSession(id);
     this.ctx.runner.drop(id); // release any held slot + queued wait + binding
     // A deleted session's browser windows have no owner left to drive them — close them.
     void browserFleet().closeForSession(id);
@@ -292,6 +309,10 @@ export class SessionEngine {
   // resume (after re-opening the tail) call it — the only difference is how the turn was opened above.
   private async drive(sid: string, opts: SendOptions, meta: { firstExchange: boolean; autoName: boolean; userText: string }): Promise<TurnResult> {
     const { firstExchange, autoName, userText } = meta;
+    // The seam: a graph session's turns are produced by the owning graph, not the model. resume() lands here
+    // and delegates to the GraphEngine (start goes straight to run()). Everything below — config, lease, the
+    // model step loop — is the model path only.
+    if (getSession(sid)?.graphId) return this.ctx.graph.run(sid);
     // First thing to sanity-check: the live config (is async on? which delivery? connected?). Logged once.
     if (!this.tracedConfig) {
       this.tracedConfig = true;

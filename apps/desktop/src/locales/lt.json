@@ -1,4 +1,15 @@
 {
+  "graphs": {
+    "title": "Srautai",
+    "runs": "Aktyvūs vykdymai",
+    "empty": "Įjunkite srauto papildinį, kad galėtumėte jį paleisti.",
+    "stop": "Stabdyti",
+    "continue": "Tęsti"
+  },
+  "select": {
+    "confirm": "Patvirtinti",
+    "cancel": "Atšaukti"
+  },
   "sidebar": {
     "sessions": "Sesijos",
     "newSession": "Nauja sesija",

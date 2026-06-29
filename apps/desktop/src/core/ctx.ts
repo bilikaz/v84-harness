@@ -9,12 +9,15 @@ import type { ToolGateway } from "./tools/types.ts";
 import type { StorageEngine } from "./storage/engine.ts";
 import type { HostApi } from "./host.ts";
 import { SessionEngine } from "./sessions/engine.ts";
+import { GraphEngine } from "./graph/index.ts";
 import { RunnerEngine, applyRunnerEvent } from "./runner/index.ts";
 import { getRunnerPools } from "./config/pools.ts";
 
 export class Ctx {
   llm!: LLMClient;
   sessions: SessionEngine;
+  // The graph executor — drives graph sessions (graph-produced turns instead of model-produced). See core/graph/.
+  graph: GraphEngine;
   // The concurrency runner — leases live slots over the per-service priority pools.
   runner: RunnerEngine;
   // Platform-specific parts, INSTALLED BY init() right after construction.
@@ -44,6 +47,7 @@ export class Ctx {
       },
     });
     this.sessions = new SessionEngine(this);
+    this.graph = new GraphEngine(this);
   }
 
   get config(): Config {

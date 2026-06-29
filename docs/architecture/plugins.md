@@ -43,6 +43,8 @@ There is no minted id and no installed-registration row.
 | --- | --- | --- |
 | Settings + enable flag | `config.plugins.<slug>` — a synced settings row, validated by the manifest | `core/plugins/config.ts` |
 | Agent tools | `tools/<tier>/` — `BaseTool` subclasses, globbed into the registry of the process the tier runs in | [tools.md](tools.md) |
+| Orchestration graphs | `graphs/<file>.ts` — `BaseGraph` subclasses, globbed + registered, gated by enabled, id `<slug>:<file>` | [graph.md](graph.md), [ADR-0067](../adr/0067-graph-orchestration-engine.md) |
+| Agents | `agents.json` — agent definitions registered into a runtime-gated code registry (NOT the user store), shown while enabled | [graph.md](graph.md), [ADR-0068](../adr/0068-plugin-agents-code-registry.md) |
 | Runtime tools | the service registers/unregisters `BaseTool` instances at runtime via an injected `PluginToolRegistrar` (`bindRegistrar`) — for tools discovered at connect, not known at build time | [ADR-0062](../adr/0062-runtime-registered-tools.md) |
 | Stateful runtime | `service.ts` — a main-process singleton (e.g. a connection pool) | per plugin |
 | UI → service (call) | the service's `rpc` record, invoked via `ctx.api.invokePlugin` | [ADR-0049](../adr/0049-plugin-service-bridge.md) |

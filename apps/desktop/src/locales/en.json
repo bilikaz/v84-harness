@@ -1,4 +1,15 @@
 {
+  "graphs": {
+    "title": "Flows",
+    "runs": "Active runs",
+    "empty": "Enable a flow plugin to run one.",
+    "stop": "Stop",
+    "continue": "Continue"
+  },
+  "select": {
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
   "sidebar": {
     "sessions": "Sessions",
     "newSession": "New session",
