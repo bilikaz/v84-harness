@@ -1,63 +1,113 @@
 # v84 harness
 
-**Your own agent workbench.** A local-first, multi-session AI harness where agents
-don't just chat — they read your files, run commands, browse the web, call APIs,
-generate media, spawn sub-agents, and remember — all behind a permission model you
-control, against any model you point it at.
+**Run a team of AI agents on your own machine, against your own models — and orchestrate them as code that runs like a chat.**
 
-Runs as a desktop app **or** in the browser. **Built for local models first** —
-point it at your own vLLM / OpenAI-compatible endpoint and keep the entire loop on
-your hardware. Cloud providers (Anthropic, Gemini) work too, but they're the
-option, not the premise. Your data **and your models** stay yours; the cloud is
-opt-in.
+![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-2C2E3B?logo=electron&logoColor=white)
+![Node ≥24](https://img.shields.io/badge/Node-%E2%89%A524-339933?logo=node.js&logoColor=white)
+![local-first](https://img.shields.io/badge/local--first-%E2%9C%93-success)
 
-> Part of an all-TypeScript pipeline: **task-builder → harness → reviewer**, with
-> company-knowledge RAG wired in as a permission-filtered tool.
+*Most "chat with your repo" tools give you one assistant and a text box. This gives
+you a **workbench** — and a graph engine you drive like a conversation.*
+
+A local-first agent workbench: agents read your files, run scripts, browse the web,
+call APIs, generate media, and spawn sub-agents — behind a permission model you
+control, pointed at any model you run. **Built for local models first** (your own
+vLLM / OpenAI-compatible endpoint, the whole loop on your hardware); Anthropic and
+Gemini work too, but the cloud is opt-in. Runs as a desktop app **or** in the browser.
 
 ---
 
-## Why it's different
+## The one thing nobody else does
 
-Most "chat with your repo" tools give you one assistant and a text box. This gives
-you a **workbench**:
+Beyond free-form chat, express a fixed process as an **event-driven graph** — fan
+work out, run reviewers in parallel, **join** when every branch arrives, consolidate.
+It runs **as an ordinary chat you drive with `start` / `continue` messages**: the
+chart *is* the transcript, every node is a real **openable** thread, and any node can
+**pause for your input and resume**. Graphs are **code in your repo** — diffed and
+reviewed like any module, not boxes on a canvas.
+
+```text
+you      ▸ start                       (or click ▶ in the Flows panel)
+engine   ▸ scope → fan-out: 3 reviewers run in parallel    [3 live threads ↓]
+   ├ security      ▸ streaming…  → 1 finding        (open ↗)
+   ├ logic         ▸ streaming…  → clean            (open ↗)
+   └ conventions   ▸ streaming…  → 2 findings        (open ↗)
+engine   ▸ verify each → join (waits for all) → consolidate
+engine   ▸ exit → ```json { "findings": [ … ] }      ← final, copy-pasteable
+you      ▸ continue                    (resume a paused step, same chat)
+```
+
+A multi-agent **code-review** flow ships as the worked example. How this stacks up
+against LangGraph, Rivet, Mastra & the desktop chat clients → **[COMPARISON.md](COMPARISON.md)**.
+
+---
+
+## In three lines
+
+- **Orchestrate, don't just chat.** Code-defined graphs of parallel sub-agents,
+  running as a live transcript you can open into.
+- **Real machine powers, safely.** Confined file tools, developer-gated script
+  execution, an agent-driven browser, any-API fetch — each gated **off / ask / auto**.
+- **Yours end to end.** Your models, your hardware, your knowledgebase. No per-token
+  meter, no lock-in.
+
+---
+
+## Everything in the box
 
 - 🧩 **Many sessions, many agents at once** — every chat is its own session; an
   orchestrator fans work out to **stored sub-agents running concurrently**, each in
-  its own context, and collects their answers. And they're not a black box: each
-  sub-agent is a **real, openable thread** — watch it stream live in the sidebar
-  (indented under its parent), and click straight into its full transcript from the
-  tool call that spawned it.
-- 🗂️ **Real workspace tools, safely** — `Read` / `List` / `Grep` / `Write` /
-  `Edit` / `Bash` over a folder, **confined to a virtual root** (the model never
-  escapes the workspace), each tool gated **off / ask / auto** per workspace.
-- 🌐 **Agents that actually browse** — managed browser windows the agent opens,
-  reads, and navigates; it can **see** a page (screenshot to a vision model) or
-  have it **described** (forms, buttons, layout) for text-only models. Hit a login
-  or captcha? It asks *you* to handle it in the window, then carries on.
+  its own context, and collects their answers. Each sub-agent is a **real, openable
+  thread** — watch it stream live in the sidebar (indented under its parent), and
+  click straight into its full transcript from the tool call that spawned it. Failed
+  runs return a **typed next action** (resume a transport blip, or summarize instead
+  of retrying an out-of-memory one), so a long multi-agent job degrades gracefully.
+- 🗂️ **Real workspace tools, safely** — `Read` / `List` / `Find` / `Grep` / `Write`
+  / `Edit` / `Move` / `Copy` / `Delete`, plus a developer-gated `RunScript`, all
+  **confined to a virtual root** (tool paths resolve against it, with symlink-escape
+  checks), each gated **off / ask / auto** per workspace. **No free-form shell by
+  design** — the file surface is pure, portable `node:fs`, so it behaves identically
+  on every OS.
+- 🔀 **Deterministic graph orchestration** — see [above](#the-one-thing-nobody-else-does):
+  code-defined, event-driven graphs (fan-out, arrival-driven joins, node breaks) that
+  run as a chat you drive with messages.
+- 🌐 **Agents that browse** — managed browser windows the agent opens, reads, and
+  navigates; it can **see** a page (screenshot to a vision model) or have it
+  **described** (forms, buttons, layout) for text-only models. Hit a login or
+  captcha? It asks *you* to handle it in the window, then carries on.
 - 🔌 **Talk to any API** — a `Fetch` tool (method, headers, body) for hitting real
   services without a browser. Gated *ask* by default, because it can act anywhere.
-- 🎨 **Generate media** — images and video from the chat, fed back to the agent so
-  it can inspect what it made.
+- 🧰 **Native MCP client** — connect any Model Context Protocol server (stdio or
+  streamable-HTTP); its tools join the model's tool list and the permission catalog
+  like first-party ones. Three auth modes including **OAuth 2.1 + PKCE** (in-app
+  consent window, machine-encrypted tokens) and self-healing reconnect.
+- ⚡ **Built for local endpoints** — a concurrency runner with per-model caps,
+  per-service **priority pools**, and provider-affinity slot leasing keeps a local
+  vLLM endpoint from overrunning its KV cache when many agents run at once (you see a
+  "waiting for a slot" indicator instead of a stall).
+- 🎨 **Generate media** — images and video from the chat, fed back to the agent so it
+  can inspect what it made.
 - 🧠 **Memory + company knowledge** — connect an account and agents gain a shared,
-  searchable knowledgebase (hybrid sparse+dense RAG) and persistent memory.
-- 🧱 **Build it for your needs** — the plugin system makes the harness *yours*: one
-  folder under `plugins/<slug>/` adds new agent tools, settings, UI, and its own
-  system-prompt guidance — wire in your database, your internal API, your team's
-  workflow, whatever you need the agent to reach. First-party, in-tree, no install
-  ceremony. (A MySQL plugin ships as the worked example to copy.)
+  **visibility-scoped** (shared vs. private) knowledgebase (hybrid sparse+dense RAG,
+  accent-insensitive) and persistent memory.
+- 🧱 **Build it for your needs** — one folder under `plugins/<slug>/` adds agent
+  tools, settings, UI, and its own system-prompt guidance — first-party, in-tree.
+  Wire in your database, your internal API, your team's workflow. (A SQL database
+  plugin — **MySQL + Postgres** — and the MCP client ship as worked examples.)
 - 🧭 **System prompts you own** — a global default, a per-workspace message, a
   per-agent playbook, and per-plugin tool guidance — layered, with capability
   instructions always added on top.
-- ♻️ **Never loses the thread** — sessions auto-name themselves and auto-compact
+- ♻️ **Keeps long sessions going** — sessions auto-name themselves and auto-compact
   when they outgrow the context window.
-- 🔒 **Local-first & private** — most harnesses are built around a cloud provider's
-  API; this one is built for the models **you** run. Your self-hosted models, your
-  machine, no per-token meter, no vendor lock-in. Connect the cloud only when *you*
-  want shared memory and company knowledge.
+- 🔒 **Local-first & private** — built for the models **you** run: your hardware, no
+  per-token meter, no vendor lock-in. Connect the cloud only when *you* want shared
+  memory and company knowledge.
 
-All host-agnostic at the core: the **same renderer** runs as a pure web app and as
-an Electron desktop app; desktop-only powers (the file/shell tools, the browser
-fleet) light up when you run the Electron build.
+All host-agnostic at the core: the **same renderer** runs as a pure web app and as an
+Electron desktop app; desktop-only powers (the file tools, the browser fleet) light
+up when you run the Electron build.
 
 ---
 
@@ -66,91 +116,34 @@ fleet) light up when you run the Electron build.
 ```bash
 pnpm install
 pnpm dev:desktop            # web build — fast UI iteration (http://localhost:5173)
-pnpm dev:desktop:electron   # the full Electron app (file/shell tools + browser fleet)
+pnpm dev:desktop:electron   # the full Electron app (file tools + browser fleet)
 ```
 
 Then in **Settings**: pick your chat model under **Provider** (OpenAI-compatible /
-vLLM, Anthropic, or Gemini), media endpoints under **Media models**, and your
-default assistant instructions under **System message**.
+vLLM, Anthropic, or Gemini), media endpoints under **Media models**, and your default
+assistant instructions under **System message**.
 
-> File/shell tools and the browser fleet need the **Electron** app; the browser
-> build is for UI iteration (media tools work there too). vLLM is the
-> primary, battle-tested provider path — start it with
-> `--enable-auto-tool-choice --tool-call-parser …` so tools fire.
+> File tools and the browser fleet need the **Electron** app; the browser build is
+> for UI iteration (media tools work there too). vLLM is the primary, most-exercised
+> provider path — start it with `--enable-auto-tool-choice --tool-call-parser …` so
+> tools fire.
 
-### Build the desktop app
+**Packaging a desktop build** (Windows `.exe` / macOS `.dmg`) → see **[BUILDING.md](BUILDING.md)**.
 
-```bash
-pnpm dist:win    # package on a Windows host (electron-builder)
-pnpm dist:mac    # package on a macOS host (electron-builder)
-```
+---
 
-<details>
-<summary>Windows packaging notes & gotchas</summary>
+## How it compares
 
-Run packaging on a **Windows host** (cross-building from WSL needs Wine; Windows is
-the supported path). In **PowerShell**:
+The agent world is converging on graph orchestration (LangGraph, Rivet, Mastra,
+Flowise…), and the desktop side is full of local chat clients (Hermes, LM Studio,
+Jan, AnythingLLM…). Each ships only **part** of the stack — a Python library here, a
+visual canvas there, a cloud-bound chatbot builder elsewhere. **v84 brings a
+code-defined graph runtime, a chat harness, local-machine tools, and a scoped
+knowledgebase together in one all-TypeScript app pointed at the models you run** —
+neither a pure framework nor a pure chat client, but the harness in between.
 
-```powershell
-node -v                                       # Node >= 24 required
-corepack enable
-corepack prepare pnpm@10.33.0 --activate
-# If PowerShell blocks the pnpm script:
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-pnpm install                                  # downloads the Electron binary
-pnpm --filter @v84-harness/desktop dist:win
-```
-
-Output → `apps/desktop/release/`: a **portable** single-file `.exe` and an **NSIS
-installer**.
-
-- **Build scripts must be allowed.** pnpm 10 skips dependency build scripts by
-  default; `package.json` whitelists `electron`/`electron-builder`/`esbuild` via
-  `pnpm.onlyBuiltDependencies`. If a checkout already installed, run
-  `pnpm rebuild electron` (or `pnpm approve-builds`) to fetch the binary.
-- **No native rebuild** — `build.npmRebuild: false` (no native modules).
-- **Code-signing extraction needs symlink privilege** — enable **Developer Mode**
-  or run the build in an **Administrator** PowerShell. Clear a corrupt cache with
-  `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"`.
-- Artifacts are **unsigned** — SmartScreen shows "unknown publisher" on first run
-  (*More info → Run anyway*). Real signing needs a certificate.
-
-</details>
-
-<details>
-<summary>macOS packaging notes & gotchas</summary>
-
-Run packaging on a **macOS host** — dmg creation and code-signing are macOS-only
-and cannot be cross-built from WSL/Linux. Apple Silicon or Intel both work.
-
-```bash
-node -v                                       # Node >= 24 required
-corepack enable
-corepack prepare pnpm@10.33.0 --activate
-pnpm install                                  # downloads the Electron binary
-pnpm --filter @v84-harness/desktop dist:mac
-```
-
-Output → `apps/desktop/release/`: a **`.dmg`** for each architecture (`-arm64` and
-`-x64` in the filename). The `.icns` is generated from `build/icon.png` (512×512).
-
-- **No native rebuild** — `build.npmRebuild: false` (no native modules), so the
-  cross-arch (arm64 + x64) build is safe from one host.
-- **Builds are unsigned** (`mac.identity: null`) — electron-builder ad-hoc signs so
-  the app launches locally, but Gatekeeper blocks it on other Macs with *"app is
-  damaged and can't be opened"*. To open: **right-click → Open** (then *Open* in the
-  dialog), or strip the quarantine flag once:
-
-  ```bash
-  xattr -cr "/Applications/V84 Harness.app"
-  ```
-
-- **Real distribution needs a Developer ID certificate + notarization** (Apple
-  Developer account). When that's set up, drop `identity: null`, add
-  `hardenedRuntime: true` + an entitlements file, and pass notarytool credentials
-  via env — not wired up yet.
-
-</details>
+Full breakdown — feature matrix, tool-by-tool, and an honest list of the edges where
+others lead → **[COMPARISON.md](COMPARISON.md)**.
 
 ---
 
@@ -159,9 +152,9 @@ Output → `apps/desktop/release/`: a **`.dmg`** for each architecture (`-arm64`
 A pnpm-workspace monorepo:
 
 - **`apps/desktop`** — the Electron + React harness (this is the app above).
-- **`apps/knowledge`** — the remote backend it talks to when an account is
-  connected: per-user durable storage, the knowledgebase, and auth (Hono + Node +
-  MariaDB + OpenSearch).
+- **`apps/knowledge`** — the remote backend it talks to when an account is connected:
+  per-user durable storage, the knowledgebase, and auth (Hono + Node + MariaDB +
+  OpenSearch).
 
 The desktop app is **platform hosts over an agnostic core**: `core/` + the renderer
 know nothing of the platform — they read a `ctx` (config + LLM client + storage +
@@ -174,7 +167,7 @@ The repo documents itself in three layers — start here:
 
 - 🗺️ **Map** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) + the per-area docs in
   [docs/architecture/](docs/architecture/) (sessions, tools, browser, llm, storage,
-  plugins, …).
+  graph, knowledge, plugins, …).
 - 📐 **Conventions** — portable engineering rules in
   [docs/conventions/](docs/conventions/).
 - 🧾 **Decisions** — the dated ADR log in [docs/adr/](docs/adr/).
@@ -184,28 +177,16 @@ start) is [CLAUDE.md](CLAUDE.md).
 
 ---
 
-## The bigger pipeline
-
-```
-task-builder (RAG + ingest + API)
-      │  company-knowledge exposed as a permission-filtered tool
-      ▼
-  harness (this repo)  ── orchestrates sessions ──►  reviewer (quality gate)
-```
-
-A reviewer gate (`@bilikaz/code-reviewer`) runs on PRs via
-`.github/workflows/review.yml`.
-
 ## Roadmap / honest edges
 
-- **Worktree isolation** — the workspace isolation toggle is stored but not yet
-  wired; tools run in the workspace root.
-- **Remote workspaces** — the `remote` container type is scaffolded (data model +
-  tool tier); the VM runtime behind it isn't built yet.
-- **Anthropic / Gemini tool calling** — wired; the vLLM/OpenAI-compatible path is
-  the battle-tested one.
-- **`Bash` refactor** — it's too open-ended and has no real shell on Windows; a
-  narrower, cross-platform command surface is planned (see [TODO.md](TODO.md)).
+- **No visual graph editor** — graphs are code by design. If you want a drag-and-drop
+  canvas, Rivet is the tool; v84 is for graphs you keep in your repo.
+- **Worktree isolation** — the workspace isolation toggle is stored but not yet wired;
+  tools run in the workspace root.
+- **Remote workspaces** — the `remote` container type is scaffolded (data model + tool
+  tier); the VM runtime behind it isn't built yet.
+- **Anthropic / Gemini tool calling** — wired; the vLLM/OpenAI-compatible path is the
+  one we develop and test against day to day.
 
 ## License
 
