@@ -82,3 +82,17 @@ cost) and by bytes (transport/proxy limits), newest-first — and always deliver
 the newest item regardless, because being blind to what it was just given is
 the worst failure a model can have. Align per-item caps at the door with the
 window: what could never be resent shouldn't enter the transcript at all.
+
+## 7. Never reflect a model's failed output back — retry clean
+
+When a reply fails its contract — unparseable JSON, a malformed tool call — do
+not echo the broken output back in the correction. The model has no memory of
+its failed attempt, so re-sending the garbage only anchors it; worse, broken
+content in the resubmitted transcript can make the provider's chat renderer
+**400 the whole request** (some renderers `json.loads` message content),
+leaving the model unable to recover at all. Drop the bad turn from history and
+retry (a bare continue); only when the output is *structurally valid but
+incomplete* (parses, missing a field) send a targeted, content-free correction
+("missing field X"). Extract what's usable (the JSON out of prose) and forward
+that — a reply that never satisfies its contract contributes nothing, never its
+error text.

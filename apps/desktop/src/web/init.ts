@@ -9,7 +9,7 @@ import { initAppConfig } from "../core/config/app.ts";
 import { initSettings } from "../core/settings.ts";
 import { initPluginsConfig, installEnabledPlugins } from "../core/plugins/config.ts";
 import { initPluginData } from "../core/plugins/data.ts";
-import { registerPluginManifests } from "../core/plugins/boot.ts";
+import { registerPluginManifests, registerPluginGraphs, registerPluginAgents } from "../core/plugins/boot.ts";
 import { initAgents, hydrateAgents } from "../core/agents.ts";
 import { initUi } from "../core/ui.ts";
 import { initBrowser, browserFleet } from "../core/browser.ts";
@@ -68,8 +68,11 @@ export async function init(): Promise<Ctx> {
   ctx.storage = new StorageEngine(await idbRepos(), isConnected() ? remoteRepos(authedFetch) : null);
   setSessionStorage(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
 
-  // Register plugin manifests before config derives config.plugins from them.
+  // Register plugin manifests before config derives config.plugins from them; graphs + agents alongside
+  // (agents register before hydrate so hydrate can prune any earlier-seeded rows).
   registerPluginManifests();
+  registerPluginGraphs();
+  registerPluginAgents();
 
   // Construct the ctx-injected consumers, then load them all from the backend.
   initAppConfig(ctx);

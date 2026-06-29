@@ -37,7 +37,8 @@ const PROMPTS = {
       "When you learn something worth keeping — facts, decisions, the user's preferences, project details — save it with " +
       "SaveMemory (scope `private` for just this user, `public` to share with everyone). " +
       "When you need information that isn't in this conversation, search first with SearchMemory before asking or assuming: " +
-      "pass a regex as `sparse` and/or a natural-language description as `dense`. SearchMemory returns snippets + record ids; " +
+      // Param names MUST match the SearchMemory tool schema (keywords/phrase). They were sparse/dense, which the tool ignores.
+      "pass a `keywords` list (lexical) and/or a related `phrase` (semantic) — both is best. SearchMemory returns snippets + record ids; " +
       "read a full record with GetMemory, and use EditMemory / DeleteMemory to keep it current.",
   },
   agents: {

@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Bot, Pencil, Play, Plus } from "lucide-react";
 
-import { createAgent, useAgents, type Agent } from "../../core/agents.ts";
+import { createAgent, getPluginAgents, useAgents, type Agent } from "../../core/agents.ts";
+import { usePluginsConfig } from "../../core/plugins/config.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import { getContainer, useActiveContainerId } from "../../core/containers.ts";
 import { navigate, useRoute } from "../../lib/router.ts";
@@ -13,9 +14,12 @@ export function AgentsPanel() {
   const agents = useAgents();
   const activeContainerId = useActiveContainerId();
   const route = useRoute();
+  const plugins = usePluginsConfig();
   const activeType = getContainer(activeContainerId)?.type;
   const inWorkspace = activeType === "local" || activeType === "remote";
-  const visible = agents.filter((a) => inWorkspace || !a.workspace);
+  // User agents + plugin agents whose owning plugin is enabled (a runtime gate, like the plugin's tools/UI).
+  const pluginVisible = getPluginAgents().filter((a) => plugins[a.ownerPluginId ?? ""]?.enabled);
+  const visible = [...agents, ...pluginVisible].filter((a) => inWorkspace || !a.workspace);
 
   function addNew() {
     const id = createAgent(t("agents.untitled"));
@@ -57,14 +61,16 @@ export function AgentsPanel() {
               <Bot size={15} className="shrink-0" />
               <span className="truncate">{a.name || t("agents.untitled")}</span>
             </button>
-            <button
-              type="button"
-              onClick={() => navigate(`agents/${a.id}/edit`)}
-              title={t("agents.edit")}
-              className="shrink-0 rounded-md p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100"
-            >
-              <Pencil size={13} />
-            </button>
+            {!a.ownerPluginId && (
+              <button
+                type="button"
+                onClick={() => navigate(`agents/${a.id}/edit`)}
+                title={t("agents.edit")}
+                className="shrink-0 rounded-md p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100"
+              >
+                <Pencil size={13} />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => play(a)}

@@ -35,6 +35,8 @@ export class BrowserContent extends BaseEngineTool {
   async run(call: ToolCallRequest, ec: EngineCtx): Promise<EngineToolResult> {
     const fleet = browserFleet();
     if (!fleet?.available()) return { output: "the browser-window fleet is not available on this host." };
+    if (ec.signal.aborted) return { output: "cancelled by the user." }; // honor a stop before kicking off the read
+
     let args: Record<string, unknown> = {};
     try {
       args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;

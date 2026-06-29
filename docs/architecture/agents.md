@@ -14,7 +14,9 @@ lives. Decisions: [ADR-0022](../adr/0022-subagent-orchestration.md) (child sessi
 
 A stored **definition** (`core/agents.ts`, an `Agent`): `name` (its address), `description` (the
 orchestrator-facing contract), `system` (baked instructions), `user` (default task template), `workspace`
-(needs-a-workspace toggle), and `tools` (a per-agent permission **ceiling**, `AgentTools`). Agents are rows
+(needs-a-workspace toggle), and `tools` (a per-agent permission **ceiling**, `AgentTools` — a reserved `*`
+wildcard sets the ceiling for unlisted tools, so `{ "*": 0, … }` **grounds** the agent to only what it lists,
+[ADR-0070](../adr/0070-agent-tool-grounding-wildcard.md)). Agents are rows
 in the active provider's `agents` store (a reactive `Consumer`). A run is a real **session** stamped with the
 agent's `agentId` — so the agent's output contract and ceiling apply to every turn of that run.
 

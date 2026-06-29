@@ -13,6 +13,9 @@ import { errorMessage } from "../lib/errors.ts";
 // selectors (the engine reads getAgent() during a turn), async persist/hydrate that re-runs on swap.
 const log = rootLog.child("agents");
 
+// Per-tool ceiling (tool name → max permission). The reserved `*` key is the ceiling for every tool not
+// listed — set `{ "*": 0 }` to GROUND an agent to only the tools it names (or to none), so it can't reach
+// into the workspace's full toolset. Absent `*` → unlisted tools inherit (ceiling 2).
 export type AgentTools = Record<ToolName, ToolPermission>;
 export const AGENT_TOOLS_DEFAULT: AgentTools = {};
 
@@ -24,6 +27,10 @@ export interface Agent {
   user: string;
   workspace: boolean;
   tools: AgentTools;
+  // Set on plugin-provided agents (from plugins/<slug>/agents.json). These are CODE, not stored rows —
+  // they live in a runtime-gated registry (like tools/UI/graphs), resolved by getAgent and shown only
+  // while the plugin is enabled. Absent on user agents. Never persisted.
+  ownerPluginId?: string;
 }
 
 const SEED: Agent[] = [
@@ -50,6 +57,7 @@ function normalize(p: Partial<Agent>): Agent {
     user: p.user ?? "",
     workspace: p.workspace === true,
     tools: { ...AGENT_TOOLS_DEFAULT, ...(p.tools ?? {}) },
+    ownerPluginId: p.ownerPluginId,
   };
 }
 
@@ -75,7 +83,11 @@ export async function hydrateAgents(): Promise<void> {
       for (const a of SEED) await r.put(a);
       agents = SEED.map((a) => ({ ...a }));
     } else {
-      agents = rows;
+      // Drop any rows an earlier build erroneously SEEDED for a plugin (materialization is gone — plugin
+      // agents are a code registry now). Identified by the `<slug>:` id prefix; removed from the store too.
+      const stale = rows.filter((a) => pluginOwned(a.id));
+      agents = rows.filter((a) => !pluginOwned(a.id));
+      for (const a of stale) void r.remove(a.id).catch((e: unknown) => log.warn("prune_failed", { id: a.id, error: errorMessage(e) }));
     }
   } catch (err) {
     log.warn("hydrate_failed", { error: errorMessage(err) });
@@ -85,6 +97,19 @@ export async function hydrateAgents(): Promise<void> {
   }
 }
 
+// Plugin-provided agents — a runtime-gated CODE registry (not stored rows). Registered at boot from
+// plugins/<slug>/agents.json (boot.ts tags each with ownerPluginId). Resolved by getAgent and shown in the
+// Agents panel only while the owning plugin is enabled. Because they're code, agents.json is the single
+// source of truth: edits take effect on next boot, renames don't orphan, a disabled plugin contributes
+// nothing — none of the materialize-into-store hazards.
+let pluginAgents: Agent[] = [];
+export function setPluginAgents(list: Partial<Agent>[]): void {
+  pluginAgents = list.filter((p) => p.id).map(normalize);
+  reg.notify();
+}
+export const getPluginAgents = (): Agent[] => pluginAgents;
+const pluginOwned = (id: string): boolean => pluginAgents.some((a) => a.ownerPluginId && id.startsWith(`${a.ownerPluginId}:`));
+
 function persist(id: string): void {
   const a = agents.find((x) => x.id === id);
   const r = repo();
@@ -93,7 +118,10 @@ function persist(id: string): void {
 
 // ── Selectors (sync) ─────────────────────────────────────────────────────────
 export const getAgents = (): Agent[] => agents;
-export const getAgent = (id: string): Agent | undefined => agents.find((a) => a.id === id);
+// Resolves user agents first, then the plugin-agent registry — so a graph can reference its plugin's
+// reviewer agents by id even though they were never stored. Plugin agents stay OUT of getAgents() (the
+// orchestrator catalog) — they're internal to their graph.
+export const getAgent = (id: string): Agent | undefined => agents.find((a) => a.id === id) ?? pluginAgents.find((a) => a.id === id);
 export const agentsForContext = (hasWorkspace: boolean): Agent[] => agents.filter((a) => hasWorkspace || !a.workspace);
 
 // ── Commands ───────────────────────────────────────────────────────────────

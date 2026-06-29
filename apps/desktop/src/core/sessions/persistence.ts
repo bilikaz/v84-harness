@@ -20,6 +20,7 @@ export function normalize(s: Partial<Session> & { messages?: Partial<Message>[] 
     system: s.system ?? "",
     containerId: s.containerId ?? "",
     agentId: s.agentId,
+    graphId: s.graphId,
     parentId: s.parentId,
     errorKind: s.errorKind,
     tools: Array.isArray(s.tools) ? s.tools : [],

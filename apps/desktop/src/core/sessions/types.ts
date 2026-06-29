@@ -50,6 +50,9 @@ export interface Session {
   system: string;
   containerId: string; // the container (chat/local/remote) this session lives in — never null
   agentId?: string;
+  // Stamps a graph run: turns are produced by the owning graph (GraphEngine), not the model — the seam
+  // in drive() branches on this. Symmetric to agentId. See core/graph/.
+  graphId?: string;
   parentId?: string;
   // Why this session's last turn failed, if it did — drives the roster status and the resume guidance
   // (capacity = out-of-memory, not resumable). Cleared when a new turn starts or one succeeds.

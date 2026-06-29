@@ -1,0 +1,18 @@
+{
+  "start": "Peržiūrėti kodą",
+  "scopePrompt": "Kuriuos failus turėtų apimti peržiūra?",
+  "scopeAll": "Visa darbo sritis",
+  "modePrompt": "Kaip vykdyti peržiūrą?",
+  "modeSplit": "Padalyti failus tarp N recenzentų (bendra peržiūra)",
+  "modeSeveral": "Keli specializuoti recenzentai (pasirinkite)",
+  "countPrompt": "Tarp kiek recenzentų padalyti?",
+  "pickPrompt": "Kurie recenzentai turėtų dirbti?",
+  "reviewer": {
+    "general": "Bendras",
+    "logic": "Logika",
+    "security": "Saugumas",
+    "conventions": "Konvencijos",
+    "performance": "Našumas"
+  },
+  "pickRequired": "Turite pasirinkti bent vieną parinktį / recenzentą. Siųskite `continue`, kad tęstumėte procesą."
+}

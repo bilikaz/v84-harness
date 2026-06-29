@@ -1,0 +1,18 @@
+{
+  "start": "Review code",
+  "scopePrompt": "Which files should the review cover?",
+  "scopeAll": "Whole workspace",
+  "modePrompt": "How should the review run?",
+  "modeSplit": "Split the files across N reviewers (general review)",
+  "modeSeveral": "Several specialist reviewers (pick which)",
+  "countPrompt": "How many reviewers to split across?",
+  "pickPrompt": "Which reviewers should run?",
+  "reviewer": {
+    "general": "General",
+    "logic": "Logic",
+    "security": "Security",
+    "conventions": "Conventions",
+    "performance": "Performance"
+  },
+  "pickRequired": "You must pick at least one option / reviewer. Send `continue` to resume process."
+}
