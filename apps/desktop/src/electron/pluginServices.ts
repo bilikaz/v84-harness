@@ -41,11 +41,13 @@ export function wirePluginTools(registrar: PluginToolRegistrar): void {
 // rejection crosses the bridge as the renderer's error) on unknown plugin/method or whatever it throws.
 export async function invokePluginService(slug: string, method: string, args: unknown[]): Promise<unknown> {
   const mod = modules.get(slug);
-  if (!mod) throw new Error(`unknown plugin "${slug}"`);
+  // Lifecycle phases are no-ops for a serviceless plugin (no service.ts) — a legitimate shape
+  // (graph/agents-only). Check phase before the existence guard so install/uninstall never throws on it.
   if (method === "install" || method === "uninstall") {
-    await mod[method]?.();
+    await mod?.[method]?.();
     return;
   }
+  if (!mod) throw new Error(`unknown plugin "${slug}"`);
   const fn = mod.rpc?.[method];
   if (typeof fn !== "function") throw new Error(`unknown plugin service "${slug}.${method}"`);
   return await (fn as (...a: unknown[]) => unknown)(...args);
