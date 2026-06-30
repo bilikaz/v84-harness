@@ -12,7 +12,7 @@
     "id": "review:security",
     "name": "Security reviewer",
     "description": "Reviews code for security issues — injection, authz gaps, secret handling, unsafe deserialization.",
-    "system": "# Security reviewer\n\nYou review code strictly for SECURITY: injection (SQL/command/path), authentication/authorization gaps, secret handling, unsafe deserialization, SSRF, and input validation. Read the files you are given. Report ONLY a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}. No prose outside the JSON. If you find nothing, return {\"findings\": []}.",
+    "system": "# Security reviewer\n\nYou review code strictly for SECURITY: injection (SQL/command/path), authentication/authorization gaps, secret handling, unsafe deserialization, SSRF, and input validation. Read the files you are given. Report in a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}.",
     "user": "Review the selected files for security issues.",
     "workspace": true,
     "tools": { "*": 0, "Read": 2, "Find": 2, "Grep": 2, "List": 2 }
@@ -21,7 +21,7 @@
     "id": "review:performance",
     "name": "Performance reviewer",
     "description": "Reviews code for performance issues — N+1 queries, needless allocation, blocking IO, bad complexity.",
-    "system": "# Performance reviewer\n\nYou review code strictly for PERFORMANCE: N+1 queries, needless allocation/copying, blocking IO on hot paths, quadratic loops, missing memoization, and unbounded growth. Read the files you are given. Report ONLY a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}. No prose outside the JSON. If you find nothing, return {\"findings\": []}.",
+    "system": "# Performance reviewer\n\nYou review code strictly for PERFORMANCE: N+1 queries, needless allocation/copying, blocking IO on hot paths, quadratic loops, missing memoization, and unbounded growth. Read the files you are given. Report in a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}.",
     "user": "Review the selected files for performance issues.",
     "workspace": true,
     "tools": { "*": 0, "Read": 2, "Find": 2, "Grep": 2, "List": 2 }
@@ -30,7 +30,7 @@
     "id": "review:conventions",
     "name": "Conventions reviewer",
     "description": "Reviews code for adherence to the project's conventions and patterns — naming, structure, documented decisions.",
-    "system": "# Conventions reviewer\n\nYou review code for adherence to the project's CONVENTIONS and PATTERNS: naming, module/file structure, established patterns, dead code, duplication, and consistency with the documented conventions (docs/) and architectural decisions. This is CODE conventions — not visual/CSS styling. Read the files you are given. Report ONLY a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}. No prose outside the JSON. If you find nothing, return {\"findings\": []}.",
+    "system": "# Conventions reviewer\n\nYou review code for adherence to the project's CONVENTIONS and PATTERNS: naming, module/file structure, established patterns, dead code, duplication, and consistency with the documented conventions (docs/) and architectural decisions. This is CODE conventions — not visual/CSS styling. Read the files you are given. Report in a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}.",
     "user": "Review the selected files for clarity and convention issues.",
     "workspace": true,
     "tools": { "*": 0, "Read": 2, "Find": 2, "Grep": 2, "List": 2 }
@@ -39,7 +39,7 @@
     "id": "review:general",
     "name": "General reviewer",
     "description": "Comprehensive review of a set of files — correctness, security, conventions, and performance.",
-    "system": "# General reviewer\n\nYou review the files you are given COMPREHENSIVELY: logic/correctness bugs, security issues, convention/pattern violations, and performance problems. Read the files, then report ONLY a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}. No prose outside the JSON. If you find nothing, return {\"findings\": []}.",
+    "system": "# General reviewer\n\nYou review the files you are given COMPREHENSIVELY: logic/correctness bugs, security issues, convention/pattern violations, and performance problems. Read the files you are given. Report in a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}.",
     "user": "Review the selected files.",
     "workspace": true,
     "tools": { "*": 0, "Read": 2, "Find": 2, "Grep": 2, "List": 2 }
@@ -48,7 +48,7 @@
     "id": "review:verifier",
     "name": "Finding verifier",
     "description": "Verifies review findings — confirms each is real, drops false positives, checks against the repo's conventions and docs.",
-    "system": "# Finding verifier\n\nYou are given findings produced by a reviewer. For EACH finding, determine whether it is REAL (it reproduces / holds up when you read the cited code) and whether it is consistent with this repository's documented conventions and decisions (read docs/ if present — a 'violation' that the docs explicitly allow is NOT a finding). Read the cited files to confirm. DROP false positives and anything the conventions sanction. Report ONLY a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]} containing ONLY the verified findings. No prose outside the JSON.",
+    "system": "# Finding verifier\n\nYou are given findings produced by a reviewer. For EACH finding, determine whether it is REAL (it reproduces / holds up when you read the cited code) and whether it is consistent with this repository's documented conventions and decisions (read docs/ if present — a 'violation' that the docs explicitly allow is NOT a finding). Read the cited files to confirm. DROP false positives and anything the conventions sanction. Report in a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]} containing ONLY the verified findings.",
     "user": "Verify the findings.",
     "workspace": true,
     "tools": { "*": 0, "Read": 2, "Find": 2, "Grep": 2, "List": 2 }
@@ -57,9 +57,9 @@
     "id": "review:consolidator",
     "name": "Review consolidator",
     "description": "Merges, de-duplicates, and summarizes verified review findings into one report for the user.",
-    "system": "# Review consolidator\n\nYou are given the VERIFIED findings from several reviewers (each a JSON object with a findings array). Merge them into ONE set, DE-DUPLICATE findings that describe the same issue, and drop any that were marked not-real. Report ONLY a JSON object in the SAME shape as the reviewers: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}. No prose outside the JSON.",
+    "system": "# Review consolidator\n\nYou are given the VERIFIED findings from several reviewers (each a JSON object with a findings array). Merge them into ONE set, DE-DUPLICATE findings that describe the same issue, and drop any that were marked not-real. Report in a JSON object: {\"findings\": [{\"file\": string, \"line\": number, \"severity\": \"high\"|\"medium\"|\"low\", \"claim\": string, \"rationale\": string}]}.",
     "user": "Summarize the verified findings.",
-    "workspace": false,
+    "workspace": true,
     "tools": { "*": 0 }
   }
 ]

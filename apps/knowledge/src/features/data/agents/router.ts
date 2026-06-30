@@ -26,9 +26,8 @@ agentsRouter.put("/:id", async (c) => {
     description: b.description ?? null,
     system: b.system ?? null,
     user: b.user ?? null,
-    requiresWorkspace: b.requiresWorkspace ?? null,
-    permissions: b.permissions ?? {},
-    placement: String(b.placement ?? "remote"),
+    workspace: !!b.workspace,
+    tools: b.tools ?? {},
   });
   return c.body(null, 204);
 });

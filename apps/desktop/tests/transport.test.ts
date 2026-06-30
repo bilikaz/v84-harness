@@ -57,6 +57,17 @@ describe("withRetry", () => {
     await expect(drain(withRetry(make, controller.signal))).rejects.toThrow();
   });
 
+  it("aborting during the retry backoff rejects cleanly (AbortError), not a TDZ ReferenceError", async () => {
+    // Regression: sleep()'s abort() cleared the timer `t` before its declaration, so an abort landing while a
+    // retry backoff was pending threw ReferenceError (TDZ) instead of the intended AbortError.
+    const controller = new AbortController();
+    const make = makeOnce([{ type: "done" }], new HttpError(503, "503 Service Unavailable", 50));
+    const gen = withRetry(make, controller.signal);
+    expect((await gen.next()).value).toMatchObject({ type: "retry" }); // first attempt failed → retry event, sleep pending
+    controller.abort();
+    await expect(gen.next()).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("exhausts the retry budget into a terminal error event", async () => {
     // Always-failing retryable stream: 4 attempts (1 + 3 retries), then error.
     const make = async function* (): AsyncGenerator<StreamEvent> {

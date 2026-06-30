@@ -28,5 +28,6 @@ export function register(...entries: Contribution[]): void {
 export function contributionsFor(region: Region): Contribution[] {
   return contributions
     .filter((c) => c.region === region)
+    // Array.sort is stable (ES2019+); equal-order contributions keep registration order.
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }

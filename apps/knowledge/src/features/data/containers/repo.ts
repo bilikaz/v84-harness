@@ -12,7 +12,6 @@ export interface Container {
   name: string;
   permissions: unknown;
   config: unknown;
-  placement: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -55,7 +54,6 @@ export class ContainersRepo {
       name: c.name,
       permissions: JSON.stringify(c.permissions ?? {}),
       config: JSON.stringify(c.config ?? {}),
-      placement: c.placement,
     };
     await this.db
       .insertInto("containers")
@@ -82,7 +80,6 @@ function toEntity(row: Selectable<ContainersTable>): Container {
     name: row.name,
     permissions: JSON.parse(row.permissions),
     config: JSON.parse(row.config),
-    placement: row.placement,
     createdAt: row.created_at.getTime(),
     updatedAt: row.updated_at.getTime(),
   };

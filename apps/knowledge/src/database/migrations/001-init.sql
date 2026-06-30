@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS containers (
   name        VARCHAR(255)    NOT NULL,
   permissions JSON            NOT NULL,
   config      JSON            NOT NULL,
-  placement   VARCHAR(16)     NOT NULL, -- local | remote
   created_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at  DATETIME(3)         NULL,
@@ -50,10 +49,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   container_id VARCHAR(36)     NOT NULL,
   parent_id    VARCHAR(36)         NULL, -- sub-agent run's parent session
   agent_id     VARCHAR(36)         NULL,
+  graph_id     VARCHAR(64)         NULL, -- the graph this session runs (plugin graph id); null for plain sessions
   title        VARCHAR(512)    NOT NULL,
   system       MEDIUMTEXT          NULL,
   tools        JSON            NOT NULL, -- SessionTool[]
   used_tokens  INT                 NULL,
+  last_model   VARCHAR(255)        NULL, -- model that last answered (composer label)
+  error_kind   VARCHAR(32)         NULL, -- last turn's failure class: capacity | transport | other
+  bytes        BIGINT UNSIGNED     NULL, -- approx transcript size for the storage meter
   unread       TINYINT(1)      NOT NULL DEFAULT 0,
   created_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -76,6 +79,7 @@ CREATE TABLE IF NOT EXISTS messages (
   child_session_ids JSON                NULL,
   images            JSON                NULL, -- media:<id> refs (blobs live in the media table)
   videos            JSON                NULL,
+  files             JSON                NULL, -- FileAttachment[] (inline, not externalized)
   summary           TINYINT(1)          NULL,
   hidden            TINYINT(1)          NULL,
   created_at        DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -110,9 +114,8 @@ CREATE TABLE IF NOT EXISTS agents (
   description        TEXT                NULL,
   system             MEDIUMTEXT          NULL,
   `user`             MEDIUMTEXT          NULL, -- the run template
-  requires_workspace VARCHAR(16)         NULL, -- local | remote | null (chat-only)
-  permissions        JSON            NOT NULL,
-  placement          VARCHAR(16)     NOT NULL,
+  workspace          TINYINT(1)      NOT NULL DEFAULT 0, -- workspace-bound? (harness Agent.workspace)
+  tools              JSON            NOT NULL, -- AgentTools — per-tool ceiling map (harness Agent.tools)
   created_at         DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at         DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at         DATETIME(3)         NULL,

@@ -1,4 +1,5 @@
 // Minimal SSE line parser. Yields decoded "data:" lines from a fetch Response body.
+// Only data: lines matter — provider payloads are self-describing JSON; event:/id:/retry: are ignored by design.
 export async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerator<string> {
   if (!response.body) throw new Error("No response body");
   const reader = response.body.getReader();

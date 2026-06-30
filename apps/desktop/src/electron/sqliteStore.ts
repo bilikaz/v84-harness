@@ -64,9 +64,17 @@ export function execData(repo: string, method: string, args: unknown[]): unknown
     if (method === "replaceForSession") {
       const sid = args[0] as string;
       const msgs = args[1] as Entity[];
-      d.prepare("DELETE FROM messages WHERE session_id = ?").run(sid);
-      const ins = d.prepare("INSERT INTO messages (id, session_id, data) VALUES (?, ?, ?)");
-      for (const m of msgs) ins.run(m.id, sid, JSON.stringify(m));
+      // Atomic: a crash between the DELETE and the INSERTs would otherwise wipe the session's history.
+      d.exec("BEGIN");
+      try {
+        d.prepare("DELETE FROM messages WHERE session_id = ?").run(sid);
+        const ins = d.prepare("INSERT INTO messages (id, session_id, data) VALUES (?, ?, ?)");
+        for (const m of msgs) ins.run(m.id, sid, JSON.stringify(m));
+        d.exec("COMMIT");
+      } catch (e) {
+        d.exec("ROLLBACK");
+        throw e;
+      }
       return;
     }
   }

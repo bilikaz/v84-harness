@@ -11,6 +11,7 @@ export async function downscaleImage(
   if (!Number.isFinite(maxDim) || maxDim <= 0) return null;
   if (mime === "image/gif" || !parseDataUrl(url)) return null;
   try {
+    // fetch(dataURL) decodes the base64 once in native code — the idiomatic path to a Blob for createImageBitmap.
     const blob = await (await fetch(url)).blob();
     const bmp = await createImageBitmap(blob);
     const scale = maxDim / Math.max(bmp.width, bmp.height);

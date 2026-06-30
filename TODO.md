@@ -4,6 +4,36 @@ Deferred engineering tasks not yet scheduled. Architectural gaps tied to a
 specific decision live in the ADR "Needs review" table
 ([docs/adr/README.md](docs/adr/README.md)); this file is for actionable work.
 
+## Persist sub-agent transcripts (graph children reload empty) — KNOWN ISSUE, next up
+
+A graph run's child sub-agent sessions (the review heads) **lose their transcript on
+an app restart**: only the seeded `Read` tool calls survive, while the model's actual
+output (the findings JSON) is gone — the child reloads as an empty shell, sitting idle.
+With the graph→session binding now durable
+([ADR-0071](docs/adr/0071-remote-mirrors-harness-shapes.md) restored `graphId`), this is
+the next layer down: the children's messages aren't persisted (or not at their turn
+completion), so they come back blank.
+
+Two coupled gaps, and together they are the visible symptom — the parent's node cards
+(`review` ×N) spin **forever** while idle, and `continue` reports "nothing to continue":
+
+1. **Child transcripts aren't persisted.** Persist a sub-agent run's messages the way a
+   foreground session's are (turn-completion persist,
+   [ADR-0020](docs/adr/0020-persist-at-turn-completion.md)), so a reopened child shows its
+   findings instead of an empty shell.
+2. **Graph runtime state isn't persisted** — the `runs` map in
+   [core/graph/engine.ts](apps/desktop/src/core/graph/engine.ts) is in-memory ("nothing is
+   persisted; an app restart does not resume"). So even with the children intact, the
+   orchestrator can't pick the run back up.
+
+Minimum viable fix (decouples the confusing UI from the hard part): when a graph session
+loads with no live run, **reconcile dangling node cards** — an interrupted in-flight
+tool-call card should render as interrupted, not a perpetual spinner — so the run reads as
+"stopped, send `start`" rather than "still working." The full fix (true mid-run resume)
+needs run-cursor + join-state persistence and is a larger piece (own design pass + ADR).
+Relates to [ADR-0067](docs/adr/0067-graph-orchestration-engine.md) /
+[ADR-0069](docs/adr/0069-message-driven-graph-control.md).
+
 ## Incremental message persistence
 
 `persistSession` rewrites the **whole transcript** on every turn —

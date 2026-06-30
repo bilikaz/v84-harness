@@ -32,7 +32,6 @@ containersRouter.put("/:id", async (c) => {
     name: String(body.name ?? ""),
     permissions: body.permissions ?? {},
     config: body.config ?? {},
-    placement: String(body.placement ?? "remote"),
   });
   return c.body(null, 204);
 });

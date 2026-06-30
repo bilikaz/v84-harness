@@ -21,14 +21,16 @@ export function mountRoutes(app: Hono, scanned: RegistryState): void {
     return c.json({ error: "internal error" }, 500);
   });
 
-  // CORS — the harness renderer + web clients call this from another origin. Auth is Bearer-only
-  // (no cookies), so we reflect the origin WITHOUT credentials: there is no ambient cookie/credential
-  // for a foreign origin to ride on, and `*` + credentials is a spec violation browsers reject anyway.
-  // Add an explicit origin allow-list here once the deployment origins are fixed.
+  // CORS — INTENTIONALLY reflects EVERY origin (allow-all). Clients call from many origins: the Electron
+  // renderer is http://localhost:5173 in dev and a file:// / app origin when packaged, plus web clients.
+  // Safe to be open because auth is Bearer-only (no cookies) — there is no ambient credential a foreign
+  // origin could ride on, and `*` + credentials is a spec violation browsers reject anyway.
+  // DO NOT narrow this to a hardcoded allow-list without enumerating every real client origin (incl. the
+  // dev localhost) — tightening it to one domain is exactly what broke local dev last time.
   app.use(
     "/*",
     cors({
-      origin: (origin) => origin ?? "*",
+      origin: (origin) => origin ?? "*", // reflect the caller's origin; "*" only for the no-Origin case
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "X-Device-Name"],
       maxAge: 600,

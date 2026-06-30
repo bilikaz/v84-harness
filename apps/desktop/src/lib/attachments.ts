@@ -35,6 +35,7 @@ export function readAttachments(
                 resolve();
               });
             };
+            r.onerror = () => resolve(); // a failed read must settle, or Promise.all hangs forever
             r.readAsDataURL(f);
           } else if (f.type.startsWith("video/")) {
             if (f.size > limits.videoMaxBytes) {
@@ -45,6 +46,7 @@ export function readAttachments(
               video.push({ url: String(r.result), mime: f.type, name: f.name });
               resolve();
             };
+            r.onerror = () => resolve(); // a failed read must settle, or Promise.all hangs forever
             r.readAsDataURL(f);
           } else {
             r.onload = () => {

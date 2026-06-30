@@ -13,7 +13,9 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/knowledge/package.json ./apps/knowledge/
 
-RUN pnpm install --frozen-lockfile --filter @v84-harness/knowledge...
+# ELECTRON_SKIP_BINARY_DOWNLOAD: the workspace-root postinstall does `require('electron')`; this
+# backend-only install excludes the desktop package, so skip it (the script guards on this var).
+RUN ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm install --frozen-lockfile --filter @v84-harness/knowledge...
 
 # Include source so the image boots standalone; compose bind-mounts override it.
 COPY apps/knowledge ./apps/knowledge
