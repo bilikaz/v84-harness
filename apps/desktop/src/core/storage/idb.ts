@@ -62,7 +62,16 @@ export async function idbRepos(): Promise<StorageRepos> {
   }
 
   const messages: MessageRepo = {
+    // getAll on the sessionId index returns rows ordered by index key then PRIMARY KEY (id). Message
+    // ids are ULIDs (creation-sortable), so this is creation order — the property incremental append
+    // relies on (no whole-array rewrite to re-impose order).
     listBySession: (sid) => wrap(store("messages", "readonly").index("sessionId").getAll(sid) as IDBRequest<Message[]>),
+    put: async (sid, m) => {
+      await wrap(store("messages", "readwrite").put({ ...m, sessionId: sid })); // sessionId backs the index; upsert by id
+    },
+    remove: async (id) => {
+      await wrap(store("messages", "readwrite").delete(id));
+    },
     replaceForSession: async (sid, msgs) => {
       const os = store("messages", "readwrite");
       const keys = await wrap(os.index("sessionId").getAllKeys(sid) as IDBRequest<IDBValidKey[]>);
@@ -111,5 +120,11 @@ export async function idbRepos(): Promise<StorageRepos> {
     agents: crud<Agent>("agents"),
     settings,
     pluginData,
+    wipe: async () => {
+      const names = [...db.objectStoreNames];
+      const tx = db.transaction(names, "readwrite");
+      for (const n of names) tx.objectStore(n).clear();
+      await txDone(tx);
+    },
   };
 }

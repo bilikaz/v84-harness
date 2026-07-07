@@ -180,7 +180,7 @@ export async function collectAgentContent(parentSid: string, ids: unknown[]): Pr
   const answers = resolved.map(({ id, child }) => {
     if (!child) return `agent (id: ${String(id)}): no sub-agent #${String(id)}.`;
     const alias = aliasOf(child);
-    if (child.errorKind) return `agent (id: ${alias}): ${failureNote(alias, child.title, child.errorKind, lastAgentText(child.id))}`;
+    if (child.meta.errorKind) return `agent (id: ${alias}): ${failureNote(alias, child.title, child.meta.errorKind, lastAgentText(child.id))}`;
     return `agent (id: ${alias}): ${cap(lastAgentText(child.id)) || "(the sub-agent returned no text)"}`;
   });
   return { output: cap(answers.join("\n\n")), childIds };
@@ -217,8 +217,8 @@ export function resolveChild(parentSid: string, id: unknown): Session | undefine
 // A sub-agent's current state, derived live: streaming → working; a stored errorKind → failed/out-of-memory.
 export function agentStatus(s: Session): "working" | "out of memory" | "failed" | "idle" {
   if (getStreamingIds().has(s.id)) return "working";
-  if (s.errorKind === "capacity") return "out of memory";
-  if (s.errorKind) return "failed";
+  if (s.meta.errorKind === "capacity") return "out of memory";
+  if (s.meta.errorKind) return "failed";
   return "idle";
 }
 
@@ -227,7 +227,7 @@ export function memoryPct(s: Session): number | null {
   const cfg = resolveMain();
   const limit = cfg ? contextLimit(cfg) : 0;
   if (!limit) return null;
-  return Math.min(100, Math.round(((s.usedTokens ?? 0) / limit) * 100));
+  return Math.min(100, Math.round(((s.meta.usedTokens ?? 0) / limit) * 100));
 }
 
 // The roster line for one agent: id, name, status, memory, and the task it was given (a label, NOT its

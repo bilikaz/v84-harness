@@ -33,6 +33,8 @@ function crud<T>(repo: string): CrudRepo<T> {
 export function sqliteRepos(): StorageRepos {
   const messages: MessageRepo = {
     listBySession: (sid) => exec("messages", "listBySession", [sid]) as Promise<Message[]>,
+    put: (sid, m) => exec("messages", "put", [sid, m]) as Promise<void>,
+    remove: (id) => exec("messages", "remove", [id]) as Promise<void>,
     replaceForSession: (sid, m) => exec("messages", "replaceForSession", [sid, m]) as Promise<void>,
   };
   const media: MediaRepo = {
@@ -59,5 +61,6 @@ export function sqliteRepos(): StorageRepos {
     agents: crud<Agent>("agents"),
     settings,
     pluginData,
+    wipe: () => exec("__system", "wipe", []) as Promise<void>,
   };
 }

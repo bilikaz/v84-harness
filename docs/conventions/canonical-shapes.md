@@ -35,6 +35,11 @@ boundary. The fix is never a better translator; it's making the shapes agree.
    old-shape readers forever is the translation layer sneaking back in;
    resetting (with the owner's sign-off) is often cheaper than migrating
    low-value local state. Either way the decision is recorded, not implied.
+   The mechanism for the reset path is a **data-version stamp**: store a
+   version with the data and, on load, wipe + re-seed when the stamp is older
+   than the code's — so a breaking shape change is a one-line version bump, not
+   scattered back-compat readers. An unstamped store is grandfathered when the
+   change is forward-compatible (unknown fields drop, missing ones default).
 6. **Pick one canonical source; mind lossy backends and guard the round-trip.**
    When one canonical shape spans interchangeable backends, name a single source
    of truth and make every backend mirror it — backends adopt the canonical
@@ -50,6 +55,18 @@ boundary. The fix is never a better translator; it's making the shapes agree.
    us: `graphId` / agent `tools` / message `files` persisted locally (blobs) and
    were silently lost on the remote (typed columns) — see
    [ADR-0071](../adr/0071-remote-mirrors-harness-shapes.md).
+7. **Group churning, never-queried fields into one bag — guarded as one field.**
+   When a cohesive set of fields is pure round-trip state (written every cycle,
+   never filtered or indexed), give them ONE sub-object on the canonical shape and
+   let the typed backend store it as a single opaque JSON value, not a column each.
+   It's still one shape end to end — both sides carry the same bag — so the parity
+   check (rule 6) guards the bag as a single field; its contents stay unguarded, so
+   a new flag in the bag needs no schema change. Reserve this for runtime state:
+   identity/queryable fields still earn their own columns. The opposite split — an
+   *identity* field buried in the bag — loses the index you'll want. Example: a
+   session's per-turn `usedTokens`/`lastModel`/`errorKind`/… ride in one `meta`
+   object ([ADR-0074](../adr/0074-session-identity-vs-runtime.md)), while
+   `containerId`/`parentId` stay columns.
 
 ## Example
 

@@ -138,7 +138,7 @@ export const CONFIG_DEFAULTS: ConfigApp = {
     maxSteps: 50,
     titleMaxTokens: 4096,
     compactThinkingBudget: 2048,
-    asyncAgents: false,
+    asyncAgents: true,
     asyncDelivery: "nudge",
     runnerTtlMs: 10 * 60 * 1000,
     kvProtectThreshold: 16_000,

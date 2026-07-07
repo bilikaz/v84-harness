@@ -52,9 +52,10 @@ const PROMPTS = {
     // Appended ONLY when async delivery is on; in sync mode RunAgent blocks and returns the answer, so there's
     // nothing to "not wait" for.
     async:
-      "Sub-agent runs are asynchronous: RunAgent returns as soon as they've started, so don't wait or stall for " +
-      "them — carry on with other work. When one finishes you'll get a [runtime] notice telling you to read its " +
-      "result with getAgentContent.",
+      "Delegation is asynchronous: RunAgent, AskAgent and ResumeAgent all return as soon as the agents start — the " +
+      "reply is NOT inline. Don't wait, stall, or poll ActiveAgents for them: if you have other work carry on, and " +
+      "if you have nothing else to do just END YOUR TURN. When each finishes you'll get a [runtime] notice telling " +
+      "you to read its result with getAgentContent.",
   },
   chatTitle: {
     user:

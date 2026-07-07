@@ -1,3 +1,7 @@
+-- Canonical schema (v0.2.0). The single source of truth for a fresh DB — earlier incremental migrations
+-- were folded in here once a clean wipe replaced the upgrade path. The runner (schema_migrations) is kept:
+-- the next NON-breaking change lands as 002-… once live data can no longer be wiped.
+
 -- users: login identities
 CREATE TABLE IF NOT EXISTS users (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -12,6 +16,9 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   id                 CHAR(36)        NOT NULL PRIMARY KEY,
   user_id            BIGINT UNSIGNED NOT NULL,
   refresh_token_hash CHAR(64)        NOT NULL,
+  -- The hash just rotated OUT: presenting an already-rotated token (only an attacker or a stale client
+  -- still holds one) is recognised as reuse and revokes the whole session. Null for never-rotated sessions.
+  prev_refresh_token_hash CHAR(64)   NULL,
   device_name        VARCHAR(255)        NULL,
   ip_address         VARCHAR(45)         NULL,
   expires_at         DATETIME(3)     NOT NULL,
@@ -53,11 +60,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   title        VARCHAR(512)    NOT NULL,
   system       MEDIUMTEXT          NULL,
   tools        JSON            NOT NULL, -- SessionTool[]
-  used_tokens  INT                 NULL,
-  last_model   VARCHAR(255)        NULL, -- model that last answered (composer label)
-  error_kind   VARCHAR(32)         NULL, -- last turn's failure class: capacity | transport | other
-  bytes        BIGINT UNSIGNED     NULL, -- approx transcript size for the storage meter
-  unread       TINYINT(1)      NOT NULL DEFAULT 0,
+  -- Identity columns above are constants (placement/structure). The per-turn CHURNING fields —
+  -- usedTokens / lastModel / errorKind / bytes / unread / delivered — are grouped into this one JSON
+  -- bag (the repo packs/unpacks; the API/client shape stays flat). A new runtime flag needs no migration.
+  meta_data    JSON                NULL,
   created_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at   DATETIME(3)         NULL,

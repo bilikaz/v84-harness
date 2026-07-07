@@ -10,13 +10,13 @@ describe("setUsage", () => {
     setUsage(sid, 10_000 + 500);
     setUsage(sid, 10_600 + 300);
     setUsage(sid, 11_000 + 800);
-    expect(getActive().usedTokens).toBe(11_800);
+    expect(getActive().meta.usedTokens).toBe(11_800);
   });
 
   it("ignores empty usage so a missing report keeps the last reading", () => {
     const sid = getActive().id;
     setUsage(sid, 5_000);
     setUsage(sid, 0);
-    expect(getActive().usedTokens).toBe(5_000);
+    expect(getActive().meta.usedTokens).toBe(5_000);
   });
 });

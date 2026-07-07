@@ -45,6 +45,12 @@ export function execData(repo: string, method: string, args: unknown[]): unknown
   if (!db) throw new Error("sqlite store not open");
   const d = db;
 
+  // Clear every table — the data-version gate's breaking-change reset (core/storage/version.ts).
+  if (repo === "__system" && method === "wipe") {
+    for (const t of [...ID_TABLES, ...SESSION_TABLES, "settings", "plugin_data"]) d.exec(`DELETE FROM ${t}`);
+    return;
+  }
+
   if (ID_TABLES.includes(repo)) {
     if (method === "list") return parseAll(d.prepare(`SELECT data FROM ${repo}`).all());
     if (method === "get") return parseOne(d.prepare(`SELECT data FROM ${repo} WHERE id = ?`).get(args[0]));
@@ -60,7 +66,21 @@ export function execData(repo: string, method: string, args: unknown[]): unknown
   }
 
   if (repo === "messages") {
+    // ORDER BY rowid = insertion order. UPSERT (below) keeps the rowid on update, so a re-commit of an
+    // existing message never reshuffles the transcript; new messages append in commit (creation) order.
     if (method === "listBySession") return parseAll(d.prepare("SELECT data FROM messages WHERE session_id = ? ORDER BY rowid").all(args[0]));
+    if (method === "put") {
+      const sid = args[0] as string;
+      const m = args[1] as Entity;
+      // ON CONFLICT (not INSERT OR REPLACE) so an update keeps the original rowid — REPLACE would
+      // delete+reinsert and jump the row to the end, breaking transcript order on an in-flight→finished upsert.
+      d.prepare("INSERT INTO messages (id, session_id, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET session_id = excluded.session_id, data = excluded.data").run(m.id, sid, JSON.stringify(m));
+      return;
+    }
+    if (method === "remove") {
+      d.prepare("DELETE FROM messages WHERE id = ?").run(args[0]);
+      return;
+    }
     if (method === "replaceForSession") {
       const sid = args[0] as string;
       const msgs = args[1] as Entity[];

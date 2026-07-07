@@ -59,6 +59,14 @@ export function remoteRepos(fetch: AuthedFetch): StorageRepos {
       if (!res.ok) throw await httpError(res, "remote list messages");
       return ((await res.json()) as { messages?: Message[] }).messages ?? [];
     },
+    async put(sid, m) {
+      const res = await send(`/messages/${enc(m.id)}`, "PUT", { ...m, sessionId: sid }); // upsert one message
+      if (!res.ok) throw await httpError(res, "remote put message");
+    },
+    async remove(id) {
+      const res = await send(`/messages/${enc(id)}`, "DELETE"); // server soft-deletes
+      if (!res.ok && res.status !== 404) throw await httpError(res, "remote del message");
+    },
     async replaceForSession(sid, msgs) {
       const res = await send("/messages", "PUT", { sessionId: sid, messages: msgs });
       if (!res.ok) throw await httpError(res, "remote put messages");
@@ -127,5 +135,8 @@ export function remoteRepos(fetch: AuthedFetch): StorageRepos {
     agents: crud<Agent>("/agents", "agents", (r) => r as Agent),
     settings,
     pluginData,
+    // The data-version gate only ever wipes the LOCAL provider; wiping the account's server data is not
+    // a client operation, so this refuses rather than mass-deleting a connected account by accident.
+    wipe: () => Promise.reject(new Error("remote storage is not wipeable from the client")),
   };
 }

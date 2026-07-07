@@ -13,7 +13,7 @@ import { type ToolName, type ToolPermission, type ToolResult } from "../tools/ty
 import { pt, deliveryNudge } from "../prompts.ts";
 import { baseSystemFor } from "./system.ts";
 import { engineToolSchemas, isEngineTool, runEngineTool } from "../tools/engine/dispatch.ts";
-import { GET_AGENT_CONTENT, RUN_AGENT, aliasOf, collectAgentContent, lastAgentText } from "../tools/helpers/agents/catalog.ts";
+import { GET_AGENT_CONTENT, RUN_AGENT, aliasOf, childrenOf, collectAgentContent, lastAgentText } from "../tools/helpers/agents/catalog.ts";
 import type { EngineCtx } from "../tools/engine/base.ts";
 import { browserFleet } from "../browser.ts";
 import { enabledPluginPrompts } from "../plugins/config.ts";
@@ -28,6 +28,7 @@ import {
   getStreamingIds,
   isFull,
   removeToolCall,
+  setDelivered,
   setLastSystem,
   setUserPaused,
   toChatMessages,
@@ -148,7 +149,7 @@ export class SessionEngine {
       };
       const offEnd = bus.on("turn:end", (e) => {
         if (e.sessionId !== childSid || e.aborted) return; // not ours, or a pause — keep waiting
-        finish({ text: lastAgentText(childSid), errored: e.errored, aborted: false, errorKind: e.errored ? getSession(childSid)?.errorKind : undefined });
+        finish({ text: lastAgentText(childSid), errored: e.errored, aborted: false, errorKind: e.errored ? getSession(childSid)?.meta.errorKind : undefined });
       });
       const onAbort = (): void => {
         this.stopTurn(childSid);
@@ -209,8 +210,41 @@ export class SessionEngine {
     }
     const call: ToolCallRequest = { id: crypto.randomUUID(), name: GET_AGENT_CONTENT, arguments: JSON.stringify({ ids: aliases }), cwd: "" };
     bus.emit("turn:deliver", { sessionId: parentSid, call, output, childSessionIds: childIds.length ? childIds : undefined });
+    for (const cid of childIds) setDelivered(cid, true); // their result is now in the parent's transcript — a boot won't re-deliver
     const result = await this.drive(parentSid, {}, { firstExchange: false, autoName: false, userText: "" });
     if (result.errored) await this.sendTo(parentSid, deliveryNudge(aliases), { autoName: false }); // provider rejected the fabricated history
+  }
+
+  // Boot recovery for async sub-agent runs an app restart interrupted. The in-memory delivery queue and
+  // the awaitSettled subscriptions don't survive a reload, so re-derive each parent's outstanding work
+  // from durable state: of the children its committed history knows about (childSessionIds on a spawn
+  // ack / prior delivery), the ones not yet delivered (the durable `delivered` flag). A settled one is
+  // re-queued for delivery; an unfinished one is resumed and delivers itself on its next turn:end.
+  // Content is always read from the children's own transcripts — never reconstructed here. Fire-and-
+  // forget from init after hydrate; sync runs (which block the parent turn) have nothing to re-pump.
+  async reconcile(): Promise<void> {
+    if (!getAppConfig().session.asyncAgents) return;
+    const parents = new Set(getSessions().map((s) => s.parentId).filter((p): p is string => !!p));
+    for (const parentSid of parents) {
+      const parent = getSession(parentSid);
+      if (!parent || parent.graphId) continue; // graph orchestrators drive their own heads (graph engine owns resume)
+      await ensureLoaded(parentSid);
+      const known = new Set<string>();
+      for (const m of getSession(parentSid)?.messages ?? []) for (const id of m.childSessionIds ?? []) known.add(id);
+      for (const child of childrenOf(parentSid)) {
+        if (child.meta.delivered || !known.has(child.id)) continue; // already in the parent, or an orphan we can't place
+        await ensureLoaded(child.id);
+        const loaded = getSession(child.id);
+        if (!loaded) continue;
+        if (isSettled(loaded)) {
+          llmLog.debug("reconcile:deliver", { parentSid, childSid: child.id, alias: aliasOf(child) });
+          this.onChildSettled(parentSid, child.id, aliasOf(child)); // enqueue + pump (parent is idle on boot)
+        } else {
+          llmLog.debug("reconcile:resume", { parentSid, childSid: child.id, alias: aliasOf(child) });
+          void this.resume(child.id); // unfinished — re-drive; its turn:end delivers up to the parent
+        }
+      }
+    }
   }
 
   compact(sid: string): Promise<void> {
@@ -338,7 +372,7 @@ export class SessionEngine {
     // user Stop while queued (aborted — clean exit) or an empty pool (no models for this role) —
     // the latter falls back to the primary `main` target so a child still runs un-leased.
     const role = isChild ? "subAgent" : "main";
-    const lease = await this.ctx.runner.acquire(role, sid, getSession(sid)?.usedTokens ?? 0, { signal: controller.signal });
+    const lease = await this.ctx.runner.acquire(role, sid, getSession(sid)?.meta.usedTokens ?? 0, { signal: controller.signal });
     if (!lease && controller.signal.aborted) {
       this.inflight.delete(sid);
       bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: false, firstExchange, autoName, userText });
@@ -618,6 +652,16 @@ export class SessionEngine {
       }),
     );
   }
+}
+
+// A child has reached a terminal, deliverable state: a stored failure (errorKind — delivered as a note)
+// or a final answer (its last committed message is an assistant with no pending tool calls). Anything
+// else (last message a user task or a tool result) is an interrupted run that needs resuming, not
+// delivering. Derived from the durable transcript — no streaming/pause signal (none survive a reload).
+function isSettled(s: Session): boolean {
+  if (s.meta.errorKind) return true;
+  const last = s.messages.at(-1);
+  return !!last && last.role === "assistant" && !last.toolCalls?.length;
 }
 
 // Cap a tool result for the debug log — full outputs (file dumps, page text) would swamp the console.

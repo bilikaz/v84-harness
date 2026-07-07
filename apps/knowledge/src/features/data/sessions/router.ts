@@ -34,11 +34,7 @@ sessionsRouter.put("/:id", async (c) => {
     title: String(b.title ?? ""),
     system: b.system ?? null,
     tools: b.tools ?? [],
-    usedTokens: b.usedTokens ?? null,
-    lastModel: b.lastModel ?? null,
-    errorKind: b.errorKind ?? null,
-    bytes: b.bytes ?? null,
-    unread: !!b.unread,
+    meta: b.meta ?? null, // the client's session.meta runtime bag, stored whole
   });
   return c.body(null, 204);
 });

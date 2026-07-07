@@ -1,7 +1,11 @@
 # ADR-0020: Persistence at turn completion only
 
-Status: accepted
+Status: superseded by [ADR-0072](0072-commit-on-landing.md)
 Date: 2026-06-10
+
+> Superseded by [ADR-0072](0072-commit-on-landing.md): persistence moved from turn-completion to
+> per-message landing once per-entity rows ([ADR-0043](0043-per-entity-repos.md)) made a write cheap. The
+> freeze rationale below survives — 0072 still does **no** per-stream-delta writes.
 
 ## Context
 

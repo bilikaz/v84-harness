@@ -22,12 +22,8 @@ export function normalize(s: Partial<Session> & { messages?: Partial<Message>[] 
     agentId: s.agentId,
     graphId: s.graphId,
     parentId: s.parentId,
-    errorKind: s.errorKind,
     tools: Array.isArray(s.tools) ? s.tools : [],
-    lastModel: s.lastModel,
-    usedTokens: s.usedTokens,
-    unread: s.unread,
-    bytes: s.bytes,
+    meta: s.meta ?? {}, // runtime bag; an old row without it just starts with empty runtime state
     messages: (s.messages ?? []).map((m, i) => ({
       id: m.id ?? `m${i}`,
       role: m.role === "assistant" ? "assistant" : m.role === "tool" ? "tool" : "user",

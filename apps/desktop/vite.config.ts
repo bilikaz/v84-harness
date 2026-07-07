@@ -9,9 +9,8 @@ export default defineConfig({
     proxy: {
       // Provider client uses baseUrl "/llm" so browser calls stay same-origin (no CORS); Vite strips the prefix and forwards.
       "/llm": {
-        target: "https://llm.v84.eu:2083",
+        target: "http://localhost:8000",
         changeOrigin: true,
-        secure: false,
         rewrite: (path) => path.replace(/^\/llm/, ""),
       },
     },

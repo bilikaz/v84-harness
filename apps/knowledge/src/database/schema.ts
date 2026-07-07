@@ -63,11 +63,9 @@ export interface SessionsTable extends Timestamps {
   title: string;
   system: string | null;
   tools: Json;
-  used_tokens: number | null;
-  last_model: string | null;
-  error_kind: string | null;
-  bytes: number | null;
-  unread: ColumnType<number, number | undefined, number>;
+  // Runtime (churning) fields grouped here — usedTokens/lastModel/errorKind/bytes/unread/delivered.
+  // The repo packs/unpacks; the API/client shape stays flat. (0.2.0 identity-vs-runtime split.)
+  meta_data: Json | null;
 }
 
 export interface MessagesTable {
