@@ -16,7 +16,7 @@ export function ProgressPanel() {
   const provider = useProvider();
   return (
     <ContextWindow
-      used={session.usedTokens ?? 0}
+      used={session.meta.usedTokens ?? 0}
       total={provider.model.contextLength}
       limit={contextLimit(provider)}
       sid={session.id}

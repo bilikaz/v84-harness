@@ -8,7 +8,7 @@ The reference module shape for `core/` features:
 |------|----------------|
 | `store.ts` | State, selectors, mutations; decides WHEN to persist; the media resend window |
 | `persistence.ts` | Pure session-meta shapes: `SessionMeta`/`SessionsIndex` + the `toMeta`/`normalize` coercions (durable IO lives in `StorageEngine`, [architecture/storage.md](storage.md)) |
-| `engine.ts` | The `SessionEngine` class — orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution + delivery (`awaitSettled`, the async push queue), effective tool policy, naming/compaction wiring |
+| `engine.ts` | The `SessionEngine` class — orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution + delivery (`awaitSettled`, the async push queue), boot `reconcile()` (restart recovery, [ADR-0073](../adr/0073-subagent-restart-recovery.md)), effective tool policy, naming/compaction wiring |
 | `events.ts` | Bus event interfaces + declaration merge + scoped bus |
 | `listeners.ts` | Bus → store reactions (transcript building, streaming flags, persistence) |
 | `hooks.ts` | React bindings only |
@@ -78,8 +78,9 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   signal, two transports ([ADR-0060](../adr/0060-async-subagent-delivery.md),
   full picture in [agents.md](agents.md)): blocking mode waits on
   `engine.awaitSettled` (rides a child's user pause→resume, returns the final
-  answer inline); async mode (`config.session.asyncAgents`) acks at once and the
-  engine pushes each result on the parent's next idle turn. Either way the
+  answer inline); async mode (`config.session.asyncAgents`, the DEFAULT) acks at
+  once and the engine pushes each result on the parent's next idle turn — the
+  recoverable path across a restart ([ADR-0073](../adr/0073-subagent-restart-recovery.md)). Either way the
   answer lands as a tool-result message in the PARENT's transcript — deleting
   child sessions (per-run, or all of a parent's via the right-panel cleanup
   button) costs only the child transcripts; mid-flight deletes stop the run first
@@ -115,11 +116,18 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   and the transcript UI (`Message`/`Markdown`/`ToolCard`/`Thinking`) is
   memoized to bail by reference — a streamed token re-renders one message, not
   the transcript ([ADR-0019](../adr/0019-reference-stable-transcript.md)).
-- **Persistence is granular and runs at turn completion**: the index (metas +
-  activeId), each session's messages, and each media blob are separate keys in
-  the durable tier — a turn's persist writes that session's text, a media blob
-  is written once at creation, and boot reads the index + active session with
-  the rest lazy-loading via `ensureLoaded`
-  ([ADR-0021](../adr/0021-granular-session-persistence.md),
-  [ADR-0020](../adr/0020-persist-at-turn-completion.md)). There is no localStorage
-  cache; localStorage survives only as the port's last-resort backend.
+- **Persistence commits each message as it lands**, not as a turn-end
+  whole-transcript write ([ADR-0072](../adr/0072-commit-on-landing.md)):
+  `commitMessages` appends newly-finalized messages (`messages.put`, upsert by id)
+  on `turn:start` / `tool:result` / `turn:deliver` / `turn:end`, holding an
+  incomplete tool exchange (no stranded `tool_call`) and never writing turn scratch
+  (the malformed/heal/`⚠️`/aborted messages). A crash loses at most the
+  actively-streaming message. `replaceForSession` survives only for compaction.
+  Media blobs are externalized once at creation; boot reads the session metas +
+  the active transcript, the rest lazy-load via `ensureLoaded`. Message ids are
+  ULIDs so reload order is creation order.
+- **Sub-agent runs survive a restart** ([ADR-0073](../adr/0073-subagent-restart-recovery.md)):
+  a durable `delivered` watermark (in `session.meta`) marks which children have
+  reached the parent, and a boot `reconcile()` re-delivers the settled-but-
+  undelivered and resumes the unfinished — the in-memory delivery queue doesn't
+  survive a reload, but the durable transcript + watermark rebuild it.

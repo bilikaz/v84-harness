@@ -44,6 +44,26 @@ export interface SessionTool {
   enabled: boolean;
 }
 
+// A session's per-turn CHURNING state — grouped under `session.meta`, the ONE shape stored both locally
+// (in the session JSON blob) and remotely (the `meta_data` JSON column). Kept separate from the identity
+// columns (container/parent/agent/graph/title/system/tools) that place a session and rarely change, so
+// storage never has to remap between local and remote. Add new runtime flags here, never flat on Session.
+export interface SessionRuntime {
+  // Why the last turn failed, if it did — drives the roster status and the resume guidance (capacity =
+  // out-of-memory, not resumable). Cleared when a new turn starts or one succeeds.
+  errorKind?: ErrorKind;
+  // Wire id of the model that served the latest turn — the runner can lease a different pool model each
+  // turn, so this (not the configured head) is what the composer labels as the chat's model.
+  lastModel?: string;
+  usedTokens?: number;
+  unread?: boolean;
+  bytes?: number;
+  // Sub-agent delivery watermark (children only): false while a turn's result is owed to the parent, true
+  // once delivered into the parent's transcript. Durable so a boot can re-deliver the settled-but-
+  // undelivered and resume the unfinished. Reset when the child starts a fresh turn.
+  delivered?: boolean;
+}
+
 export interface Session {
   id: string;
   title: string;
@@ -54,16 +74,9 @@ export interface Session {
   // in drive() branches on this. Symmetric to agentId. See core/graph/.
   graphId?: string;
   parentId?: string;
-  // Why this session's last turn failed, if it did — drives the roster status and the resume guidance
-  // (capacity = out-of-memory, not resumable). Cleared when a new turn starts or one succeeds.
-  errorKind?: ErrorKind;
   tools: SessionTool[];
   messages: Message[];
-  // Wire id of the model that served the latest turn — the runner can lease a different pool model each
-  // turn, so this (not the configured head) is what the composer labels as the chat's model.
-  lastModel?: string;
-  usedTokens?: number;
-  unread?: boolean;
-  bytes?: number;
+  // Per-turn runtime state (see SessionRuntime) — always present (defaults to {}).
+  meta: SessionRuntime;
   loaded?: boolean;
 }

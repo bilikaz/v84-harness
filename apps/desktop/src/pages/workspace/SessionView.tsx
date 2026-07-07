@@ -45,7 +45,7 @@ export function SessionView() {
   const full = isFull(provider, session);
 
   const ctxLimit = contextLimit(provider);
-  const used = session.usedTokens ?? 0;
+  const used = session.meta.usedTokens ?? 0;
 
   // The session's stamped system prompt is what runs — the agent may be edited/deleted later.
   const agentName = session.agentId ? (getAgent(session.agentId)?.name ?? session.title) : null;
@@ -219,7 +219,7 @@ export function SessionView() {
           <div className="mx-auto max-w-3xl">
             <Composer
               disabled={compacting || full}
-              modelLabel={session.lastModel}
+              modelLabel={session.meta.lastModel}
               streaming={streaming}
               lock={streaming}
               lockNote="Running — stop it to send guidance"
@@ -267,7 +267,7 @@ export function SessionView() {
             ) : null}
             <Composer
               disabled={compacting || full}
-              modelLabel={session.lastModel}
+              modelLabel={session.meta.lastModel}
               streaming={streaming}
               onStop={() => ctx.sessions.stopTurn(session.id)}
               onSubmit={submit}

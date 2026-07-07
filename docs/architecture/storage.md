@@ -7,8 +7,11 @@ map layer (present tense, updated with the code). Decisions behind the shapes:
 [ADR-0044](../adr/0044-storage-engine-provider-swap.md) (the `StorageEngine`
 provider swap + the machine-local lane),
 [ADR-0045](../adr/0045-machine-local-vs-account-synced.md) (machine-local vs
-account-synced state), [ADR-0020](../adr/0020-persist-at-turn-completion.md)
-(when message writes happen). Supersedes the KV `Storage` port + `StorageEngine`
+account-synced state), [ADR-0072](../adr/0072-commit-on-landing.md) (when message
+writes happen — per-message landing, supersedes [ADR-0020](../adr/0020-persist-at-turn-completion.md)),
+[ADR-0074](../adr/0074-session-identity-vs-runtime.md) (the `session.meta` runtime bag),
+[ADR-0075](../adr/0075-breaking-change-data-reset.md) (wipe + `DATA_VERSION` gate).
+Supersedes the KV `Storage` port + `StorageEngine`
 over string blobs ([ADR-0035](../adr/0035-storage-engine.md)), the
 `sessions:index` / granular-key scheme
 ([ADR-0021](../adr/0021-granular-session-persistence.md)), and the
@@ -66,7 +69,7 @@ per-entity tables/stores:
 | --- | --- | --- | --- |
 | `containers` | `Container` | `id` | CRUD |
 | `sessions` | `SessionMeta` | `id` | CRUD; the rows ARE the session list — no index blob |
-| `messages` | `Message` (transcript) | `sessionId` | `listBySession` / `replaceForSession` (whole-transcript replace) |
+| `messages` | `Message` (transcript) | `sessionId` | `listBySession` + `put` (upsert by id, the incremental commit) + `remove`; `replaceForSession` kept for compaction/reset ([ADR-0072](../adr/0072-commit-on-landing.md)) |
 | `media` | `MediaRow` | `id` (indexed by `sessionId`) | externalized blobs |
 | `agents` | `Agent` | `id` | CRUD |
 | `settings` | `SettingRow` | `key` | one row per consumer key; `scope` = `account` \| `local` |
@@ -121,12 +124,19 @@ classDiagram
         agentId?: string
         parentId?: string
         tools: SessionTool[]
-        usedTokens?: number  «snapshot - latest request»
-        unread?: boolean
-        bytes?: number
+        meta: SessionRuntime  «churning fields, stored whole»
         messages: Message[]
         loaded?: boolean  «false until lazy-loaded - in-memory only»
     }
+    class SessionRuntime {
+        usedTokens?: number  «snapshot - latest request»
+        lastModel?: string
+        errorKind?: ErrorKind
+        bytes?: number
+        unread?: boolean
+        delivered?: boolean  «sub-agent delivery watermark»
+    }
+    Session o-- SessionRuntime
     class Message {
         id: string
         role: user | assistant | tool
@@ -172,7 +182,13 @@ classDiagram
 
 `SessionMeta` is exactly `Session` minus `messages`/`loaded` (`toMeta()` in
 `sessions/persistence.ts`) — it's the `sessions` table row; the transcript lives
-in the `messages` table. `Image` and `Video` (`llm/types.ts`) are distinct types,
+in the `messages` table. The per-turn **churning** fields live in `session.meta`
+(`SessionRuntime`) — flat nowhere; identity (container/parent/agent/graph/title/
+system/tools) stays top-level. The blob backends store `meta` inside the session
+JSON; the remote stores it WHOLE in one `meta_data` JSON column (no per-field
+mapping), and the parity guard checks `meta` as one field — so a new runtime flag
+goes in `SessionRuntime` and round-trips with no schema change
+([ADR-0074](../adr/0074-session-identity-vs-runtime.md)). `Image` and `Video` (`llm/types.ts`) are distinct types,
 identical today, kept apart so the medium lives in the type, not a field
 convention, and is free to diverge (dimensions, duration). The containing field
 (`images` / `videos`, both **arrays**) agrees with the type; both carry
@@ -213,9 +229,17 @@ reads/writes go through `ctx.storage.repos()`):
 - `persistSessionMeta(sid)` — one `sessions` row, routed by `repos()`. Gated on
   `hydrated` + a real `containerId` so the pre-hydration placeholder never reaches
   a backend.
-- `persistSession(sid)` — externalizes media into the `media` repo, then
-  `messages.replaceForSession`, then the meta row. Refuses an unloaded shell or
-  the placeholder so it never clobbers stored rows.
+- `commitMessages(sid)` — the incremental write ([ADR-0072](../adr/0072-commit-on-landing.md)):
+  appends the trailing run of not-yet-committed messages (media externalized,
+  `messages.put` upsert by id), holding an incomplete tool exchange and skipping
+  never-persist turn scratch. Fired on `turn:start` / `tool:result` /
+  `turn:deliver` / `turn:end`. A transient committed-id set is the new-vs-old boundary.
+- `persistSession(sid)` — the wholesale rewrite, now the **compaction/reset** path
+  only (`replaceWithSummary`): externalizes media, then `messages.replaceForSession`,
+  then the meta row. Refuses an unloaded shell or the placeholder.
+- `gateDataVersion(engine)` (`core/storage/version.ts`) — at boot, wipes the local
+  provider (`StorageRepos.wipe()`) and re-seeds when the stored `DATA_VERSION` stamp
+  is older than the build's ([ADR-0075](../adr/0075-breaking-change-data-reset.md)).
 - `ensureLoaded(sid)` — lazy load: `messages.listBySession` + `inflateMedia`,
   shared in-flight so a double open reads once.
 - `hydrate()` — `sessions.list()` from the active provider (no master index);
@@ -226,11 +250,12 @@ The engine is injected via `useStorage(...)` in each `init()`, which also drives
 the hydrate order (containers → agents → sessions, so a session's container
 exists). Persistence is a no-op until injection.
 
-**Mutators** (called by listeners during a turn; in-memory only — durability
-comes from `persistSession` at `turn:end`, [ADR-0020](../adr/0020-persist-at-turn-completion.md)):
+**Mutators** (called by listeners during a turn; in-memory state changes —
+durability is `commitMessages` as each message lands, [ADR-0072](../adr/0072-commit-on-landing.md)):
 `pushTurn`, `appendToLast`, `setLastToolCalls`, `pushToolResult`,
 `pushMediaFeedback`, `pushAssistant`, `pushHeal`, `pushContext`, `resetLast`,
-`setUsage`, `markUnread`, `addChildRun`, `setStreaming`, `setCompacting`.
+`setUsage`, `setLastModel`, `setErrorKind`, `markUnread`, `setDelivered`,
+`markLastNeverPersist`, `addChildRun`, `setStreaming`, `setCompacting`.
 
 ## Lifecycle
 
@@ -252,10 +277,10 @@ sequenceDiagram
     UI->>Store: setActive(sid)
     Store->>E: messages.listBySession(sid) «first open only»
 
-    Note over UI,P: turn completes (turn:end)
+    Note over UI,P: each message lands (turn:start / tool:result / turn:end)
     Store->>E: externalize media → media.put(each new blob)
-    Store->>E: messages.replaceForSession(sid)
-    Store->>E: sessions.put(meta) «usedTokens, unread»
+    Store->>E: messages.put(each newly-finalized message) «upsert by id»
+    Store->>E: sessions.put(meta) «meta: usedTokens, lastModel, …»
     E->>P: writes
 ```
 

@@ -28,9 +28,14 @@ export interface CrudRepo<T> {
   remove(id: string): Promise<void>;
 }
 
-// Messages are persisted as a session's whole transcript (set replace).
+// Messages are persisted incrementally — each commits once, by id, as it finalizes (put = upsert,
+// so "land in-flight then update on finish" is the same row). replaceForSession is the wholesale
+// rewrite, kept only for the compaction/reset path (a summary replacing the transcript); remove is
+// the rare granular delete. listBySession returns the transcript in creation order (ULID id order).
 export interface MessageRepo {
   listBySession(sessionId: string): Promise<Message[]>;
+  put(sessionId: string, message: Message): Promise<void>;
+  remove(id: string): Promise<void>;
   replaceForSession(sessionId: string, messages: Message[]): Promise<void>;
 }
 
@@ -77,4 +82,7 @@ export interface StorageRepos {
   agents: CrudRepo<Agent>;
   settings: SettingRepo;
   pluginData: PluginDataRepo;
+  // Clear ALL local data (every table/store). For the data-version gate's breaking-change reset
+  // (core/storage/version.ts) — called only on the LOCAL provider; the remote implementation refuses.
+  wipe(): Promise<void>;
 }

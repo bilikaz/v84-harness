@@ -34,7 +34,7 @@ loading. Its index row below stays.
 | [0017](0017-storage-port-with-detected-backends.md) | Storage port with detected backends (SQLite > IDB > localStorage) | superseded by 0035 → archived |
 | [0018](0018-capability-gated-media-tools.md) | Capability-gated media tools (LoadImage/LoadVideo) + unified media feedback | accepted (tool names refined by 0033) |
 | [0019](0019-reference-stable-transcript.md) | Reference-stable messages + memoized transcript leaves | accepted |
-| [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | accepted |
+| [0020](0020-persist-at-turn-completion.md) | Persistence at turn completion only | superseded by 0072 |
 | [0021](0021-granular-session-persistence.md) | Granular session persistence: index / messages / media keys | superseded by 0043 → archived |
 | [0022](0022-subagent-orchestration.md) | Sub-agent orchestration: child sessions + ListAgents/RunAgent pair | accepted (extended into a standing team by 0058) |
 | [0023](0023-agent-definition-binding-and-ceiling.md) | Agent definition: workspace binding toggle + per-agent tool ceiling | accepted (placement clause superseded by 0026) |
@@ -86,6 +86,10 @@ loading. Its index row below stays.
 | [0069](0069-message-driven-graph-control.md) | Message-driven graph control — `start`/`continue`/`<node>` command messages (no self-driving), reserved `exit` node with ```json output, node-validated `ctx.break` → park/resume | accepted |
 | [0070](0070-agent-tool-grounding-wildcard.md) | Agent tool grounding — a `*` wildcard ceiling in `AgentTools` (`{ "*": 0, … }` restricts a head to only the tools it lists) | accepted |
 | [0071](0071-remote-mirrors-harness-shapes.md) | Remote storage mirrors the harness canonical shapes (desktop is source of truth; typed-column backends thread every field; compile-time parity guard; placement deferred) | accepted |
+| [0072](0072-commit-on-landing.md) | Incremental message persistence — commit each message as it lands, not a turn-end whole-transcript write (supersedes 0020); complete-exchange only; ULID message ids | accepted |
+| [0073](0073-subagent-restart-recovery.md) | Sub-agent restart recovery — durable `delivered` watermark + boot `reconcile()` (async runs resume after a reload); async is the default orchestration mode | accepted |
+| [0074](0074-session-identity-vs-runtime.md) | Session identity vs. runtime — churning fields move to `session.meta`, stored whole in one `meta_data` JSON column (refines 0071) | accepted |
+| [0075](0075-breaking-change-data-reset.md) | Breaking data changes reset, not migrate — MySQL wipe + canonical `001`, local `DATA_VERSION` gate (applies canonical-shapes rule 5) | accepted |
 
 ## Needs review / important missing parts
 

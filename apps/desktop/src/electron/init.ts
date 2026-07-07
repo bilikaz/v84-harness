@@ -26,6 +26,7 @@ import { initBrowser, browserFleet } from "../core/browser.ts";
 import { initContainers, hydrateContainers } from "../core/containers.ts";
 import { hydrate as hydrateSessions, setSessionStorage } from "../core/sessions/store.ts";
 import { StorageEngine } from "../core/storage/engine.ts";
+import { gateDataVersion } from "../core/storage/version.ts";
 import { idbRepos } from "../core/storage/idb.ts";
 import { remoteRepos } from "../core/storage/remote.ts";
 import { sqliteRepos } from "./sqliteRepos.ts";
@@ -37,6 +38,7 @@ export async function init(): Promise<Ctx> {
   // remote = the API client when connected.
   const local = (await api!.storage.available()) ? sqliteRepos() : await idbRepos();
   ctx.storage = new StorageEngine(local, isConnected() ? remoteRepos(authedFetch) : null);
+  await gateDataVersion(ctx.storage); // wipe local data if it's from an older incompatible build (before anything reads it)
   setSessionStorage(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
 
   // Register plugin manifests before config derives config.plugins from them; graphs + agents alongside
@@ -85,5 +87,6 @@ export async function init(): Promise<Ctx> {
   // ctx.api is now installed — subscribe the fleet to the host's browser load-state pushes.
   browserFleet().bindHostEvents();
   installEnabledPlugins(ctx);
+  void ctx.sessions.reconcile(); // resume async sub-agent runs a restart interrupted (after the tool gateway is ready)
   return ctx;
 }

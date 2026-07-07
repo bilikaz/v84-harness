@@ -1,5 +1,11 @@
 // chat sessions table access — per user, soft-delete filtered. (Distinct from the auth
 // device-login SessionsRepo in features/sessions/.)
+//
+// Identity vs. runtime split: the constants that place/identify a session (container/parent/agent/
+// graph/title/system/tools) are typed columns; the per-turn churning fields (usedTokens/lastModel/
+// errorKind/bytes/unread/delivered) are grouped into ONE `meta_data` JSON column. The API/client shape
+// stays flat — this repo packs the runtime fields in on write and unpacks them on read. A new runtime
+// flag is then a one-line pack/unpack change with no migration. (0.2.0 breaking schema; see migration 001.)
 
 import type { Kysely, Selectable } from "kysely";
 
@@ -14,11 +20,10 @@ export interface ChatSession {
   title: string;
   system: string | null;
   tools: unknown;
-  usedTokens: number | null;
-  lastModel: string | null;
-  errorKind: string | null;
-  bytes: number | null;
-  unread: boolean;
+  // The runtime (churning) fields — usedTokens/lastModel/errorKind/bytes/unread/delivered — exactly the
+  // client's `session.meta` object. Stored whole in the `meta_data` JSON column; no per-field mapping, so
+  // local and remote share ONE shape and a new runtime flag needs no schema change.
+  meta: unknown;
   createdAt: number;
   updatedAt: number;
 }
@@ -63,11 +68,7 @@ export class ChatSessionsRepo {
       title: s.title,
       system: s.system,
       tools: JSON.stringify(s.tools ?? []),
-      used_tokens: s.usedTokens,
-      last_model: s.lastModel,
-      error_kind: s.errorKind,
-      bytes: s.bytes,
-      unread: s.unread ? 1 : 0,
+      meta_data: s.meta != null ? JSON.stringify(s.meta) : null, // the client's session.meta, stored whole
     };
     await this.db
       .insertInto("sessions")
@@ -96,11 +97,7 @@ function toEntity(row: Selectable<SessionsTable>): ChatSession {
     title: row.title,
     system: row.system,
     tools: JSON.parse(row.tools),
-    usedTokens: row.used_tokens,
-    lastModel: row.last_model,
-    errorKind: row.error_kind,
-    bytes: row.bytes,
-    unread: !!row.unread,
+    meta: row.meta_data != null ? JSON.parse(row.meta_data as string) : {},
     createdAt: row.created_at.getTime(),
     updatedAt: row.updated_at.getTime(),
   };

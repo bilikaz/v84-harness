@@ -3,7 +3,7 @@
 # examples/review.yml for this pnpm monorepo.
 #
 # Set in Settings -> Secrets and variables -> Actions:
-#   Secret  LLM_URL    OpenAI-compatible base URL, e.g. https://llm.v84.eu:2083/v1
+#   Secret  LLM_URL    OpenAI-compatible base URL, e.g. http://localhost:8000/v1
 #   Secret  LLM_KEY    API key (empty string allowed for a no-auth self-hosted endpoint)
 #   Var     LLM_MODEL  optional; auto-detected from /models if unset
 #   Secret  REVIEWER_GH_TOKEN  optional user PAT (Pull requests: read+write) so the

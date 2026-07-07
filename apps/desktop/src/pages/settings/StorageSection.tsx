@@ -10,7 +10,7 @@ import { useContainers } from "../../core/containers.ts";
 import { fmtBytes } from "../../lib/format.ts";
 
 function sessionBytes(s: Session): number {
-  return s.bytes ?? JSON.stringify(s).length;
+  return s.meta.bytes ?? JSON.stringify(s).length;
 }
 
 export function StorageSection() {

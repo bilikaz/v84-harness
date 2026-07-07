@@ -16,6 +16,7 @@ import { initBrowser, browserFleet } from "../core/browser.ts";
 import { initContainers, hydrateContainers } from "../core/containers.ts";
 import { hydrate as hydrateSessions, setSessionStorage } from "../core/sessions/store.ts";
 import { StorageEngine } from "../core/storage/engine.ts";
+import { gateDataVersion } from "../core/storage/version.ts";
 import { idbRepos } from "../core/storage/idb.ts";
 import { remoteRepos } from "../core/storage/remote.ts";
 import type { HostApi, MediaModelsResult, MediaEndpoint } from "../core/host.ts";
@@ -66,6 +67,7 @@ export async function init(): Promise<Ctx> {
   const ctx = new Ctx();
   // Persistence: per-entity repositories — IndexedDB locally, the API client when connected.
   ctx.storage = new StorageEngine(await idbRepos(), isConnected() ? remoteRepos(authedFetch) : null);
+  await gateDataVersion(ctx.storage); // wipe local data if it's from an older incompatible build (before anything reads it)
   setSessionStorage(ctx.storage); // inject into the session store (SessionEngine ran before ctx.storage existed)
 
   // Register plugin manifests before config derives config.plugins from them; graphs + agents alongside
@@ -98,5 +100,6 @@ export async function init(): Promise<Ctx> {
   ctx.api = browserHost();
   browserFleet().bindHostEvents(); // no-op on the web host (no fleet), kept symmetric with electron
   installEnabledPlugins(ctx);
+  void ctx.sessions.reconcile(); // resume async sub-agent runs a restart interrupted (after the tool gateway is ready)
   return ctx;
 }

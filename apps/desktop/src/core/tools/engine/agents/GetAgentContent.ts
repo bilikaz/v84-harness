@@ -1,6 +1,7 @@
 import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.ts";
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
 import { GET_CONTENT_SCHEMA, childrenOf, collectAgentContent, isChildPending, resolveChild, rosterHint } from "../../helpers/agents/catalog.ts";
+import { setDelivered } from "../../../sessions/store.ts";
 import { getAppConfig } from "../../../config/index.ts";
 
 // Read-only fetch of a FINISHED sub-agent's result by short id — one or many at once. The pull half of the
@@ -41,6 +42,7 @@ export class GetAgentContent extends BaseEngineTool {
     if (raw.some((id) => { const c = resolveChild(sid, id); return c && isChildPending(c); })) return { output: "", eraseTurn: true };
 
     const { output, childIds } = await collectAgentContent(sid, raw);
+    for (const cid of childIds) setDelivered(cid, true); // read into the parent's transcript — a boot won't re-deliver
     return { output, childSessionIds: childIds.length ? childIds : undefined };
   }
 }

@@ -1,6 +1,6 @@
 import type { ChatMessage } from "../../llm/types.ts";
 import type { ChatModelSettings } from "../settings.ts";
-import type { FileAttachment, Image, Video, Message, Session, ToolCallRequest } from "./types.ts";
+import type { FileAttachment, Image, Video, Message, Session, SessionRuntime, ToolCallRequest } from "./types.ts";
 import { getAppConfig } from "../config/index.ts";
 import i18n from "../../lib/i18n.ts";
 import type { StorageEngine } from "../storage/engine.ts";
@@ -52,6 +52,7 @@ function makeSession(init: SessionInit = {}): Session {
     parentId: init.parentId,
     tools: [],
     messages: [],
+    meta: {},
     loaded: true,
   };
 }
@@ -69,6 +70,15 @@ let compactingIds: Set<string> = new Set();
 // and getAgentContent treats them as "not done yet" (per the async orchestration design).
 let userPausedIds: Set<string> = new Set();
 let hydrated = false;
+
+// ── Incremental commit bookkeeping (ADR: commit-on-landing) ──────────────────
+// Message ids already written to the durable tier — the "old" set, so a commit sends only the NEW
+// ones. Plain ids (globally unique ULIDs), not reactive; seeded from disk on hydrate/load and pruned
+// on delete. `neverPersist` are the in-memory-only turn artifacts (the malformed assistant + heal
+// correction, the ⚠️ error tail, an aborted partial) — kept so the model sees them this turn, but
+// never committed and never swept by a later commit.
+const persisted = new Set<string>();
+const neverPersist = new Set<string>();
 
 const reg = createListeners();
 export const notify = reg.notify;
@@ -112,17 +122,102 @@ async function inflateMedia(repos: StorageRepos, sid: string, messages: Message[
   return messages.map((m) => ({ ...m, images: m.images?.map(fix), videos: m.videos?.map(fix) }));
 }
 
-// Persist the session's transcript (media externalized to the media repo) + its meta row.
+// An empty assistant placeholder (the streaming target) — has no content yet, so it is not a
+// committable message; it gets committed once it's a real answer (text/calls/media). Thinking alone
+// doesn't count (it isn't resent and the message isn't final).
+function isPlaceholder(m: Message): boolean {
+  return m.role === "assistant" && !m.text?.trim() && !m.toolCalls?.length && !m.images?.length && !m.videos?.length;
+}
+
+// An INCOMPLETE tool exchange — a tool-call assistant whose calls don't all have results yet, or a
+// tool result belonging to such an assistant. Committing half an exchange would leave a tool_call with
+// no result (or an orphan result), which providers reject on the next turn; and the premature
+// getAgentContent the engine erases never gets a result, so it's held here and never persists. Hold
+// the whole exchange until its last result lands (then commitMessages writes assistant + all results
+// together). Incomplete exchanges only ever sit at the tail (the next step can't start until the
+// current one's tools resolve), so holding them never strands an older committable message.
+function exchangeComplete(assistant: Message, messages: Message[]): boolean {
+  return !!assistant.toolCalls?.every((c) => messages.some((r) => r.role === "tool" && r.toolCallId === c.id));
+}
+function inIncompleteExchange(m: Message, messages: Message[]): boolean {
+  if (m.role === "assistant" && m.toolCalls?.length) return !exchangeComplete(m, messages);
+  if (m.role === "tool" && m.toolCallId) {
+    const owner = messages.find((a) => a.role === "assistant" && a.toolCalls?.some((c) => c.id === m.toolCallId));
+    return !!owner && !exchangeComplete(owner, messages);
+  }
+  return false;
+}
+
+// Commit the trailing run of NOT-yet-persisted messages (media externalized to the media repo,
+// rows kept light) — the incremental write that replaces the turn-end whole-transcript persist.
+// Scans back from the tail to the last committed message, skipping never-persist artifacts, the
+// streaming placeholder, and held reads; commits the rest in order, by id (put = upsert). Ids are
+// claimed synchronously to keep concurrent landing events from double-sending the same message;
+// a failed write un-claims so the next landing (or turn:end) retries. Refreshes the meta row too
+// (lastModel/usedTokens/unread grow with the transcript).
+export function commitMessages(sid: string): void {
+  if (!data || !hydrated) return;
+  const session = getSession(sid);
+  if (!session || session.loaded === false || !session.containerId) return;
+  const msgs = session.messages;
+  const run: Message[] = [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (persisted.has(m.id)) break; // reached the durable boundary
+    if (neverPersist.has(m.id) || isPlaceholder(m) || inIncompleteExchange(m, msgs)) continue;
+    run.push(m);
+  }
+  if (!run.length) return;
+  run.reverse();
+  for (const m of run) persisted.add(m.id); // claim now — closes the double-send race between landing events
+  const repos = data.repos();
+  void (async () => {
+    for (const m of run) {
+      const [stored] = await externalizeMedia(repos, sid, [m]);
+      await repos.messages.put(sid, stored);
+    }
+    await repos.sessions.put(toMeta(session));
+    notify();
+  })().catch((err) => {
+    for (const m of run) persisted.delete(m.id); // un-claim so a later commit retries (upsert is idempotent)
+    log.warn("commit_failed", { sid, error: errorMessage(err) });
+  });
+}
+
+// Flag the session's last message as never-persist — the turn:error ⚠️ tail and the aborted partial
+// answer (incomplete output the user stopped). Keeps a later commit from sweeping it off the tail.
+export function markLastNeverPersist(sid: string): void {
+  const last = getSession(sid)?.messages.at(-1);
+  if (last) neverPersist.add(last.id);
+}
+
+// The sub-agent delivery watermark (children only). Set true the moment a child's result lands in its
+// parent's transcript; reset false when the child starts a fresh turn (a new result is owed). Persisted
+// to the meta row so a boot reconcile can tell delivered children from those still owing one. No-op for
+// non-children (only sub-agents are delivered) and when unchanged.
+export function setDelivered(sid: string, on: boolean): void {
+  const s = getSession(sid);
+  if (!s || !s.parentId || (s.meta.delivered ?? false) === on) return;
+  sessions = sessions.map((x) => (x.id === sid ? { ...x, meta: { ...x.meta, delivered: on } } : x));
+  persistSessionMeta(sid);
+  notify();
+}
+
+// Compaction/reset: the summary REPLACES the whole transcript, so this is the one wholesale rewrite
+// that survives (replaceForSession). Re-seeds the commit bookkeeping to exactly the new rows.
 export function persistSession(sid: string): void {
   if (!data || !hydrated) return;
+  const session = getSession(sid);
+  if (!session || session.loaded === false || !session.containerId) return; // never clobber rows with an unloaded shell / placeholder
+  for (const m of session.messages) {
+    persisted.add(m.id);
+    neverPersist.delete(m.id);
+  }
   void (async () => {
-    const session = getSession(sid);
-    if (!session || session.loaded === false || !session.containerId) return; // never clobber rows with an unloaded shell / placeholder
     const repos = data!.repos();
     const stored = await externalizeMedia(repos, sid, session.messages);
     await repos.messages.replaceForSession(sid, stored);
-    const meta = getSession(sid);
-    if (meta) await repos.sessions.put(toMeta(meta));
+    await repos.sessions.put(toMeta(session));
     notify();
   })().catch((err) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(err) }));
 }
@@ -138,6 +233,7 @@ export function ensureLoaded(sid: string): Promise<void> {
   if (!p) {
     p = (async () => {
       const messages = await inflateMedia(repos, sid, await repos.messages.listBySession(sid));
+      for (const m of messages) persisted.add(m.id); // loaded rows are already durable — never re-send them
       sessions = sessions.map((s) => (s.id === sid ? { ...s, messages, loaded: true } : s));
       notify();
     })()
@@ -245,8 +341,8 @@ export function setCompacting(sid: string, on: boolean): void {
 // ── Commands (user-facing state changes) ─────────────────────────────────────
 export function setActive(id: string): void {
   activeId = id;
-  const wasUnread = getSession(id)?.unread;
-  sessions = sessions.map((s) => (s.id === id && s.unread ? { ...s, unread: false } : s));
+  const wasUnread = getSession(id)?.meta.unread;
+  sessions = sessions.map((s) => (s.id === id && s.meta.unread ? { ...s, meta: { ...s.meta, unread: false } } : s));
   void ensureLoaded(id);
   if (wasUnread) persistSessionMeta(id); // unread flag changed
   notify();
@@ -317,6 +413,11 @@ export function deleteSession(id: string): void {
     const { [id]: _gone, ...rest } = lastSystem;
     lastSystem = rest;
   }
+  // Drop the gone session's messages from the commit bookkeeping (best-effort — stale ids would only waste memory).
+  for (const m of gone?.messages ?? []) {
+    persisted.delete(m.id);
+    neverPersist.delete(m.id);
+  }
   if (data && gone) {
     const repos = data.repos();
     void repos.sessions.remove(id).catch((e: unknown) => log.warn("delete_failed", { sid: id, error: errorMessage(e) }));
@@ -347,8 +448,8 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
 
 export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], videos?: Video[]): void {
   const at = Date.now();
-  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: userText, images, videos, files, createdAt: at };
-  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: at };
+  const userMsg: Message = { id: newId(), role: "user", text: userText, images, videos, files, createdAt: at };
+  const assistantMsg: Message = { id: newId(), role: "assistant", text: "", createdAt: at };
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
   );
@@ -359,8 +460,13 @@ export function pushTurn(sid: string, userText: string, images?: Image[], files?
 // validation error, then a fresh assistant placeholder for the retry.
 export function pushHeal(sid: string, correction: string): void {
   const at = Date.now();
-  const userMsg: Message = { id: crypto.randomUUID(), role: "user", text: correction, hidden: true, createdAt: at };
-  const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: at };
+  // The malformed answer that triggered the heal is the current tail — it and the correction are
+  // turn-scratch the model needs to see (its mistake + the fix), but they must never be committed.
+  const malformed = getSession(sid)?.messages.at(-1);
+  if (malformed) neverPersist.add(malformed.id);
+  const userMsg: Message = { id: newId(), role: "user", text: correction, hidden: true, createdAt: at };
+  const assistantMsg: Message = { id: newId(), role: "assistant", text: "", createdAt: at };
+  neverPersist.add(userMsg.id);
   sessions = sessions.map((s) =>
     s.id === sid ? { ...s, messages: [...s.messages, userMsg, assistantMsg] } : s,
   );
@@ -371,7 +477,7 @@ export function pushHeal(sid: string, correction: string): void {
 // just before the visible comment that references it. Sent to the model, skipped in the UI —
 // the durable record of what was forwarded, so the reference survives the window being closed.
 export function pushContext(sid: string, text: string): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "user", text, hidden: true, createdAt: Date.now() };
+  const msg: Message = { id: newId(), role: "user", text, hidden: true, createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
@@ -419,7 +525,7 @@ export function pushToolResult(
   childSessionIds?: string[],
   browserWindowId?: string,
 ): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "tool", text: output, toolCallId, images, videos, childSessionIds, browserWindowId, createdAt: Date.now() };
+  const msg: Message = { id: newId(), role: "tool", text: output, toolCallId, images, videos, childSessionIds, browserWindowId, createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
@@ -454,7 +560,7 @@ export function getLastSystem(sid: string): string | undefined {
 // the UI — it already shows in the tool card; this lets a vision agent see it).
 export function pushMediaFeedback(sid: string, images?: Image[], videos?: Video[]): void {
   const msg: Message = {
-    id: crypto.randomUUID(),
+    id: newId(),
     role: "user",
     text: "Media attached above for your review.",
     images,
@@ -480,14 +586,14 @@ export function resetLast(sid: string): void {
 }
 
 export function pushAssistant(sid: string): void {
-  const msg: Message = { id: crypto.randomUUID(), role: "assistant", text: "", createdAt: Date.now() };
+  const msg: Message = { id: newId(), role: "assistant", text: "", createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
 }
 
 // Stamp (or clear) why a session's last turn failed — feeds the roster status and resume guidance.
-export function setErrorKind(sid: string, kind: Session["errorKind"]): void {
-  sessions = sessions.map((s) => (s.id === sid ? { ...s, errorKind: kind } : s));
+export function setErrorKind(sid: string, kind: SessionRuntime["errorKind"]): void {
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, meta: { ...s.meta, errorKind: kind } } : s));
   notify();
 }
 
@@ -499,8 +605,8 @@ export function resumeTail(sid: string): void {
     if (s.id !== sid) return s;
     const messages = s.messages.slice();
     if (messages[messages.length - 1]?.role === "assistant") messages.pop();
-    messages.push({ id: crypto.randomUUID(), role: "assistant", text: "", createdAt: Date.now() });
-    return { ...s, messages, errorKind: undefined };
+    messages.push({ id: newId(), role: "assistant", text: "", createdAt: Date.now() });
+    return { ...s, messages, meta: { ...s.meta, errorKind: undefined } };
   });
   notify();
 }
@@ -511,18 +617,18 @@ export function resumeTail(sid: string): void {
 // tool-loop step and blow past the window after a few tool calls.
 export function setUsage(sid: string, tokens: number): void {
   if (!tokens) return;
-  sessions = sessions.map((s) => (s.id === sid ? { ...s, usedTokens: tokens } : s));
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, meta: { ...s.meta, usedTokens: tokens } } : s));
   notify();
 }
 
 // The model that served the latest turn — persisted via meta (turn:end), shown by the composer.
 export function setLastModel(sid: string, model: string): void {
-  sessions = sessions.map((s) => (s.id === sid ? { ...s, lastModel: model } : s));
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, meta: { ...s.meta, lastModel: model } } : s));
   notify();
 }
 
 export function markUnread(sid: string): void {
-  sessions = sessions.map((s) => (s.id === sid ? { ...s, unread: true } : s));
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, meta: { ...s.meta, unread: true } } : s));
   notify();
 }
 
@@ -547,13 +653,13 @@ export function contextLimit(cfg: ChatModelSettings): number {
 
 export function isFull(cfg: ChatModelSettings, session: Session = getActive()): boolean {
   const limit = contextLimit(cfg);
-  return limit > 0 && (session.usedTokens ?? 0) >= limit;
+  return limit > 0 && (session.meta.usedTokens ?? 0) >= limit;
 }
 
 export function replaceWithSummary(sid: string, summary: string, usedTokens = 0): void {
   sessions = sessions.map((s) =>
     s.id === sid
-      ? { ...s, messages: [{ id: crypto.randomUUID(), role: "user", text: summary, summary: true }], usedTokens }
+      ? { ...s, messages: [{ id: newId(), role: "user", text: summary, summary: true }], meta: { ...s.meta, usedTokens } }
       : s,
   );
   persistSession(sid); // rewrites the rows; orphaned media blobs are GC'd there

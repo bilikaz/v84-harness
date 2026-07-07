@@ -14,10 +14,12 @@ import type { Container } from "../features/data/containers/repo.ts";
 // Errors if any listed key is not a key of the DTO.
 type Covers<DTO, Keys extends keyof DTO> = [DTO, Keys];
 
-// Harness SessionMeta — apps/desktop/src/core/sessions/persistence.ts
+// Harness SessionMeta — apps/desktop/src/core/sessions/persistence.ts. The runtime (churning) fields
+// (usedTokens/lastModel/errorKind/bytes/unread/delivered) live inside the opaque `meta` bag — stored
+// whole, so they're guarded as one field here, not individually (a new runtime flag needs no server change).
 type _Session = Covers<
   ChatSession,
-  "id" | "containerId" | "parentId" | "agentId" | "graphId" | "title" | "system" | "tools" | "usedTokens" | "lastModel" | "errorKind" | "bytes" | "unread"
+  "id" | "containerId" | "parentId" | "agentId" | "graphId" | "title" | "system" | "tools" | "meta"
 >;
 // Harness Message — apps/desktop/src/core/sessions/types.ts (browserWindowId is intentionally not persisted)
 type _Message = Covers<

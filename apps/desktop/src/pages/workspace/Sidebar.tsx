@@ -177,7 +177,7 @@ export function Sidebar() {
                       related={related}
                       threadActive={threadActive}
                       indent={child}
-                      dot={<StatusDot waiting={waiting[s.id] !== undefined} streaming={streamingIds.has(s.id)} unread={!!s.unread} />}
+                      dot={<StatusDot waiting={waiting[s.id] !== undefined} streaming={streamingIds.has(s.id)} unread={!!s.meta.unread} />}
                       renaming={renamingId === s.id}
                       draft={draft}
                       onDraft={setDraft}

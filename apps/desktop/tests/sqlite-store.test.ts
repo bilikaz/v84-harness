@@ -35,6 +35,29 @@ describe("sqliteStore replaceForSession", () => {
   });
 });
 
+describe("sqliteStore message put (incremental upsert)", () => {
+  it("appends in commit order and upserts in place without reshuffling", () => {
+    execData("messages", "put", ["s2", { id: "m1", text: "a" }]);
+    execData("messages", "put", ["s2", { id: "m2", text: "b" }]);
+    execData("messages", "put", ["s2", { id: "m3", text: "c" }]);
+    expect(listSession("s2").map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+
+    // Re-put an existing id (in-flight → finished): ON CONFLICT keeps the rowid, so order is preserved
+    // (INSERT OR REPLACE would have jumped m1 to the end).
+    execData("messages", "put", ["s2", { id: "m1", text: "a-updated" }]);
+    const rows = listSession("s2") as { id: string; text: string }[];
+    expect(rows.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+    expect(rows[0].text).toBe("a-updated");
+  });
+
+  it("removes a single message by id", () => {
+    execData("messages", "put", ["s3", { id: "k1" }]);
+    execData("messages", "put", ["s3", { id: "k2" }]);
+    execData("messages", "remove", ["k1"]);
+    expect(listSession("s3").map((m) => m.id)).toEqual(["k2"]);
+  });
+});
+
 afterAll(() => {
   // best-effort: the temp dir is disposable
   void dir;
