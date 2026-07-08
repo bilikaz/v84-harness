@@ -11,6 +11,7 @@ import { rootLog } from "../../lib/logger/index.ts";
 import { normalize, toMeta, type SessionMeta } from "./persistence.ts";
 import { newId } from "../ids.ts";
 import { getActiveContainerId } from "../containers.ts";
+import { lastSummaryIndex, refLabel } from "./mediaRefs.ts";
 
 // Session store — the single source of truth for multi-session state. Plain
 // external store; React binds via ./hooks.ts. Owns STATE + the operations that
@@ -203,24 +204,9 @@ export function setDelivered(sid: string, on: boolean): void {
   notify();
 }
 
-// Compaction/reset: the summary REPLACES the whole transcript, so this is the one wholesale rewrite
-// that survives (replaceForSession). Re-seeds the commit bookkeeping to exactly the new rows.
-export function persistSession(sid: string): void {
-  if (!data || !hydrated) return;
-  const session = getSession(sid);
-  if (!session || session.loaded === false || !session.containerId) return; // never clobber rows with an unloaded shell / placeholder
-  for (const m of session.messages) {
-    persisted.add(m.id);
-    neverPersist.delete(m.id);
-  }
-  void (async () => {
-    const repos = data!.repos();
-    const stored = await externalizeMedia(repos, sid, session.messages);
-    await repos.messages.replaceForSession(sid, stored);
-    await repos.sessions.put(toMeta(session));
-    notify();
-  })().catch((err) => log.warn("persist_failed", { what: "session", sid, error: errorMessage(err) }));
-}
+// The wholesale transcript rewrite is GONE: compaction appends (appendSummary → commitMessages), so
+// commit-on-landing (ADR-0072) covers every persist path; replaceForSession survives only for the
+// offline-delete transcript clear.
 
 // In-flight loads are shared so a double-click doesn't read twice.
 const loading = new Map<string, Promise<void>>();
@@ -446,7 +432,24 @@ export function appendToLast(sid: string, delta: string, field: "text" | "thinki
   notify();
 }
 
+// Stamp media aliases ("img-N"/"vid-N") on items landing in a session — idempotent (an item already
+// carrying a ref keeps it) and first-appearance ordered. The counter is session.meta.mediaSeq,
+// persisted with the next meta refresh; NEVER recomputed from the transcript — renumbering would
+// break references the model (or the user) already holds. In-place item mutation, like storeMedia's
+// id stamp. No notify: every caller lands a message (or emits a bus event) right after.
+export function stampMediaRefs(sid: string, images?: Image[], videos?: Video[]): void {
+  const session = getSession(sid);
+  if (!session) return;
+  const start = session.meta.mediaSeq ?? 1;
+  let seq = start;
+  for (const g of images ?? []) if (!g.ref) g.ref = `img-${seq++}`;
+  for (const g of videos ?? []) if (!g.ref) g.ref = `vid-${seq++}`;
+  if (seq === start) return;
+  sessions = sessions.map((s) => (s.id === sid ? { ...s, meta: { ...s.meta, mediaSeq: seq } } : s));
+}
+
 export function pushTurn(sid: string, userText: string, images?: Image[], files?: FileAttachment[], videos?: Video[]): void {
+  stampMediaRefs(sid, images, videos);
   const at = Date.now();
   const userMsg: Message = { id: newId(), role: "user", text: userText, images, videos, files, createdAt: at };
   const assistantMsg: Message = { id: newId(), role: "assistant", text: "", createdAt: at };
@@ -525,6 +528,7 @@ export function pushToolResult(
   childSessionIds?: string[],
   browserWindowId?: string,
 ): void {
+  stampMediaRefs(sid, images, videos); // normally a no-op — the engine stamps before emitting tool:result
   const msg: Message = { id: newId(), role: "tool", text: output, toolCallId, images, videos, childSessionIds, browserWindowId, createdAt: Date.now() };
   sessions = sessions.map((s) => (s.id === sid ? { ...s, messages: [...s.messages, msg] } : s));
   notify();
@@ -559,6 +563,7 @@ export function getLastSystem(sid: string): string | undefined {
 // Feed tool-produced media back to the model as a hidden user turn (skipped in
 // the UI — it already shows in the tool card; this lets a vision agent see it).
 export function pushMediaFeedback(sid: string, images?: Image[], videos?: Video[]): void {
+  stampMediaRefs(sid, images, videos); // same objects the tool result carried — already stamped there
   const msg: Message = {
     id: newId(),
     role: "user",
@@ -656,13 +661,15 @@ export function isFull(cfg: ChatModelSettings, session: Session = getActive()): 
   return limit > 0 && (session.meta.usedTokens ?? 0) >= limit;
 }
 
-export function replaceWithSummary(sid: string, summary: string, usedTokens = 0): void {
+// Compaction is a SEND policy, like the media resend window — nothing is rewritten or GC'd. The
+// summary is APPENDED as a normal message (commit-on-landing, ADR-0072) and toChatMessages sends
+// only the last summary + what follows; the full transcript, media, and refs stay for the user.
+export function appendSummary(sid: string, summary: string, usedTokens = 0): void {
+  const msg: Message = { id: newId(), role: "user", text: summary, summary: true, createdAt: Date.now() };
   sessions = sessions.map((s) =>
-    s.id === sid
-      ? { ...s, messages: [{ id: newId(), role: "user", text: summary, summary: true }], meta: { ...s.meta, usedTokens } }
-      : s,
+    s.id === sid ? { ...s, messages: [...s.messages, msg], meta: { ...s.meta, usedTokens } } : s,
   );
-  persistSession(sid); // rewrites the rows; orphaned media blobs are GC'd there
+  commitMessages(sid);
   notify();
 }
 
@@ -718,13 +725,13 @@ function mediaWindow(messages: Message[]): Map<string, { images: number; video: 
 // The stub that replaces windowed-out media — names what was here and how to
 // get it back, so it degrades to one extra Load call instead of silent amnesia.
 function droppedNote(dropped: (Image | Video)[]): string {
-  const names = dropped.map((d) => d.name || "unnamed").join(", ");
-  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Use ImageLoad/VideoLoad to view one again if needed.]`;
+  const names = dropped.map(refLabel).join(", ");
+  return `[${dropped.length} media item(s) shown here earlier were removed from the context to save space: ${names}. Reference one by its img-N/vid-N alias, or use ImageLoad/VideoLoad to view it again.]`;
 }
 
 function hiddenNote(hidden: (Image | Video)[]): string {
-  const names = hidden.map((d) => d.name || "unnamed").join(", ");
-  return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}.]`;
+  const names = hidden.map(refLabel).join(", ");
+  return `[${hidden.length} media item(s) in this message are not shown — the current model does not accept that input type: ${names}. An img-N alias still works as a generation reference.]`;
 }
 
 // Drops empty placeholders (the trailing assistant) and thinking (not resent);
@@ -738,8 +745,13 @@ function hiddenNote(hidden: (Image | Video)[]): string {
 export function toChatMessages(messages: Message[], input?: NonNullable<ChatModelSettings["input"]>): ChatMessage[] {
   const allowImage = input ? input.image !== false : true;
   const allowVideo = input ? input.video === true : true;
-  const window = mediaWindow(messages);
-  return messages
+  // Compaction is a send boundary, not a rewrite: the model gets the last summary + what follows;
+  // everything before it stays in the transcript/UI only. Sliced BEFORE the media window so the
+  // window budget isn't spent on unsent messages.
+  const cut = lastSummaryIndex(messages);
+  const live = cut >= 0 ? messages.slice(cut) : messages;
+  const window = mediaWindow(live);
+  return live
     .filter((m) => m.text || m.images?.length || m.videos?.length || m.files?.length || m.toolCalls?.length || m.role === "tool")
     .map((m) => {
       const keep = window.get(m.id) ?? { images: 0, video: 0 };
@@ -755,6 +767,12 @@ export function toChatMessages(messages: Message[], input?: NonNullable<ChatMode
       let content = m.summary
         ? `Summary of the earlier conversation (older messages were compacted to save context):\n\n${m.text}`
         : withFiles(m.text, m.files);
+      // Name what IS sent too — the alias annotation is how the model learns each item's handle. Spell
+      // out that the ALIAS is the tool handle: a filename-ish display name ("pasted.png") otherwise
+      // tempts the model into inventing a workspace path that doesn't exist.
+      const sentRefs = [...images, ...video].filter((g) => g.ref).map(refLabel);
+      const refNote = `[attached media: ${sentRefs.join(", ")} — these are conversation attachments, not workspace files; reference them by alias (e.g. "img-1") in tool calls like ImageCompose]`;
+      if (sentRefs.length) content = content ? `${content}\n\n${refNote}` : refNote;
       if (dropped.length) content = content ? `${content}\n\n${droppedNote(dropped)}` : droppedNote(dropped);
       if (hidden.length) content = content ? `${content}\n\n${hiddenNote(hidden)}` : hiddenNote(hidden);
       return {

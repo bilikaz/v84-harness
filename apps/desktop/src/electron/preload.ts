@@ -49,6 +49,7 @@ const api: ElectronApi = {
   },
   saveImage: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveImage, dataUrl, suggestedName),
   saveVideo: (dataUrl: string, suggestedName?: string) => ipcRenderer.invoke(IPC.saveVideo, dataUrl, suggestedName),
+  clipboardImage: () => ipcRenderer.invoke(IPC.clipboardImage),
 };
 
 contextBridge.exposeInMainWorld("api", api);

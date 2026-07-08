@@ -32,7 +32,7 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
 - **The folder is the permission tier** (and the process it's globbed into):
   - **`general/`** — no workspace, available in any session (chat included). Host-agnostic (HTTP +
     data-URLs), globbed into both the web renderer and electron main. Mostly permissionless
-    (`ImageGenerate`, `VideoGenerate` — `canRun()` only), but a general tool MAY still opt into the policy
+    (`ImageGenerate`, `ImageCompose`, `VideoGenerate` — `canRun()` only), but a general tool MAY still opt into the policy
     via `isPermissioned()`: `Fetch` (arbitrary HTTP — method/headers/body to any URL, for talking to APIs
     without a browser) is permissioned, **default ask** — it can authenticate and act anywhere, so the
     human approves each call. `needsWorkspace()=false`, so it stays available in chat (not masked off like
@@ -122,6 +122,24 @@ So a tool call flows: driver → `ctx.tools.run(...)` → in-process (web, or el
 `account/` tier) or over the bridge → main (electron `general/`+`workspace/`). The driver
 only knows the gateway. Cancellation travels by call id (`cancel(callId)`) — the registry
 owns the `AbortController`, since a live `AbortSignal` can't cross the bridge.
+
+## Image generation & composition ([ADR-0076](../adr/0076-image-edit-service-and-referenceable-images.md), [ADR-0077](../adr/0077-media-reference-aliases.md))
+
+- **`ImageGenerate`** (general) — prompt → the `imageGen` slot. **`ImageCompose`** (general) — prompt +
+  one or more reference images → the `imageEdit` slot (`/images/edits`); editing is the single-reference
+  case, several references compose/keep a subject consistent.
+- A compose **reference** is an `img-N` alias from the conversation (works in plain chat and on web —
+  the engine pre-resolves it into `ToolRunCtx.mediaRefs`, see below) or a workspace path (needs a cwd).
+  An entry exact-matching `img-N`/`vid-N` is always an alias, never a path.
+- **Workspace save**: when a cwd exists, both tools save the result under a model-provided `name` into
+  the container's `imageOutputDir` (default `generated-images/`). Two-phase (`helpers/imageSave.ts`):
+  the name is collision-checked BEFORE spending a generation; a clash refuses with rename-or-overwrite
+  guidance. The fs helper is loaded via dynamic import so these general (web-bundled) tools never pull
+  `node:fs` into the web graph (`node:` builtins are rollup-external in the renderer builds).
+- **Per-call context** (`ToolRunCtx`, threaded by `registry.run` from non-model `ToolCallRequest`
+  fields the engine fills at dispatch): `imageOutputDir` (container config) and `mediaRefs` (the
+  alias→content map for aliases mentioned in the call's args — tools run across the bridge as pure
+  data and can't reach the transcript, so the engine resolves; [sessions.md](sessions.md)).
 
 ## Talking to models
 

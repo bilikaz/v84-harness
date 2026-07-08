@@ -5,9 +5,10 @@ import { openLightbox } from "../core/ui.ts";
 import { saveMedia } from "../lib/saveMedia.ts";
 import { useCtx } from "../renderer/ctx.tsx";
 
-// A media thumbnail/player with a Save button overlaid in the top corner.
-export function SavableMedia(props: { kind: "image" | "video"; src: string; name?: string; className?: string }) {
-  const { kind, src, name, className } = props;
+// A media thumbnail/player with a Save button overlaid in the top corner. `badge` shows the media
+// reference alias ("img-3") — the handle the user (and model) can name in a follow-up.
+export function SavableMedia(props: { kind: "image" | "video"; src: string; name?: string; className?: string; badge?: string }) {
+  const { kind, src, name, className, badge } = props;
   const { t } = useTranslation();
   const ctx = useCtx();
   async function save(e: React.MouseEvent) {
@@ -20,6 +21,11 @@ export function SavableMedia(props: { kind: "image" | "video"; src: string; name
         <img src={src} alt={name ?? ""} onClick={() => openLightbox(src)} className={className} />
       ) : (
         <video src={src} controls className={className} />
+      )}
+      {badge && (
+        <span className="absolute left-2 top-2 rounded-md bg-black/50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-white">
+          {badge}
+        </span>
       )}
       <button
         type="button"

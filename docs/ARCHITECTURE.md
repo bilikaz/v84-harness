@@ -75,7 +75,7 @@ Layering rules:
 
 | Path | Role |
 |------|------|
-| `src/electron/` | Electron platform: the IPC contract (`bridge.ts`), the preload (`preload.ts`), the main process (`index.ts` — window, IPC handlers, context menu, save dialogs), the main-side tool dispatch (`tools.ts`), and the local SQLite store (`sqliteStore.ts` in main + the renderer's `sqliteRepos.ts` proxy over IPC) |
+| `src/electron/` | Electron platform: the IPC contract (`bridge.ts`), the preload (`preload.ts`), the main process (`index.ts` — window, IPC handlers, context menu, save dialogs, the clipboard-image paste fallback incl. WSL's Windows-clipboard interop `wslClipboard.ts`), the main-side tool dispatch (`tools.ts`), and the local SQLite store (`sqliteStore.ts` in main + the renderer's `sqliteRepos.ts` proxy over IPC) |
 | `src/web/` | Web platform: builds the in-process tool registry on `ctx` (the local storage backend is the host-agnostic `core/storage/idb.ts`) |
 | `src/renderer/` | Shared, platform-agnostic UI: the `App`, the boot (`main.tsx`), the ctx React bridge (`ctx.tsx` — `useCtx`), the gated-tool catalog hook (`gatedTools.ts`) |
 | `src/electron/bridge.ts` | IPC contract: `IPC` channel constants + `ElectronApi` interface (`window.api`) |
@@ -183,7 +183,12 @@ ADR-0011); they are not restated below.
 
 ## Build & distribution
 
-- Web dev: `vite.config.ts` (React, Tailwind v4, `/llm/*` dev proxy).
+- Web dev: `vite.config.ts` (React, Tailwind v4, `/llm/*` dev proxy). Renderer
+  builds (web AND the electron renderer, which mirrors these settings in
+  `electron.vite.config.ts`) set `target: es2022` (the boot's top-level await)
+  and mark `node:` builtins rollup-external: node-only tool helpers are
+  reachable only via dynamic import behind cwd guards, so their chunks exist
+  but never load in a browser.
 - Electron dev/build: `electron.vite.config.ts` wraps three Vite builds (main,
   preload as `.mjs` ESM, renderer reusing the web config). `"type": "module"`
   throughout; CJS-only Electron is loaded in preload via `createRequire`.

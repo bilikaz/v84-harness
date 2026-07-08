@@ -67,7 +67,10 @@ const PROMPTS = {
     instruction:
       "Summarize the entire conversation above into a compact but COMPLETE summary that can replace the full " +
       "history. Preserve: the user's goals and constraints, key decisions and their rationale, important facts, " +
-      "file/code state and paths touched, tool results that still matter, and any open tasks or next steps. Use " +
+      "file/code state and paths touched, tool results that still matter, and any open tasks or next steps. If " +
+      "the conversation contains media references (img-N / vid-N aliases), end with a 'Media references' section " +
+      "listing each one that still matters as `img-N: one-line description` — the aliases stay usable as image " +
+      "generation/composition references after compaction. Use " +
       "clear sections. Omit nothing the assistant would need to continue seamlessly. Output only the summary.",
   },
 } satisfies Record<string, Record<string, string>>;

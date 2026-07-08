@@ -3,7 +3,9 @@ import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
 import { imageHandler } from "../../../llm/index.ts";
 import { errorMessage } from "../../../lib/errors.ts";
-import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt } from "../helpers/generation.ts";
+import { ASPECTS, deriveSize, parseDims, pickQuality, qualityWidth, randomSeed } from "../helpers/generation.ts";
+import type { PreparedSave } from "../helpers/imageSave.ts";
+import type { ToolRunCtx } from "../types.ts";
 import { cosmosImagePrompt } from "../helpers/upsampler/cosmos.ts";
 import { getAppConfig } from "../../config/index.ts";
 
@@ -13,6 +15,10 @@ export class ImageGenerate extends BaseGeneralTool {
     return this.llm.resolve("imageGen") != null;
   }
 
+  override single(): boolean {
+    return true; // one generation per step — parallel copies collide on output names / hammer the server
+  }
+
   get schema(): ToolSpec {
     return {
       type: "function",
@@ -20,7 +26,10 @@ export class ImageGenerate extends BaseGeneralTool {
         name: "ImageGenerate",
         description:
           "Generate an image from a text prompt using the configured image model. The image is returned " +
-          "to you so you can inspect and validate it. Pass the prompt exactly as the model should receive ",
+          "to you so you can inspect and validate it, with an img-N reference alias you can reuse later (e.g. in " +
+          "ImageCompose references). When a workspace is open the image is also saved into it " +
+          "(under `name`), and the result tells you the saved path. Only " +
+          "one ImageGenerate runs per turn — generate one image at a time.",
         parameters: {
           type: "object",
           additionalProperties: false,
@@ -32,18 +41,23 @@ export class ImageGenerate extends BaseGeneralTool {
                 "appearance, the setting/background, composition, lighting, colors, mood, and style. The more concrete " +
                 "detail you give, the better the result.",
             },
-            width: {
-              type: "integer",
-              description: "Image width in pixels, e.g. 1024. Omit to use the model's maximum. Automatically capped to the max.",
+            name: {
+              type: "string",
+              description:
+                "A short DESCRIPTIVE filename for the image (no extension, no path, not an img-N alias), e.g. " +
+                "\"sunset-over-harbor\". " +
+                "Used to save it into the workspace's images folder. If a file with that name already exists the " +
+                "call is refused — pick another name or set overwrite. Omit to auto-name.",
+            },
+            overwrite: {
+              type: "boolean",
+              description: "Replace an existing file of the same name instead of being refused. Default false.",
             },
             aspect: {
               type: "string",
               enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
-              description:
-                "Aspect ratio: '1:1' square, '16:9' wide/banner, '9:16' tall/portrait, '4:3', '3:4'. Default '1:1'. " +
-                "Height is derived from width and this — you don't set height.",
+              description: "Aspect ratio: '1:1' square, '16:9' wide/banner, '9:16' tall/portrait, '4:3', '3:4'. Default '1:1'.",
             },
-            negative_prompt: { type: "string", description: "Optional things to avoid in the image." },
             quality: {
               type: "string",
               enum: ["low", "good", "super"],
@@ -56,20 +70,30 @@ export class ImageGenerate extends BaseGeneralTool {
     };
   }
 
-  async run(args: Record<string, unknown>, _cwd?: string, signal?: AbortSignal): Promise<ToolResult> {
+  async run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal, ctx?: ToolRunCtx): Promise<ToolResult> {
     const prompt = String(args.prompt ?? "").trim();
     if (!prompt) return { ok: false, output: `ImageGenerate rejected: missing required "prompt".` };
     const media = this.requireSlot("imageGen", "ImageGenerate");
     if ("ok" in media) return media;
 
-    // We own the dimensions — the model never sets height, and the upsampler never sets resolution.
+    // We own the dimensions — the model never sets width/height; quality (a size tier) picks the base width.
     const max = parseDims(media.model.maxImageSize);
-    const reqW = toInt(args.width);
-    if (args.width !== undefined && reqW === undefined) {
-      return { ok: false, output: `ImageGenerate rejected: width must be a positive integer.` };
-    }
     const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "1:1";
-    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, getAppConfig().imageGen.fallbackWidth);
+    const cfg = getAppConfig().imageGen;
+    const reqW = qualityWidth(cfg.quality[pickQuality(args.quality)], max, cfg.fallbackWidth);
+    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, cfg.fallbackWidth);
+
+    // Workspace save: check the name for collisions BEFORE spending a generation. The fs-backed helper is
+    // loaded dynamically so this general (web-bundled) tool never pulls node:fs into the web graph; cwd is
+    // only set on a local (electron) workspace, so web never reaches it.
+    let save: PreparedSave | undefined;
+    if (cwd) {
+      const { prepareWorkspaceImageSave } = await import("../helpers/imageSave.ts");
+      const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : `generated-${Date.now()}`;
+      const prep = prepareWorkspaceImageSave({ root: cwd, outputDir: ctx?.imageOutputDir, name, overwrite: args.overwrite === true });
+      if ("error" in prep) return { ok: false, output: `ImageGenerate rejected: ${prep.error}` };
+      save = prep;
+    }
 
     const finalPrompt =
       media.model.promptStyle === "cosmos-json" ? await cosmosImagePrompt(this.llm, prompt, signal) : prompt;
@@ -83,16 +107,15 @@ export class ImageGenerate extends BaseGeneralTool {
         params: {
           w,
           h,
-          negativePrompt: typeof args.negative_prompt === "string" ? args.negative_prompt : undefined,
           seed: randomSeed(),
-          preset: getAppConfig().imageGen.quality[pickQuality(args.quality)],
         },
       });
 
-      const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `generated.${mimeToExt(mime)}` };
+      const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `${save?.base ?? "generated"}.${mimeToExt(mime)}` };
+      const savedNote = save ? ` Saved to ${await save.write(mime, b64)} — edit or reference it later by that path.` : "";
       return {
         ok: true,
-        output: `Generated an image (shown to you above). Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
+        output: `Generated an image (shown to you above).${savedNote} Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
         images: [image],
       };
     } catch (e) {

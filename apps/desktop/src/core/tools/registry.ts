@@ -82,6 +82,7 @@ export class ToolRegistry {
         schema: tool.schema,
         permissioned,
         needsWorkspace,
+        single: tool.single(),
         defaultMode,
         effectiveMode,
       } satisfies ToolFilterEntry;
@@ -126,7 +127,7 @@ export class ToolRegistry {
       };
     }
     try {
-      return await tool.run(args, call.cwd, controller.signal);
+      return await tool.run(args, call.cwd, controller.signal, { imageOutputDir: call.imageOutputDir, mediaRefs: call.mediaRefs });
     } catch (e) {
       return { ok: false, output: `error running ${call.name}: ${errorMessage(e)}` };
     } finally {

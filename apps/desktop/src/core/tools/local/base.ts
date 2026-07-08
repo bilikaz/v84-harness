@@ -10,14 +10,33 @@ import { BaseTool } from "../base.ts";
 // The virtual workspace root the model sees; real host paths never cross the tool boundary.
 export const WORKSPACE_ROOT = "/workspace";
 
-/*
 // Virtual path → workspace-relative. Relative input passes through; "/workspace[/…]" → the part under it;
 // a leading-slash path not under /workspace returns null (the caller refuses it as outside the workspace).
+function underWorkspace(virtual: string): string | null {
+  if (!/^[/\\]/.test(virtual)) return virtual;
+  const rel = virtual.replace(/^[/\\]+workspace(?=[/\\]|$)/, "");
+  return rel === virtual ? null : rel.replace(/^[/\\]+/, "");
+}
 
+// Confined virtual → real resolution (throws on escape) — standalone so non-workspace tools that take
+// an OPTIONAL workspace path (the general ImageCompose) reuse the exact same confinement.
+export function resolveWorkspacePath(virtual: string, cwd: string): string {
+  const root = realpathSync(path.resolve(cwd));
+  const rel = underWorkspace(String(virtual));
+  if (rel === null) throw new Error(`path "${virtual}" is outside the workspace — use /workspace/… or a relative path`);
+  const real = path.resolve(root, rel);
 
-// In a shell command, expand the "/workspace" marker to the real root — only this distinctive token at word
-// starts, so regexes, URLs, sed scripts, and flag values keep their own slashes.
-*/
+  const inside = (p: string) => p === root || p.startsWith(root + path.sep);
+  if (!inside(real)) throw new Error(`path "${virtual}" escapes the workspace root`);
+
+  // Resolve symlinks on the deepest existing ancestor and re-check, so an in-workspace symlink can't redirect outside.
+  let probe = real;
+  while (probe !== path.dirname(probe) && !existsSync(probe)) probe = path.dirname(probe);
+  const resolved = existsSync(probe) ? realpathSync(probe) : probe;
+  if (!inside(resolved)) throw new Error(`path "${virtual}" resolves (via symlink) outside the workspace root`);
+
+  return real;
+}
 
 // Workspace file tools: confined path resolution against the session's cwd; subject to the workspace policy.
 export abstract class BaseWorkspaceTool extends BaseTool {
@@ -35,12 +54,6 @@ export abstract class BaseWorkspaceTool extends BaseTool {
 
   protected hideRoot(cwd: string, out: string): string {
     return out.split(cwd + "/").join(`${WORKSPACE_ROOT}/`).split(cwd).join(WORKSPACE_ROOT);
-  }
-
-  private underWorkspace(virtual: string): string | null {
-    if (!/^[/\\]/.test(virtual)) return virtual;
-    const rel = virtual.replace(/^[/\\]+workspace(?=[/\\]|$)/, "");
-    return rel === virtual ? null : rel.replace(/^[/\\]+/, "");
   }
 
   protected expandWorkspace(command: string, cwd: string): string {
@@ -70,20 +83,6 @@ export abstract class BaseWorkspaceTool extends BaseTool {
   }
 
   protected resolvePath(virtual: string, cwd: string): string {
-    const root = this.getRoot(cwd);
-    const rel = this.underWorkspace(String(virtual));
-    if (rel === null) throw new Error(`path "${virtual}" is outside the workspace — use /workspace/… or a relative path`);
-    const real = path.resolve(root, rel);
-
-    const inside = (p: string) => p === root || p.startsWith(root + path.sep);
-    if (!inside(real)) throw new Error(`path "${virtual}" escapes the workspace root`);
-
-    // Resolve symlinks on the deepest existing ancestor and re-check, so an in-workspace symlink can't redirect outside.
-    let probe = real;
-    while (probe !== path.dirname(probe) && !existsSync(probe)) probe = path.dirname(probe);
-    const resolved = existsSync(probe) ? realpathSync(probe) : probe;
-    if (!inside(resolved)) throw new Error(`path "${virtual}" resolves (via symlink) outside the workspace root`);
-
-    return real;
+    return resolveWorkspacePath(virtual, cwd);
   }
 }

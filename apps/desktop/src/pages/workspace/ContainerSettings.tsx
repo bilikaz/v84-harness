@@ -22,6 +22,7 @@ export function ContainerSettings(props: { container: Container; onClose: () => 
   const [tab, setTab] = useState<"settings" | "other">("settings");
   const [name, setName] = useState(container.name);
   const [root, setRoot] = useState(String(container.config.root ?? ""));
+  const [imageDir, setImageDir] = useState(String(container.config.imageOutputDir ?? ""));
   const [instructions, setInstructions] = useState(String(container.config.instructions ?? ""));
   const [perms, setPerms] = useState<Perms>({ ...(container.permissions as Perms) });
   const [confirm, setConfirm] = useState(false);
@@ -29,7 +30,10 @@ export function ContainerSettings(props: { container: Container; onClose: () => 
 
   function save() {
     const config: Record<string, unknown> = { ...container.config, instructions: instructions.trim() || undefined };
-    if (container.type === "local") config.root = root.trim();
+    if (container.type === "local") {
+      config.root = root.trim();
+      config.imageOutputDir = imageDir.trim() || undefined;
+    }
     void updateContainer(container.id, { name: name.trim() || container.name, permissions: perms, config });
     onClose();
   }
@@ -65,6 +69,10 @@ export function ContainerSettings(props: { container: Container; onClose: () => 
               <>
                 <label className="mt-3 block text-sm font-medium text-neutral-700">{t("container.root")}</label>
                 <input className={fieldInputFull} value={root} onChange={(e) => setRoot(e.target.value)} />
+
+                <label className="mt-3 block text-sm font-medium text-neutral-700">{t("container.imageDir")}</label>
+                <p className="mb-1 text-xs text-neutral-500">{t("container.imageDirHint")}</p>
+                <input className={fieldInputFull} value={imageDir} onChange={(e) => setImageDir(e.target.value)} placeholder="generated-images" />
               </>
             )}
 

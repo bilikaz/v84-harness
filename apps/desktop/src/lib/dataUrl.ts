@@ -35,3 +35,12 @@ export function bytesToB64(bytes: Uint8Array): string {
   }
   return typeof btoa !== "undefined" ? btoa(bin) : Buffer.from(bin, "binary").toString("base64");
 }
+
+// The inverse of bytesToB64 — decode base64 to raw bytes (renderer + Node). Used to build multipart
+// image uploads (e.g. /images/edits) from a base64 payload.
+export function b64ToBytes(b64: string): Uint8Array {
+  const bin = typeof atob !== "undefined" ? atob(b64) : Buffer.from(b64, "base64").toString("binary");
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}

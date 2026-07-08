@@ -5,13 +5,14 @@ import { cancelTool, execTool, toolFilter } from "./tools.ts";
 import { invokePluginService } from "./pluginServices.ts";
 import { getBrowserFleet } from "./browserFleet.ts";
 import { saveDataUrl } from "./saveDataUrl.ts";
+import { isWsl, readWindowsClipboardImage } from "./wslClipboard.ts";
 import { openSqliteStore, execData } from "./sqliteStore.ts";
 import { errorMessage } from "../lib/errors.ts";
 
 type Electron = typeof import("electron");
 
 export function registerIpc(electron: Electron): void {
-  const { ipcMain, dialog, app } = electron;
+  const { ipcMain, dialog, app, clipboard } = electron;
 
   // Local per-entity SQLite store (the electron LOCAL StorageRepos backing).
   const sqliteOk = openSqliteStore(app.getPath("userData"));
@@ -58,4 +59,14 @@ export function registerIpc(electron: Electron): void {
 
   ipcMain.handle(IPC.saveImage, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
   ipcMain.handle(IPC.saveVideo, (_e: unknown, dataUrl: string, suggestedName?: string) => saveDataUrl(dialog, dataUrl, suggestedName));
+
+  // Paste fallback: a screenshot on the OS clipboard can reach the renderer's paste event with neither
+  // files nor items (Electron gap) — main's clipboard reads the bitmap (CF_DIB & co.) reliably. Under
+  // WSL the Linux clipboard never receives Windows bitmaps at all (WSLg syncs text only), so fall back
+  // to reading the WINDOWS clipboard via PowerShell interop.
+  ipcMain.handle(IPC.clipboardImage, async () => {
+    const img = clipboard.readImage();
+    if (!img.isEmpty()) return img.toDataURL();
+    return isWsl() ? readWindowsClipboardImage() : null;
+  });
 }

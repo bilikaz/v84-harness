@@ -36,6 +36,8 @@
     "title": "Workspace settings",
     "name": "Name",
     "root": "Folder",
+    "imageDir": "Generated images folder",
+    "imageDirHint": "Where ImageGenerate/ImageCompose save images, relative to the workspace folder. Default: generated-images.",
     "delete": "Delete",
     "tools": "Tool permissions",
     "toolsHint": "The ceiling for tools in this workspace; an agent can restrict further, never extend.",
@@ -175,6 +177,7 @@
     "coverageHint": "What's covered and by which model — tools for uncovered use cases stay disabled.",
     "uc": {
       "imageGen": "Image generation",
+      "imageEdit": "Image compose (reference)",
       "videoGen": "Video generation",
       "imageRec": "Image recognition",
       "videoRec": "Video recognition",
@@ -246,7 +249,10 @@
     "running": "running…",
     "loading": "Loading conversation…",
     "attachTooBig": "Too large to attach (skipped): {{names}}",
-    "attachResized": "Downscaled to {{max}}px: {{names}}"
+    "attachResized": "Downscaled to {{max}}px: {{names}}",
+    "imageRefOnly": "The chat model can't view images — attached as a generation reference (img-N) the agent can still use.",
+    "compactedDivider": "Compacted — messages above are kept here but no longer sent to the model",
+    "compactedSummary": "Summary sent to the model"
   },
   "progress": {
     "progress": "Progress",

@@ -3,7 +3,7 @@ import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
 import { videoHandler } from "../../../llm/index.ts";
 import { errorMessage } from "../../../lib/errors.ts";
-import { ASPECTS, deriveSize, parseDims, pickQuality, randomSeed, toInt } from "../helpers/generation.ts";
+import { ASPECTS, deriveSize, parseDims, pickQuality, qualityWidth, randomSeed } from "../helpers/generation.ts";
 import { cosmosVideoPrompt } from "../helpers/upsampler/cosmos.ts";
 import { getAppConfig } from "../../config/index.ts";
 
@@ -33,11 +33,10 @@ export class VideoGenerate extends BaseGeneralTool {
                 "MOTION/action over time, the setting, lighting, mood, camera movement, and how the scene evolves. " +
                 "The more concrete detail you give, the better the result.",
             },
-            width: { type: "integer", description: "Frame width in px, e.g. 1280. Omit to use the model's max. Capped to the max." },
             aspect: {
               type: "string",
               enum: ["1:1", "16:9", "9:16", "4:3", "3:4"],
-              description: "Aspect ratio: '16:9' wide, '9:16' vertical/portrait. Default '16:9'. Height is derived.",
+              description: "Aspect ratio: '16:9' wide, '9:16' vertical/portrait. Default '16:9'.",
             },
             duration: { type: "number", description: "Length in seconds (default 2). Keep short — generation is slow." },
             quality: { type: "string", enum: ["low", "good", "super"], description: "Render quality; more steps = slower. Default 'good'." },
@@ -57,17 +56,14 @@ export class VideoGenerate extends BaseGeneralTool {
 
     // We own the dimensions — the model never sets height.
     const max = parseDims(media.model.maxVideoSize);
-    const reqW = toInt(args.width);
-    if (args.width !== undefined && reqW === undefined) {
-      return { ok: false, output: `VideoGenerate rejected: width must be a positive integer.` };
-    }
     const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "16:9";
     const [aw, ah] = ASPECTS[aspect];
+    // Quality is a SIZE tier: its fraction of the model's max frame is the base width.
+    const reqW = qualityWidth(cfg.quality[pickQuality(args.quality)], max, cfg.fallbackWidth);
     const { w, h } = deriveSize(reqW, [aw, ah], max, cfg.fallbackWidth);
     const duration =
       typeof args.duration === "number" && args.duration > 0 ? Math.min(args.duration, cfg.maxDurationS) : cfg.defaultDurationS;
     const numFrames = Math.max(1, Math.round(duration * cfg.fps));
-    const quality = pickQuality(args.quality);
 
     const finalPrompt =
       media.model.promptStyle === "cosmos-json"
@@ -91,7 +87,6 @@ export class VideoGenerate extends BaseGeneralTool {
           numFrames,
           fps: cfg.fps,
           seed: randomSeed(),
-          preset: cfg.quality[quality],
           pollIntervalMs: cfg.pollIntervalMs,
           timeoutMs: cfg.timeoutMs,
         },

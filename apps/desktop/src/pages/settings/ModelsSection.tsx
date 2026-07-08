@@ -414,7 +414,7 @@ function ModelRow({ p, m }: { p: MediaProvider; m: MediaModel }) {
         </label>
       )}
 
-      {m.capabilities.includes("imageGen") && (
+      {(m.capabilities.includes("imageGen") || m.capabilities.includes("imageEdit")) && (
         <div className="mt-2 flex items-center gap-2">
           <span className="w-32 text-sm text-neutral-600">{t("media.maxImageSize")}</span>
           <input

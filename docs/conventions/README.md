@@ -25,7 +25,7 @@ This repo's instance-specific documentation lives in
 | [testing.md](testing.md) | Mock at the port with side-effect recorders; real engines; structural assertions |
 | [documentation.md](documentation.md) | Three doc layers (map / conventions / ADRs); Mermaid for diagrams; why-comments |
 | [i18n.md](i18n.md) | Every user-facing string through `t()`; locale files stay key-for-key; constants store keys |
-| [llm-interfaces.md](llm-interfaces.md) | Stable schemas, catalogs as data; batch params; normalized name addressing; announce context edits; bound resubmitted payloads |
+| [llm-interfaces.md](llm-interfaces.md) | Stable schemas, catalogs as data; batch params; normalized name addressing; announce context edits; bound resubmitted payloads; context pressure shrinks the projection, never the stored source |
 | [react.md](react.md) | Named function components; hooks-only state access; stable list keys; no floating rejections |
 | [constants-and-identifiers.md](constants-and-identifiers.md) | Behavioral literals are named; one id generator (seeds are not ids); namespaced persisted keys |
 | [destructive-actions.md](destructive-actions.md) | Delete affordances name exactly what is destroyed; deleted items leave tombstones, not gaps |

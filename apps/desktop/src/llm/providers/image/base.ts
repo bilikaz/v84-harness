@@ -9,8 +9,16 @@ export abstract class BaseImageProvider extends BaseProvider {
   // Params not sent when omitted — server defaults apply.
   protected abstract generate(prompt: string, p: GenParams): Promise<MediaOut>;
 
+  // Prompt-driven edit of one or more input images (/images/edits). Only the dialects that expose an edit
+  // endpoint override this; the rest reject it, so an imageEdit slot on a non-edit provider fails clearly.
+  protected edit(_prompt: string, _images: { b64: string; mime: string }[], _p: GenParams): Promise<MediaOut> {
+    throw new Error("this image provider does not support editing (no /images/edits endpoint)");
+  }
+
   async call<T>(handler: ResponseHandler<T>): Promise<T> {
-    const payload = await this.generate(this.prompt(), this.callCtx.params ?? {});
+    const p = this.callCtx.params ?? {};
+    // Input images → edit; otherwise text-to-image generation. Same provider, two endpoints.
+    const payload = p.images?.length ? await this.edit(this.prompt(), p.images, p) : await this.generate(this.prompt(), p);
     return handler.handle({ kind: "media", payload });
   }
 

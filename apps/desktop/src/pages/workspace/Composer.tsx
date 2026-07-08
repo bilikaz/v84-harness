@@ -1,10 +1,12 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUp, ChevronDown, Plus, Square } from "lucide-react";
 
 import { useProvider } from "../../core/settings.ts";
 import { effectiveImageMaxDim, getAppConfig } from "../../core/config/index.ts";
-import { readAttachments } from "../../lib/attachments.ts";
+import { clipboardFiles, readAttachments } from "../../lib/attachments.ts";
+import { b64ToBytes, parseDataUrl } from "../../lib/dataUrl.ts";
+import { useCtx } from "../../renderer/ctx.tsx";
 import { navigate } from "../../lib/router.ts";
 import { AttachmentList } from "../../components/AttachmentList.tsx";
 import type { FileAttachment, Image, Video } from "../../lib/types.ts";
@@ -23,6 +25,7 @@ export function Composer(props: {
 }) {
   const { t } = useTranslation();
   const provider = useProvider();
+  const ctx = useCtx();
   const [input, setInput] = useState(props.seed ?? "");
   const [images, setImages] = useState<Image[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
@@ -43,7 +46,7 @@ export function Composer(props: {
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
 
-  async function addAttachments(list: FileList) {
+  async function addAttachments(list: FileList | File[]) {
     const maxDim = effectiveImageMaxDim(provider.imageMaxDim);
     const caps = getAppConfig().media;
     const { images: imgs, video: vids, files: fs, skipped, resized } = await readAttachments(list, {
@@ -53,8 +56,14 @@ export function Composer(props: {
       videoMaxBytes: caps.videoMaxBytes,
     });
     if (imgs.length) {
-      if (provider.input?.image === false) setAttachNote(t("session.noImageSupport"));
-      else {
+      if (provider.input?.image === false) {
+        // The chat model can't SEE images, but a configured image model can still USE one as a
+        // generation reference (the ref annotation rides the message) — attach with a note.
+        if (ctx.llm.resolve("imageEdit") ?? ctx.llm.resolve("imageGen")) {
+          setImages((prev) => [...prev, ...imgs]);
+          setAttachNote(t("session.imageRefOnly"));
+        } else setAttachNote(t("session.noImageSupport"));
+      } else {
         setImages((prev) => [...prev, ...imgs]);
         setAttachNote("");
       }
@@ -78,14 +87,50 @@ export function Composer(props: {
     el.value = ""; // allow re-picking the same file
   }
 
-  function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const list = e.clipboardData?.files;
-    if (!list?.length) return;
-    const hasMedia = Array.from(list).some((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
-    if (!hasMedia) return;
-    e.preventDefault();
-    void addAttachments(list);
-  }
+  // Window-level paste: clipboard media lands in the composer from anywhere on the view — no need to
+  // focus the textarea first (a screenshot → Ctrl+V is the whole flow). Other editable elements keep
+  // their native paste; loose text pasted outside any input is dropped into the composer, focused.
+  // Ref-to-latest so the document listener is registered once but sees current props/closures.
+  const docPaste = useRef<(e: ClipboardEvent) => void>(() => {});
+  docPaste.current = (e: ClipboardEvent) => {
+    if (props.lock) return;
+    const target = e.target as HTMLElement | null;
+    const composerInput = inputRef.current;
+    const inOtherEditable =
+      target !== composerInput &&
+      (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || !!target?.isContentEditable);
+    if (inOtherEditable) return;
+    const files = clipboardFiles(e.clipboardData);
+    if (files.length) {
+      e.preventDefault();
+      void addAttachments(files);
+      composerInput?.focus();
+      return;
+    }
+    const text = e.clipboardData?.getData("text");
+    if (text && target !== composerInput) {
+      e.preventDefault();
+      setInput((prev) => prev + text);
+      composerInput?.focus();
+      return;
+    }
+    // Neither files nor text: an OS-clipboard bitmap Electron's DOM paste event didn't carry —
+    // read it from main (absent on web, where clipboardData covers it).
+    if (!text && ctx.api.readClipboardImage) {
+      void ctx.api.readClipboardImage().then((url) => {
+        const parsed = url ? parseDataUrl(url) : null;
+        if (!parsed) return;
+        // Time-suffixed so repeated pastes stay distinguishable (the name is display + save suggestion only).
+        void addAttachments([new File([new Uint8Array(b64ToBytes(parsed.b64))], `pasted-${Date.now()}.png`, { type: parsed.mime })]);
+        composerInput?.focus();
+      });
+    }
+  };
+  useEffect(() => {
+    const h = (e: ClipboardEvent): void => docPaste.current(e);
+    document.addEventListener("paste", h);
+    return () => document.removeEventListener("paste", h);
+  }, []);
 
   function submit() {
     if (!canSend) return;
@@ -140,7 +185,6 @@ export function Composer(props: {
           disabled={props.lock}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          onPaste={onPaste}
           placeholder={props.lock ? props.lockNote ?? t("session.placeholder") : t("session.placeholder")}
           className="max-h-24 w-full resize-none overflow-y-auto px-2 py-1 text-sm outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:bg-transparent"
         />

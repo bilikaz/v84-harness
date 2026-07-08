@@ -9,6 +9,7 @@ The reference module shape for `core/` features:
 | `store.ts` | State, selectors, mutations; decides WHEN to persist; the media resend window |
 | `persistence.ts` | Pure session-meta shapes: `SessionMeta`/`SessionsIndex` + the `toMeta`/`normalize` coercions (durable IO lives in `StorageEngine`, [architecture/storage.md](storage.md)) |
 | `engine.ts` | The `SessionEngine` class — orchestration: the turn loop (`sendTo` → `runTurn`), sub-agent execution + delivery (`awaitSettled`, the async push queue), boot `reconcile()` (restart recovery, [ADR-0073](../adr/0073-subagent-restart-recovery.md)), effective tool policy, naming/compaction wiring |
+| `mediaRefs.ts` | Pure helpers for media reference aliases (`img-N`/`vid-N`): token extraction, transcript resolution, labels, the compaction boundary index |
 | `events.ts` | Bus event interfaces + declaration merge + scoped bus |
 | `listeners.ts` | Bus → store reactions (transcript building, streaming flags, persistence) |
 | `hooks.ts` | React bindings only |
@@ -102,6 +103,16 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   Images are downscaled to the model's pixel cap (`imageMaxDim`, default 2048)
   as the result crosses the engine — UI, persistence, and model all share the
   fitted copy ([ADR-0027](../adr/0027-per-model-image-pixel-cap.md)).
+- **Media reference aliases** ([ADR-0077](../adr/0077-media-reference-aliases.md)): every image/video
+  landing in a session is stamped with a short per-session alias (`img-N`/`vid-N` — `Image.ref`,
+  counter in `session.meta.mediaSeq`, never renumbered) at the store mutators; the engine stamps
+  tool-result media before emitting `tool:result` and appends the alias to the output text. The model
+  learns aliases from a per-message annotation in `toChatMessages` (and from the resend-window /
+  capability-hidden notes, so out-of-window media stays referenceable). At dispatch the engine scans
+  the call args for alias tokens, resolves them from the in-memory transcript, and ships
+  `ToolCallRequest.mediaRefs` — how `ImageCompose` references a pasted screenshot with no file
+  involved. Aliases never travel across sessions: media delivered from a child gets the parent's
+  next number at landing. The UI shows the alias as a badge on thumbnails.
 - Resubmitted media rides a **resend window** (10 items / 50 MB, newest always
   sent — count is the binding budget now that images are pixel-fitted, bytes a
   loose backstop, ADR-0027): older media is swapped for an in-place stub
@@ -111,6 +122,14 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   input + output — never a sum across requests (each request's input already
   counts the whole transcript). Auto-compaction summarizes the session when that
   snapshot crosses the context limit.
+- **Compaction is a send boundary, not a rewrite** ([ADR-0078](../adr/0078-compaction-as-send-boundary.md)):
+  `compact()` APPENDS the summary as a normal `summary: true` message (ordinary commit-on-landing);
+  `toChatMessages` sends the last summary + everything after it. The full transcript and its media stay
+  — visible in the UI (dimmed above a "compacted" divider, summary as a collapsed card), refs resolvable
+  for the session's life, nothing GC'd. Re-compaction is incremental for free (the summariser input
+  already starts at the previous summary), and the summary carries forward an `img-N` inventory so
+  generation cycles survive. The wholesale transcript rewrite (`persistSession`/`replaceWithSummary`)
+  is gone.
 - **Message reference stability is a contract**: mutations replace only the
   objects they touch (streaming swaps the last message; appends keep the rest),
   and the transcript UI (`Message`/`Markdown`/`ToolCard`/`Thinking`) is
@@ -122,7 +141,8 @@ subscribers. The public turn methods (`send`, `sendTo`, `runAgent`, `stopTurn`,
   on `turn:start` / `tool:result` / `turn:deliver` / `turn:end`, holding an
   incomplete tool exchange (no stranded `tool_call`) and never writing turn scratch
   (the malformed/heal/`⚠️`/aborted messages). A crash loses at most the
-  actively-streaming message. `replaceForSession` survives only for compaction.
+  actively-streaming message. `replaceForSession` survives only for the
+  offline-delete transcript clear (compaction appends now, [ADR-0078](../adr/0078-compaction-as-send-boundary.md)).
   Media blobs are externalized once at creation; boot reads the session metas +
   the active transcript, the rest lazy-load via `ensureLoaded`. Message ids are
   ULIDs so reload order is creation order.

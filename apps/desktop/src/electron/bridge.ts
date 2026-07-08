@@ -49,6 +49,9 @@ export interface ElectronApi {
   // Resolves to the written path, or null if cancelled. suggestedName pre-fills the dialog.
   saveImage(dataUrl: string, suggestedName?: string): Promise<string | null>;
   saveVideo(dataUrl: string, suggestedName?: string): Promise<string | null>;
+  // The OS clipboard's bitmap as a data URL (null when none) — the paste fallback: Electron's DOM paste
+  // event can carry a screenshot through neither files nor items, but main's clipboard always sees it.
+  clipboardImage(): Promise<string | null>;
 }
 
 export const IPC = {
@@ -68,6 +71,7 @@ export const IPC = {
   browserEvent: "harness:browser:event",
   saveImage: "harness:saveImage",
   saveVideo: "harness:saveVideo",
+  clipboardImage: "harness:clipboard:image",
   storageAvailable: "harness:storage:available",
   storageExec: "harness:storage:exec",
   pluginInvoke: "harness:plugin:invoke",

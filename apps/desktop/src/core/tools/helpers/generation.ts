@@ -52,3 +52,9 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 2_147_483_647);
 }
 
+// The base width to render at: the quality tier's fraction of the model's max (or the fallback when the model
+// declares no max). deriveSize then applies the aspect + caps to max.
+export function qualityWidth(frac: number, max: { w: number } | null, fallbackW: number): number {
+  return Math.round((max?.w ?? fallbackW) * frac);
+}
+

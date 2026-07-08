@@ -1,6 +1,6 @@
 import { createClient, type LLMClient } from "../../llm/index.ts";
 import type { Config } from "../config/index.ts";
-import { type ToolResult, type ToolSpec, type ToolPermission } from "./types.ts";
+import { type ToolResult, type ToolSpec, type ToolPermission, type ToolRunCtx } from "./types.ts";
 
 // Largest tool output handed back to the model — a runaway command can't blow its context.
 export const OUTPUT_CAP = 64 * 1024;
@@ -34,7 +34,7 @@ export abstract class BaseTool {
 
   abstract get schema(): ToolSpec;
 
-  abstract run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal): Promise<ToolResult>;
+  abstract run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal, ctx?: ToolRunCtx): Promise<ToolResult>;
 
   // Whether this tool is available for the current ctx (model capability / configured slot). Overridden by gated tools.
   canRun(): boolean {
@@ -50,6 +50,14 @@ export abstract class BaseTool {
   // Whether this tool requires a workspace folder to run. The filter forces it to mode 0 when no workspace
   // is in context. Separate axis from isPermissioned() — a tool can need a workspace without being gated.
   needsWorkspace(): boolean {
+    return false;
+  }
+
+  // Whether at most ONE call to this tool runs per step. When the model emits several calls to a single tool
+  // in one turn, only the first survives; the extras are dropped from the call set (never run, never answered).
+  // For exclusive/expensive ops — e.g. image generation/compose — where parallel copies collide on output
+  // names or hammer a shared server. The dispatcher enforces it via the filter entry.
+  single(): boolean {
     return false;
   }
 

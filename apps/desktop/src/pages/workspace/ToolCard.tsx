@@ -67,14 +67,14 @@ export const ToolCard = memo(function ToolCard({
       {images && images.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
           {images.map((im, i) => (
-            <SavableMedia kind="image" key={i} src={im.url} name={im.name} className="max-h-64 cursor-zoom-in rounded-lg object-cover" />
+            <SavableMedia kind="image" key={i} src={im.url} name={im.name} badge={im.ref} className="max-h-64 cursor-zoom-in rounded-lg object-cover" />
           ))}
         </div>
       )}
       {videos && videos.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-neutral-200 p-2">
           {videos.map((v, i) => (
-            <SavableMedia kind="video" key={i} src={v.url} name={v.name} className="max-h-72 rounded-lg" />
+            <SavableMedia kind="video" key={i} src={v.url} name={v.name} badge={v.ref} className="max-h-72 rounded-lg" />
           ))}
         </div>
       )}

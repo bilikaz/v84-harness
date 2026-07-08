@@ -80,6 +80,7 @@ export async function init(): Promise<Ctx> {
     saveImage: (dataUrl, name) => api!.saveImage(dataUrl, name),
     saveVideo: (dataUrl, name) => api!.saveVideo(dataUrl, name),
     mediaModels: (ep) => api!.media.models(ep),
+    readClipboardImage: () => api!.clipboardImage(),
     browser: api!.browser,
     invokePlugin: (slug, method, args) => api!.plugins.invoke(slug, method, args),
     onPluginEvent: (cb) => api!.plugins.onEvent(cb),

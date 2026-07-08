@@ -90,6 +90,9 @@ loading. Its index row below stays.
 | [0073](0073-subagent-restart-recovery.md) | Sub-agent restart recovery — durable `delivered` watermark + boot `reconcile()` (async runs resume after a reload); async is the default orchestration mode | accepted |
 | [0074](0074-session-identity-vs-runtime.md) | Session identity vs. runtime — churning fields move to `session.meta`, stored whole in one `meta_data` JSON column (refines 0071) | accepted |
 | [0075](0075-breaking-change-data-reset.md) | Breaking data changes reset, not migrate — MySQL wipe + canonical `001`, local `DATA_VERSION` gate (applies canonical-shapes rule 5) | accepted |
+| [0076](0076-image-edit-service-and-referenceable-images.md) | Image editing: `imageEdit` as its own service; `ImageCompose` (prompt + references); workspace-saved, model-named generated images (refuse-on-collision, two-phase); repeated-`image` multipart wire | accepted |
+| [0077](0077-media-reference-aliases.md) | Media reference aliases — per-session `img-N`/`vid-N` stamped at landing (counter in `session.meta`), in-band annotations, engine pre-resolution into `ToolCallRequest.mediaRefs` | accepted |
+| [0078](0078-compaction-as-send-boundary.md) | Compaction is a send boundary, not a rewrite — summary appended, send = last summary + tail, transcript/media never destroyed (amends 0072's compaction clause) | accepted |
 
 ## Needs review / important missing parts
 

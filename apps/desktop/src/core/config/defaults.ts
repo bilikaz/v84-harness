@@ -2,13 +2,9 @@
 
 export type Quality = "low" | "good" | "super";
 
-// guidance stays ~6 across all tiers (high guidance DEGRADES, it's not a
-// quality slider); quality scales with sampling steps.
-export interface QualityPreset {
-  steps: number;
-  guidance: number;
-  flowShift?: number;
-}
+// Quality is a SIZE tier now (not sampling knobs): the fraction of the model's max output size to render at.
+// super = full resolution, good/low = smaller + faster. Sampling params (steps/guidance) are the server's job.
+export type QualitySizes = Record<Quality, number>;
 
 export interface ConfigApp {
   // The user's global system prompt — the BASE block for plain-chat sessions (agents + workspaces override
@@ -35,7 +31,7 @@ export interface ConfigApp {
   imageGen: {
     // Width used when the model omits one and the entry has no maxSize.
     fallbackWidth: number;
-    quality: Record<Quality, QualityPreset>;
+    quality: QualitySizes;
   };
   videoGen: {
     fps: number;
@@ -46,7 +42,7 @@ export interface ConfigApp {
     fallbackWidth: number;
     defaultDurationS: number;
     maxDurationS: number;
-    quality: Record<Quality, QualityPreset>;
+    quality: QualitySizes;
   };
   // The llm client's heal cycle (validated calls re-prompt until accepted).
   llm: {
@@ -110,11 +106,8 @@ export const CONFIG_DEFAULTS: ConfigApp = {
   },
   imageGen: {
     fallbackWidth: 1024,
-    quality: {
-      low: { steps: 40, guidance: 6, flowShift: 10 }, // fast drafts
-      good: { steps: 60, guidance: 6, flowShift: 10 }, // default
-      super: { steps: 80, guidance: 6, flowShift: 10 }, // final / hero images
-    },
+    // Fraction of the model's max output size per tier (server owns sampling params).
+    quality: { low: 0.5, good: 0.8, super: 1 },
   },
   videoGen: {
     fps: 24,
@@ -123,11 +116,8 @@ export const CONFIG_DEFAULTS: ConfigApp = {
     fallbackWidth: 1280,
     defaultDurationS: 2,
     maxDurationS: 10,
-    quality: {
-      low: { steps: 40, guidance: 6 },
-      good: { steps: 60, guidance: 6 },
-      super: { steps: 80, guidance: 6 },
-    },
+    // Fraction of the model's max frame size per tier (server owns sampling params).
+    quality: { low: 0.5, good: 0.8, super: 1 },
   },
   llm: { maxHealAttempts: 3 },
   upsample: { maxAttempts: 3 },
