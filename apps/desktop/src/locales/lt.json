@@ -36,6 +36,8 @@
     "title": "Darbo srities nustatymai",
     "name": "Pavadinimas",
     "root": "Aplankas",
+    "imageDir": "Sugeneruotų vaizdų aplankas",
+    "imageDirHint": "Kur ImageGenerate/ImageCompose įrašo vaizdus, nurodant kelią nuo darbo srities aplanko. Numatyta: generated-images.",
     "delete": "Ištrinti",
     "tools": "Įrankių leidimai",
     "toolsHint": "Šios darbo srities įrankių riba; agentas gali ją susiaurinti, bet ne išplėsti.",
@@ -175,6 +177,7 @@
     "coverageHint": "Kas padengta ir kuriuo modeliu — nepadengtų panaudojimų įrankiai lieka išjungti.",
     "uc": {
       "imageGen": "Vaizdų generavimas",
+      "imageEdit": "Vaizdų komponavimas (nuoroda)",
       "videoGen": "Video generavimas",
       "imageRec": "Vaizdų atpažinimas",
       "videoRec": "Video atpažinimas",
@@ -246,7 +249,10 @@
     "running": "vykdoma…",
     "loading": "Įkeliamas pokalbis…",
     "attachTooBig": "Per dideli prisegti (praleisti): {{names}}",
-    "attachResized": "Sumažinta iki {{max}}px: {{names}}"
+    "attachResized": "Sumažinta iki {{max}}px: {{names}}",
+    "imageRefOnly": "Pokalbio modelis vaizdų nemato — prisegta kaip generavimo nuoroda (img-N), kurią agentas vis tiek gali naudoti.",
+    "compactedDivider": "Suglaudinta — žinutės aukščiau lieka čia, bet modeliui nebesiunčiamos",
+    "compactedSummary": "Modeliui išsiųsta santrauka"
   },
   "progress": {
     "progress": "Eiga",

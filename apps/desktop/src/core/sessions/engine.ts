@@ -31,8 +31,10 @@ import {
   setDelivered,
   setLastSystem,
   setUserPaused,
+  stampMediaRefs,
   toChatMessages,
 } from "./store.ts";
+import { extractRefTokens, refLabel, resolveRefs } from "./mediaRefs.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { downscaleImage } from "../../lib/imageResize.ts";
 import { nameSession } from "./naming.ts";
@@ -444,7 +446,7 @@ export class SessionEngine {
         setLastSystem(sid, system ?? "");
 
         // Heal stays driver-driven (the correction is a SESSION turn via the store), so the handler never throws HealError.
-        const { text, thinking, calls } = await this.ctx.llm.call({
+        const { text, thinking, calls: rawCalls } = await this.ctx.llm.call({
           service: "main",
           target: callTarget,
           messages: history,
@@ -461,7 +463,7 @@ export class SessionEngine {
         if (errored || controller.signal.aborted) break;
 
         // Rejected final turn → hidden correction + re-stream, up to llm.maxHealAttempts; budget spent → error, never best-effort output.
-        if (!calls.length) {
+        if (!rawCalls.length) {
           if (opts.validate) {
             try {
               opts.validate(text);
@@ -481,6 +483,15 @@ export class SessionEngine {
             }
           }
           break;
+        }
+        // "single" tools run at most ONCE per step (BaseTool.single, surfaced on the filter entry): if the
+        // model emits several calls to the same single tool, only the FIRST survives — the extras are dropped
+        // from the call set entirely (never executed, never answered), so the assistant message shows just the
+        // one call that ran. Parallel copies of an image op would collide on output names and hammer the media
+        // server; other exclusive/expensive tools can opt in the same way.
+        const calls = dropExtraSingleCalls(rawCalls, (name) => !!filtered[name]?.single);
+        if (calls.length !== rawCalls.length) {
+          llmLog.debug("tool:calls.deduped", { sessionId: sid, kept: calls.length, dropped: rawCalls.length - calls.length });
         }
         // Run all calls concurrently — results link back via toolCallId, so completion order doesn't matter.
         bus.emit("tool:calls", { sessionId: sid, calls });
@@ -507,7 +518,8 @@ export class SessionEngine {
                 return;
               }
               const images = await this.downscaleToolImages(res.images, effectiveImageMaxDim(cfg.imageMaxDim));
-              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: res.output, images, videos: res.videos, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId });
+              stampMediaRefs(sid, images, res.videos);
+              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: withMediaRefNote(res.output, images, res.videos), images, videos: res.videos, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId });
               if (images?.length) fedImages.push(...images);
               if (res.videos?.length) fedVideo.push(...res.videos);
               return;
@@ -538,18 +550,27 @@ export class SessionEngine {
             controller.signal.addEventListener("abort", onAbort, { once: true });
             try {
               // The platform's gateway runs the call — web in-process, electron over the bridge (cancel via ADR-0014).
+              // Media aliases mentioned in the args are pre-resolved here (the tool can't reach the transcript).
               result =
-                (await this.ctx.tools.run({ id: call.id, name: call.name, arguments: call.arguments, cwd: (ws?.config.root as string | undefined) ?? "" })) ??
+                (await this.ctx.tools.run({
+                  id: call.id,
+                  name: call.name,
+                  arguments: call.arguments,
+                  cwd: (ws?.config.root as string | undefined) ?? "",
+                  imageOutputDir: ws?.config.imageOutputDir as string | undefined,
+                  mediaRefs: resolveRefs(getSession(sid)?.messages ?? [], extractRefTokens(call.arguments)),
+                })) ??
                 { ok: false, output: `tool "${call.name}" is unavailable here.` };
             } catch (e) {
               result = { ok: false, output: `tool execution failed: ${errorMessage(e)}` };
             } finally {
               controller.signal.removeEventListener("abort", onAbort);
             }
-            const output = result.output;
-            llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "registry", ok: result.ok, output: logTrunc(output) });
+            llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "registry", ok: result.ok, output: logTrunc(result.output) });
             const images = await this.downscaleToolImages(result.images, effectiveImageMaxDim(cfg.imageMaxDim));
-            const videos = result.videos?.map((g) => ({ url: g.url, mime: g.mime, name: g.name }));
+            const videos = result.videos?.map((g) => ({ ...g }));
+            stampMediaRefs(sid, images, videos);
+            const output = withMediaRefNote(result.output, images, videos);
             bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, videos });
             if (images?.length) fedImages.push(...images);
             if (videos?.length) fedVideo.push(...videos);
@@ -648,10 +669,30 @@ export class SessionEngine {
     return Promise.all(
       images.map(async (g) => {
         const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
-        return { url: d?.url ?? g.url, mime: d?.mime ?? g.mime, name: g.name };
+        return { ...g, url: d?.url ?? g.url, mime: d?.mime ?? g.mime };
       }),
     );
   }
+}
+
+// Tool media gets its alias stamped BEFORE the result is emitted, and the output text names it — the
+// tool ran in the platform (possibly main across the bridge) and cannot know renderer-side refs.
+function withMediaRefNote(output: string, images?: Image[], videos?: Video[]): string {
+  const labels = [...(images ?? []), ...(videos ?? [])].filter((g) => g.ref).map(refLabel);
+  if (!labels.length) return output;
+  return `${output}\n[media reference${labels.length > 1 ? "s" : ""}: ${labels.join(", ")} — reuse by alias, e.g. in ImageCompose references]`;
+}
+
+// Keep only the FIRST call to each "single" tool in a step; drop the later duplicates entirely. Non-single
+// tools all pass through. Pure + exported so the drop rule is unit-tested without driving a whole turn.
+export function dropExtraSingleCalls(calls: ToolCallRequest[], isSingle: (name: string) => boolean): ToolCallRequest[] {
+  const seen = new Set<string>();
+  return calls.filter((c) => {
+    if (!isSingle(c.name)) return true; // not single → always kept
+    if (seen.has(c.name)) return false; // a later call to a single tool → dropped
+    seen.add(c.name);
+    return true; // the first call to this single tool → kept
+  });
 }
 
 // A child has reached a terminal, deliverable state: a stored failure (errorKind — delivered as a note)

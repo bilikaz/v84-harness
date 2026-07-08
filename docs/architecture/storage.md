@@ -69,7 +69,7 @@ per-entity tables/stores:
 | --- | --- | --- | --- |
 | `containers` | `Container` | `id` | CRUD |
 | `sessions` | `SessionMeta` | `id` | CRUD; the rows ARE the session list — no index blob |
-| `messages` | `Message` (transcript) | `sessionId` | `listBySession` + `put` (upsert by id, the incremental commit) + `remove`; `replaceForSession` kept for compaction/reset ([ADR-0072](../adr/0072-commit-on-landing.md)) |
+| `messages` | `Message` (transcript) | `sessionId` | `listBySession` + `put` (upsert by id, the incremental commit) + `remove`; `replaceForSession` kept only for the offline-delete clear ([ADR-0072](../adr/0072-commit-on-landing.md), amended by [ADR-0078](../adr/0078-compaction-as-send-boundary.md)) |
 | `media` | `MediaRow` | `id` (indexed by `sessionId`) | externalized blobs |
 | `agents` | `Agent` | `id` | CRUD |
 | `settings` | `SettingRow` | `key` | one row per consumer key; `scope` = `account` \| `local` |
@@ -135,6 +135,7 @@ classDiagram
         bytes?: number
         unread?: boolean
         delivered?: boolean  «sub-agent delivery watermark»
+        mediaSeq?: number  «img-N/vid-N alias counter - never recomputed»
     }
     Session o-- SessionRuntime
     class Message {
@@ -157,12 +158,14 @@ classDiagram
         mime?: string
         name?: string
         id?: string  «stamped at first persist = media row exists»
+        ref?: string  «img-N alias, stamped at landing - ADR-0077»
     }
     class Video {
         url: string  «data: in memory, media:id when stored»
         mime?: string
         name?: string
         id?: string  «stamped at first persist = media row exists»
+        ref?: string  «vid-N alias, stamped at landing - ADR-0077»
     }
     class MediaRow {
         id: string
@@ -220,8 +223,9 @@ convention, and is free to diverge (dimensions, duration). The containing field
 **Commands** (user-facing changes; each persists what it touched):
 `setActive` (→ `ensureLoaded` + meta when the unread flag clears),
 `createSession`/`newSession` (meta row), `renameSession`/`setTitle`/`unlinkAgent`
-(meta row), `deleteSession` (row remove, provider-aware), `replaceWithSummary`
-(rewrites the transcript, GCs orphaned media via re-externalize).
+(meta row), `deleteSession` (row remove, provider-aware), `appendSummary`
+(compaction: appends the summary message via `commitMessages` — nothing rewritten,
+no media GC; [ADR-0078](../adr/0078-compaction-as-send-boundary.md)).
 
 **Persistence** (fire-and-forget, failures are logged warnings; the durable
 reads/writes go through `ctx.storage.repos()`):
@@ -234,9 +238,10 @@ reads/writes go through `ctx.storage.repos()`):
   `messages.put` upsert by id), holding an incomplete tool exchange and skipping
   never-persist turn scratch. Fired on `turn:start` / `tool:result` /
   `turn:deliver` / `turn:end`. A transient committed-id set is the new-vs-old boundary.
-- `persistSession(sid)` — the wholesale rewrite, now the **compaction/reset** path
-  only (`replaceWithSummary`): externalizes media, then `messages.replaceForSession`,
-  then the meta row. Refuses an unloaded shell or the placeholder.
+- The wholesale rewrite (`persistSession`) is **deleted** — compaction appends
+  (`appendSummary` → `commitMessages`), so commit-on-landing covers every persist
+  path ([ADR-0078](../adr/0078-compaction-as-send-boundary.md)). Media rows are
+  never GC'd within a session's life; `deleteSession` still removes everything.
 - `gateDataVersion(engine)` (`core/storage/version.ts`) — at boot, wipes the local
   provider (`StorageRepos.wipe()`) and re-seeds when the stored `DATA_VERSION` stamp
   is older than the build's ([ADR-0075](../adr/0075-breaking-change-data-reset.md)).

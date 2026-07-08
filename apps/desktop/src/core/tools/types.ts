@@ -12,6 +12,14 @@ export interface ToolResult {
   videos?: Video[];
 }
 
+// Extra per-call context the dispatcher threads to a tool alongside args/cwd/signal — additive, all optional
+// (most tools ignore it). `imageOutputDir` is the workspace-relative folder image tools save into.
+// `mediaRefs` maps media aliases ("img-3") mentioned in the args to their content, pre-resolved by the engine.
+export interface ToolRunCtx {
+  imageOutputDir?: string;
+  mediaRefs?: Record<string, { url: string; mime?: string; name?: string }>;
+}
+
 // What crosses the bridge to the main runner alongside the call: the config snapshot (functions/clients can't
 // cross IPC, so main seeds its Ctx from this). The cwd rides on the ToolCallRequest itself.
 export interface WireConfig {
@@ -44,6 +52,8 @@ export interface ToolFilterEntry {
   permissioned: boolean;
   /** Requires a workspace folder to run; forced off when filtered with hasWorkspace: false. */
   needsWorkspace: boolean;
+  /** At most one call per step: the dispatcher drops all but the first call to this tool in a turn. */
+  single: boolean;
   defaultMode: ToolPermission;
   /** Computed effective mode after applying workspace + agent policy (0=off, 1=ask, 2=auto). */
   effectiveMode: ToolPermission;

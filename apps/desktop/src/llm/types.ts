@@ -3,7 +3,6 @@
 
 // The call target is config's LLMConfig (config owns it); re-exported here so the llm layer keeps a local name.
 import type { LLMConfig } from "../core/config/llm.ts";
-import type { QualityPreset } from "../core/config/defaults.ts";
 export type { LLMConfig } from "../core/config/llm.ts";
 
 export type TextProviderKind = "openai" | "anthropic" | "gemini";
@@ -11,28 +10,38 @@ export type TextProviderKind = "openai" | "anthropic" | "gemini";
 export type ReasoningEffort = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // An image/video item riding a message, result, or attachment: url (a data: URL carrying the content, or http) +
-// optional mime, display name, and storage-blob id. Image and Video are kept as distinct types so the medium is in
+// optional mime, display name, and storage-blob id. `ref` is the per-session model/user-facing alias ("img-3" /
+// "vid-1") stamped at landing — short by design (a 26-char ULID invites one-char hallucinations that silently
+// miss); never renumbered. Image and Video are kept as distinct types so the medium is in
 // the type — not a field convention — and is free to diverge later (dimensions, duration…). Identical today.
 export interface Image {
   url: string;
   mime?: string;
   name?: string;
   id?: string;
+  ref?: string;
 }
 export interface Video {
   url: string;
   mime?: string;
   name?: string;
   id?: string;
+  ref?: string;
 }
 
 // A tool call the model requested. `cwd` is the workspace root the dispatcher runs it under ("" when the model
-// emits it / for workspace-less tools); the gateway fills it in before execution.
+// emits it / for workspace-less tools); the gateway fills it in before execution. `imageOutputDir` is the
+// workspace-relative folder generated/edited images are saved into (from the container config); like `cwd`
+// it's a non-model field the engine fills at dispatch.
 export interface ToolCallRequest {
   id: string;
   name: string;
   arguments: string;
   cwd: string;
+  imageOutputDir?: string;
+  // Media aliases mentioned in `arguments`, pre-resolved by the engine to their content (tools run
+  // across the bridge as pure data and can't reach the session transcript). Non-model, engine-filled.
+  mediaRefs?: Record<string, { url: string; mime?: string; name?: string }>;
 }
 
 export interface ChatMessage {
@@ -52,7 +61,7 @@ export interface StreamUsage {
 }
 
 // The media services config covers — the single runtime list; MediaService derives from it.
-export const MEDIA_SERVICES = ["imageGen", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"] as const;
+export const MEDIA_SERVICES = ["imageGen", "imageEdit", "videoGen", "imageRec", "videoRec", "audioGen", "audioRec"] as const;
 export type MediaService = (typeof MEDIA_SERVICES)[number];
 // `main` (foreground chat) and `subAgent` (child runs) are the two text-runner roles the
 // concurrency runner pools over; both resolve through the text provider path.
@@ -66,6 +75,7 @@ export const SERVICE_MODALITY: Record<ModelService, Modality> = {
   videoRec: "text",
   audioRec: "text",
   imageGen: "image",
+  imageEdit: "image",
   videoGen: "video",
   audioGen: "audio",
 };
@@ -108,12 +118,13 @@ export interface GenParams {
   w?: number;
   h?: number;
   seed?: number;
-  negativePrompt?: string;
-  preset?: QualityPreset;
   numFrames?: number;
   fps?: number;
   pollIntervalMs?: number;
   timeoutMs?: number;
+  // Input images for an EDIT call (base64 + mime). Present → the image provider runs its edit path
+  // (/images/edits) instead of generation. Several = multi-reference editing (FLUX.2).
+  images?: { b64: string; mime: string }[];
 }
 
 export interface MediaOut {

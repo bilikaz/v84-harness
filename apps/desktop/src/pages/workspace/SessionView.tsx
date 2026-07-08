@@ -6,6 +6,7 @@ import {
   contextLimit,
   getLastSystem,
   isFull,
+  lastSummaryIndex,
   renameSession,
   setActive,
   useActiveSession,
@@ -54,6 +55,9 @@ export function SessionView() {
   const sessions = useSessions();
   const parent = sessions.find((s) => s.id === session.parentId);
   const isChildRun = !!session.parentId;
+
+  // The compaction boundary: everything before the LAST summary is kept-but-not-sent (dimmed).
+  const lastSummaryIdx = useMemo(() => lastSummaryIndex(session.messages), [session.messages]);
 
   // toolChildren merges live links (in-flight childRuns) with settled ones (tool-result messages).
   const childRuns = useChildRuns();
@@ -187,25 +191,30 @@ export function SessionView() {
             </p>
           )}
           {session.messages.map((m, i) =>
-            // Tool results fold into the assistant's tool card; summaries/heal corrections are model-only.
-            m.role === "tool" || m.summary || m.hidden ? null : (
-              <Message
-                key={m.id}
-                role={m.role}
-                text={m.text}
-                thinking={m.thinking}
-                images={m.images}
-                videos={m.videos}
-                files={m.files}
-                createdAt={m.createdAt}
-                toolCalls={m.toolCalls}
-                results={toolResults}
-                toolImages={toolImages}
-                toolVideo={toolVideo}
-                toolChildren={toolChildren}
-                toolBrowserWindows={toolBrowserWindows}
-                streaming={streaming && i === session.messages.length - 1}
-              />
+            // Tool results fold into the assistant's tool card; heal corrections are model-only.
+            // A summary renders as the compaction boundary: messages above it stay visible (dimmed)
+            // but are no longer sent to the model — compaction is a send policy, not a rewrite.
+            m.role === "tool" || m.hidden ? null : m.summary ? (
+              <CompactionMarker key={m.id} text={m.text} />
+            ) : (
+              <div key={m.id} className={i < lastSummaryIdx ? "opacity-60" : undefined}>
+                <Message
+                  role={m.role}
+                  text={m.text}
+                  thinking={m.thinking}
+                  images={m.images}
+                  videos={m.videos}
+                  files={m.files}
+                  createdAt={m.createdAt}
+                  toolCalls={m.toolCalls}
+                  results={toolResults}
+                  toolImages={toolImages}
+                  toolVideo={toolVideo}
+                  toolChildren={toolChildren}
+                  toolBrowserWindows={toolBrowserWindows}
+                  streaming={streaming && i === session.messages.length - 1}
+                />
+              </div>
             ),
           )}
         </div>
@@ -275,6 +284,25 @@ export function SessionView() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// The compaction boundary: a divider naming what happened + the summary the model got, collapsed.
+// Older messages stay above it (dimmed) — compaction never removes anything from the transcript.
+function CompactionMarker({ text }: { text: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3 text-xs text-neutral-400">
+        <span className="h-px flex-1 bg-neutral-200" />
+        <span>{t("session.compactedDivider")}</span>
+        <span className="h-px flex-1 bg-neutral-200" />
+      </div>
+      <details className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+        <summary className="cursor-pointer select-none">{t("session.compactedSummary")}</summary>
+        <div className="mt-2 whitespace-pre-wrap text-neutral-600">{text}</div>
+      </details>
     </div>
   );
 }

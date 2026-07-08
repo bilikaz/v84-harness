@@ -47,7 +47,12 @@ can actually echo, scoped so they don't collide where the model sees them, plus
 the self-healing miss above, close that loop. Keep the opaque id internally;
 expose the short one. (Observed: random-UUID browser-window ids drove a model to
 spawn duplicate windows until per-session integer ids replaced them; the same
-short-alias scheme then addresses long-lived sub-agent runs.)
+short-alias scheme then addresses long-lived sub-agent runs, and conversation
+media — `img-3` as the handle for a pasted/generated image, its storage ULID
+kept internal.) When the aliased thing also has a filename-ish display name,
+say explicitly that the ALIAS is the handle — a model shown "pasted.png" will
+invent a plausible file path for it (observed) unless told the name is display
+only.
 
 Self-healing extends past misses to **failures**: when an operation fails, the
 result should name the **recovery action**, not just the error — and warn off the
@@ -83,7 +88,21 @@ the newest item regardless, because being blind to what it was just given is
 the worst failure a model can have. Align per-item caps at the door with the
 window: what could never be resent shouldn't enter the transcript at all.
 
-## 7. Never reflect a model's failed output back — retry clean
+## 7. Context pressure shrinks the projection, never the source
+
+The stored conversation and what a given request sends are two different
+things: the transcript is the source of truth, the request is a send-time
+PROJECTION of it. All context-pressure mechanisms — media windows, truncation,
+summarization/compaction — belong in the projection. Destructively rewriting
+the source to save context loses the user's own history, and silently breaks
+every handle into it (aliases, ids, "as discussed above"). A summary is a
+message that changes what the projection includes from that point back — not a
+replacement for what came before. (Observed: replace-with-summary compaction
+destroyed transcripts and killed every media alias behind it; recast as an
+appended boundary, the same budget win cost nothing.) Pair with rule 4: the
+projection's edits are announced in place.
+
+## 8. Never reflect a model's failed output back — retry clean
 
 When a reply fails its contract — unparseable JSON, a malformed tool call — do
 not echo the broken output back in the correction. The model has no memory of

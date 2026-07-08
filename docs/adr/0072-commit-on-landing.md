@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-06-30
 Supersedes [ADR-0020](0020-persist-at-turn-completion.md) (persist at turn completion only).
+Amended by [ADR-0078](0078-compaction-as-send-boundary.md): compaction now appends instead of
+rewriting, so `replaceForSession` survives only for the offline-delete clear.
 Builds on the per-entity repos ([ADR-0043](0043-per-entity-repos.md)). Present-tense map:
 [architecture/storage.md](../architecture/storage.md), [architecture/sessions.md](../architecture/sessions.md).
 

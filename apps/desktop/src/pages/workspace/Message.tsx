@@ -64,14 +64,14 @@ function MessageImpl({
           {images && images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {images.map((im, i) => (
-                <SavableMedia kind="image" key={i} src={im.url} name={im.name} className="max-h-48 cursor-zoom-in rounded-xl object-cover" />
+                <SavableMedia kind="image" key={i} src={im.url} name={im.name} badge={im.ref} className="max-h-48 cursor-zoom-in rounded-xl object-cover" />
               ))}
             </div>
           )}
           {videos && videos.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {videos.map((v, i) => (
-                <SavableMedia kind="video" key={i} src={v.url} name={v.name} className="max-h-48 rounded-xl" />
+                <SavableMedia kind="video" key={i} src={v.url} name={v.name} badge={v.ref} className="max-h-48 rounded-xl" />
               ))}
             </div>
           )}

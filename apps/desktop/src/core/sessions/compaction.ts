@@ -7,12 +7,12 @@ import { rootLog } from "../../lib/logger/index.ts";
 import { pt } from "../prompts.ts";
 import { getAppConfig } from "../config/index.ts";
 import {
+  appendSummary,
   contextLimit,
   getCompactingIds,
   getSession,
   getStreamingIds,
   notify,
-  replaceWithSummary,
   setCompacting,
   toChatMessages,
 } from "./store.ts";
@@ -47,7 +47,8 @@ export async function compact(ctx: Ctx, sid: string): Promise<void> {
       params: { reasoningEffort: "low", thinkingBudget: getAppConfig().session.compactThinkingBudget, maxTokens: reserve },
       handler: bufferedTextHandler(),
     });
-    // If the user started a new turn during the call, replacing the transcript now would clobber it.
+    // If the user started a new turn during the call, appending the summary AFTER the new messages
+    // would wrongly cut them out of the send window — discard, same as before.
     if (getStreamingIds().has(sid)) {
       log.warn("skipped", { sid, hint: "session started streaming during compaction — summary discarded" });
       return;
@@ -56,7 +57,7 @@ export async function compact(ctx: Ctx, sid: string): Promise<void> {
     const summaryTokens = (usage?.outputTokens ?? 0) - (usage?.thinkingTokens ?? 0);
     if (summary.trim()) {
       const tokens = summaryTokens > 0 ? summaryTokens : Math.ceil(summary.trim().length / 4);
-      replaceWithSummary(sid, summary.trim(), tokens);
+      appendSummary(sid, summary.trim(), tokens);
     }
   } catch (e) {
     log.warn("failed", { error: errorMessage(e) });

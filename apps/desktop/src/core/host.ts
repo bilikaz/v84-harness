@@ -84,6 +84,9 @@ export interface HostApi {
   saveVideo?(dataUrl: string, suggestedName?: string): Promise<string | null>;
   // A media provider's model list — electron fetches in main (no CORS), the browser fetches directly.
   mediaModels?(endpoint: MediaEndpoint): Promise<MediaModelsResult>;
+  // The OS clipboard's bitmap as a data URL, null when none. Electron only — the paste fallback for
+  // screenshots the DOM paste event doesn't carry; browsers get them via clipboardData directly.
+  readClipboardImage?(): Promise<string | null>;
   // The managed browser-window fleet (the fetch feature). Desktop only — absent in the browser.
   browser?: BrowserFleet;
   // Invoke a plugin's main-side service method (its service.ts `rpc` surface) — the renderer→main path

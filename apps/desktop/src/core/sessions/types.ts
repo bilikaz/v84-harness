@@ -62,6 +62,9 @@ export interface SessionRuntime {
   // once delivered into the parent's transcript. Durable so a boot can re-deliver the settled-but-
   // undelivered and resume the unfinished. Reset when the child starts a fresh turn.
   delivered?: boolean;
+  // Media alias counter ("img-N"/"vid-N") — next number to hand out. Never recomputed from the
+  // transcript: renumbering would break references the model (or user) already holds.
+  mediaSeq?: number;
 }
 
 export interface Session {

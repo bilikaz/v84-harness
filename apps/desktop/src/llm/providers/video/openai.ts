@@ -12,10 +12,6 @@ export class Provider extends BaseVideoProvider {
     if (p.w && p.h) form.set("size", `${p.w}x${p.h}`);
     if (p.numFrames !== undefined) form.set("num_frames", String(p.numFrames));
     if (p.fps !== undefined) form.set("fps", String(p.fps));
-    if (p.preset) {
-      form.set("num_inference_steps", String(p.preset.steps));
-      form.set("guidance_scale", String(p.preset.guidance));
-    }
     if (p.seed !== undefined) form.set("seed", String(p.seed));
     const res = await this.request("/videos", { what: "video submit", form });
     return (await res.json()) as VideoJob;

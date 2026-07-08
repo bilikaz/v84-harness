@@ -13,6 +13,7 @@ export {
   getSessionsForContainer,
   getLastSystem,
 } from "./store.ts";
+export { lastSummaryIndex } from "./mediaRefs.ts";
 export { SessionEngine } from "./engine.ts";
 export type { TurnResult, SendOptions, OutputValidator } from "./engine.ts";
 export type { Session, Message, Role, Image, Video, FileAttachment, Attachments, SessionTool, ToolCallRequest } from "./types.ts";

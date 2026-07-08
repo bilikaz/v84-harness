@@ -51,7 +51,7 @@ describe("providers + models", () => {
 
   it("providerCaps constrains what a model can declare", () => {
     expect(providerCaps("generate")).toEqual(["imageGen"]);
-    expect(providerCaps("openai")).toHaveLength(7); // 6 media + subAgent
+    expect(providerCaps("openai")).toHaveLength(8); // 7 media (incl. imageEdit) + subAgent
   });
 
   it("a cosmos wire id arrives pre-marked for the JSON enhancer", () => {

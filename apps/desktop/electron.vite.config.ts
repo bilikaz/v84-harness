@@ -25,9 +25,11 @@ export default defineConfig({
     plugins: rendererConfig.plugins,
     server: rendererConfig.server,
     // Explicit entry required: electron-vite only auto-detects index.html under src/renderer, ours sits at the package root.
+    // target/external mirror vite.config.ts (only plugins/server are reused above): the boot's top-level
+    // await needs es2022, and node: externals cover the never-loaded-in-renderer tool-helper chunks.
     // @ts-expect-error electron-vite 5's build typings assume Vite 6/7's
     // BuildEnvironmentOptions (with rollupOptions); our Vite 5 lacks it on this
     // type. Runtime is correct — remove this directive once Vite is bumped.
-    build: { rollupOptions: { input: resolve(appDir, "index.html") } },
+    build: { target: "es2022", rollupOptions: { input: resolve(appDir, "index.html"), external: [/^node:/] } },
   },
 });

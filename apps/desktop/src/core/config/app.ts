@@ -4,9 +4,9 @@
 
 import { Consumer } from "../storage/consumer.ts";
 import type { Ctx } from "../ctx.ts";
-import { CONFIG_DEFAULTS, type ConfigApp, type Quality, type QualityPreset } from "./defaults.ts";
+import { CONFIG_DEFAULTS, type ConfigApp, type Quality, type QualitySizes } from "./defaults.ts";
 
-export type { ConfigApp, Quality, QualityPreset };
+export type { ConfigApp, Quality, QualitySizes };
 export { CONFIG_DEFAULTS };
 
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
@@ -43,15 +43,9 @@ function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Record
 
 const QUALITIES: readonly Quality[] = ["low", "good", "super"];
 
-function presets(p: Record<Quality, QualityPreset>, d: Record<Quality, QualityPreset>): Record<Quality, QualityPreset> {
-  const out = {} as Record<Quality, QualityPreset>;
-  for (const q of QUALITIES) {
-    out[q] = {
-      steps: posInt(p[q]?.steps, d[q].steps),
-      guidance: posNum(p[q]?.guidance, d[q].guidance),
-      ...(d[q].flowShift !== undefined ? { flowShift: posNum(p[q]?.flowShift, d[q].flowShift) } : {}),
-    };
-  }
+function qualitySizes(p: QualitySizes, d: QualitySizes): QualitySizes {
+  const out = {} as QualitySizes;
+  for (const q of QUALITIES) out[q] = fraction(p?.[q], d[q]); // each tier is a fraction (0,1] of the model's max
   return out;
 }
 
@@ -68,7 +62,7 @@ function validate(c: ConfigApp): ConfigApp {
     },
     imageGen: {
       fallbackWidth: posInt(c.imageGen.fallbackWidth, d.imageGen.fallbackWidth),
-      quality: presets(c.imageGen.quality, d.imageGen.quality),
+      quality: qualitySizes(c.imageGen.quality, d.imageGen.quality),
     },
     videoGen: {
       fps: posInt(c.videoGen.fps, d.videoGen.fps),
@@ -77,7 +71,7 @@ function validate(c: ConfigApp): ConfigApp {
       fallbackWidth: posInt(c.videoGen.fallbackWidth, d.videoGen.fallbackWidth),
       defaultDurationS: posNum(c.videoGen.defaultDurationS, d.videoGen.defaultDurationS),
       maxDurationS: posNum(c.videoGen.maxDurationS, d.videoGen.maxDurationS),
-      quality: presets(c.videoGen.quality, d.videoGen.quality),
+      quality: qualitySizes(c.videoGen.quality, d.videoGen.quality),
     },
     llm: { maxHealAttempts: posInt(c.llm.maxHealAttempts, d.llm.maxHealAttempts) },
     upsample: { maxAttempts: posInt(c.upsample.maxAttempts, d.upsample.maxAttempts) },

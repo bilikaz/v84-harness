@@ -7,8 +7,19 @@ const FILE_TEXT_CAP = 256 * 1024; // cap a single attached file's text so it can
 // The attachment size/dimension bounds ARE the app's media config slice; the caller resolves imageMaxDim per-model.
 export type AttachmentLimits = ConfigApp["media"];
 
+// Files carried by a paste event. Electron leaves `clipboardData.files` EMPTY for an OS-clipboard
+// bitmap (a screenshot) while still exposing it through `items` — so fall back to the item list.
+export function clipboardFiles(dt: DataTransfer | null): File[] {
+  if (!dt) return [];
+  if (dt.files.length) return Array.from(dt.files);
+  return Array.from(dt.items)
+    .filter((i) => i.kind === "file")
+    .map((i) => i.getAsFile())
+    .filter((f): f is File => f != null);
+}
+
 export function readAttachments(
-  list: FileList,
+  list: FileList | File[],
   limits: AttachmentLimits,
 ): Promise<{ images: Image[]; video: Video[]; files: FileAttachment[]; skipped: string[]; resized: string[] }> {
   const maxDim = limits.imageMaxDim;
