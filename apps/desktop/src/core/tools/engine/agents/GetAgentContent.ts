@@ -2,7 +2,6 @@ import { BaseEngineTool, type EngineCtx, type EngineToolResult } from "../base.t
 import type { ToolSpec, ToolCallRequest } from "../../types.ts";
 import { GET_CONTENT_SCHEMA, childrenOf, collectAgentContent, isChildPending, resolveChild, rosterHint } from "../../helpers/agents/catalog.ts";
 import { setDelivered } from "../../../sessions/store.ts";
-import { getAppConfig } from "../../../config/index.ts";
 
 // Read-only fetch of a FINISHED sub-agent's result by short id — one or many at once. The pull half of the
 // async orchestration flow (the parent is told an agent finished, then reads it here). Distinct from
@@ -14,9 +13,8 @@ export class GetAgentContent extends BaseEngineTool {
     return GET_CONTENT_SCHEMA;
   }
 
-  // Async-only: in sync mode the parent gets results inline from RunAgent, so this read tool is just noise.
   override available(ec: EngineCtx): boolean {
-    return getAppConfig().session.asyncAgents && childrenOf(ec.sessionId).length > 0;
+    return childrenOf(ec.sessionId).length > 0;
   }
 
   async run(call: ToolCallRequest, ec: EngineCtx): Promise<EngineToolResult> {

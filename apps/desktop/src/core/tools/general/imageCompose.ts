@@ -2,10 +2,8 @@ import { type Image, type ToolResult, type ToolSpec } from "../types.ts";
 import type { ToolRunCtx } from "../types.ts";
 import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt, parseDataUrl } from "../../../lib/dataUrl.ts";
-import { imageHandler } from "../../../llm/index.ts";
-import { errorMessage } from "../../../lib/errors.ts";
 import { getAppConfig } from "../../config/index.ts";
-import { ASPECTS, deriveSize, parseDims, pickQuality, qualityWidth, randomSeed } from "../helpers/generation.ts";
+import { runImageGeneration } from "../helpers/imageGeneration.ts";
 import type { PreparedSave } from "../helpers/imageSave.ts";
 
 // ImageCompose: generate a NEW image from a prompt plus one or more REFERENCE images — reuse a prior image
@@ -42,7 +40,12 @@ export class ImageCompose extends BaseGeneralTool {
           properties: {
             prompt: {
               type: "string",
-              description: "Describe the new image — what to make from the reference(s): what to keep, change, add, combine, or restyle.",
+              description:
+                "Describe the new image IN DETAIL — several sentences: what to make from the reference(s), " +
+                "composition, poses, setting, lighting, style. VAGUE PROMPTS PRODUCE UNPREDICTABLE RESULTS — " +
+                "everything you don't specify, the image model invents. IMPORTANT: the image model sees the " +
+                "references as UNNAMED images in the order you pass them — refer to them by POSITION (\"the character " +
+                "in image 1\", \"the style of image 2\"), never by filename or character name.",
             },
             references: {
               type: "array",
@@ -68,7 +71,7 @@ export class ImageCompose extends BaseGeneralTool {
             name: {
               type: "string",
               description:
-                "A short DESCRIPTIVE filename for the result (no extension, no path, not an img-N alias), e.g. " +
+                "A short DESCRIPTIVE filename for the result (no extension, not an img-N alias; MAY include a subfolder like \"heroes/mia\" which nests INSIDE the images folder — generation never writes outside it), e.g. " +
                 "\"hero-on-beach\". Used to save into the workspace's images folder when one is open. If a file " +
                 "with that name already exists the call is refused — pick another name or set overwrite. Omit to auto-name.",
             },
@@ -88,16 +91,6 @@ export class ImageCompose extends BaseGeneralTool {
     if (!prompt) return { ok: false, output: `ImageCompose rejected: missing required "prompt".` };
     const entries = Array.isArray(args.references) ? args.references.filter((p): p is string => typeof p === "string" && p.trim() !== "").map((p) => p.trim()) : [];
     if (!entries.length) return { ok: false, output: `ImageCompose rejected: "references" must list at least one img-N alias or workspace image path.` };
-    const media = this.requireSlot("imageEdit", "ImageCompose");
-    if ("ok" in media) return media;
-
-    // Output size is chosen by the model (a 1:1 hero composed into a 16:9 scene, etc.) — NOT inherited from the
-    // reference. Same dimension math + max cap as ImageGenerate.
-    const max = parseDims(media.model.maxImageSize);
-    const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "1:1";
-    const cfg = getAppConfig().imageGen;
-    const reqW = qualityWidth(cfg.quality[pickQuality(args.quality)], max, cfg.fallbackWidth);
-    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, cfg.fallbackWidth);
 
     // Resolve the references: img-N aliases from the engine-resolved map, everything else as a workspace path.
     const inputs: { b64: string; mime: string }[] = [];
@@ -133,29 +126,18 @@ export class ImageCompose extends BaseGeneralTool {
       save = prep;
     }
 
-    try {
-      // Input images present → the image provider takes its edit/reference path (/images/edits).
-      const { b64, mime } = await this.llm.call({
-        service: "imageEdit",
-        messages: [{ role: "user", content: prompt }],
-        signal,
-        handler: imageHandler(),
-        params: {
-          w,
-          h,
-          images: inputs,
-          seed: randomSeed(),
-        },
-      });
-      const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `${save?.base ?? "composed"}.${mimeToExt(mime)}` };
-      const savedNote = save ? ` Saved to ${await save.write(mime, b64)}.` : "";
-      return {
-        ok: true,
-        output: `Generated the image from ${inputs.length} reference${inputs.length > 1 ? "s" : ""} (shown to you above).${savedNote} Reuse it via its reference below.`,
-        images: [image],
-      };
-    } catch (e) {
-      return { ok: false, output: `ImageCompose failed: ${errorMessage(e)}` };
-    }
+    // Inputs present → the trunk takes the edit/reference path (/images/edits); the output size is chosen
+    // by the model (a 1:1 hero composed into a 16:9 scene, etc.) — NOT inherited from the reference.
+    const out = await runImageGeneration(this.llm, { prompt, inputs, aspect: args.aspect, quality: args.quality, signal });
+    if ("error" in out) return { ok: false, output: `ImageCompose ${out.failed ? "failed" : "rejected"}: ${out.error}` };
+
+    const { b64, mime } = out;
+    const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `${save?.base ?? "composed"}.${mimeToExt(mime)}` };
+    const savedNote = save ? ` Saved to ${await save.write(mime, b64)}.` : "";
+    return {
+      ok: true,
+      output: `Generated the image from ${inputs.length} reference${inputs.length > 1 ? "s" : ""} (shown to you above).${savedNote} Reuse it via its reference below.`,
+      images: [image],
+    };
   }
 }

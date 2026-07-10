@@ -12,12 +12,13 @@ import {
   useActiveSession,
   useChildRuns,
   useCompacting,
+  useRunnerState,
   useSessions,
   useStreaming,
 } from "../../core/sessions/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
 import { getAgent } from "../../core/agents.ts";
-import { baseSystemFor } from "../../core/sessions/system.ts";
+import { baseSystemFor, fullSystemFor } from "../../core/sessions/system.ts";
 import { useProvider } from "../../core/settings.ts";
 import { useOutsideClick } from "../../lib/hooks.ts";
 import { fmtTokens } from "../../lib/format.ts";
@@ -36,6 +37,7 @@ export function SessionView() {
   const ctx = useCtx();
   const session = useActiveSession();
   const streaming = useStreaming();
+  const runner = useRunnerState(session.id);
   const compacting = useCompacting();
   const provider = useProvider();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -50,6 +52,20 @@ export function SessionView() {
 
   // The session's stamped system prompt is what runs — the agent may be edited/deleted later.
   const agentName = session.agentId ? (getAgent(session.agentId)?.name ?? session.title) : null;
+
+  // The banner shows the FULL prompt the model receives: the live capture of the last step when one
+  // exists, else a recompose from session state (same composeSystem — llm.ts and this can't drift).
+  const lastSystem = getLastSystem(session.id);
+  const [composed, setComposed] = useState<string>();
+  useEffect(() => {
+    if (lastSystem !== undefined) return;
+    let on = true;
+    setComposed(undefined);
+    void fullSystemFor(ctx, session).then((s) => on && setComposed(s));
+    return () => {
+      on = false;
+    };
+  }, [ctx, session, lastSystem]);
 
   // Child run: no composer/stop — control lives in the parent (its Stop cascades here).
   const sessions = useSessions();
@@ -184,7 +200,7 @@ export function SessionView() {
 
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-8">
         <div className="mx-auto max-w-3xl space-y-6">
-          <SystemBanner name={agentName ?? undefined} system={getLastSystem(session.id) ?? baseSystemFor(session)} />
+          <SystemBanner name={agentName ?? undefined} system={lastSystem ?? composed ?? baseSystemFor(session)} />
           {session.loaded === false && (
             <p className="flex items-center justify-center gap-1.5 py-8 text-xs text-neutral-400">
               <RefreshCw size={12} className="animate-spin" /> {t("session.loading")}
@@ -230,8 +246,6 @@ export function SessionView() {
               disabled={compacting || full}
               modelLabel={session.meta.lastModel}
               streaming={streaming}
-              lock={streaming}
-              lockNote="Running — stop it to send guidance"
               onStop={() => ctx.sessions.stopChild(session.id)}
               onSubmit={submit}
             />
@@ -272,6 +286,11 @@ export function SessionView() {
                   used: fmtTokens(used),
                   total: fmtTokens(ctxLimit),
                 })}
+              </p>
+            ) : null}
+            {runner ? (
+              <p className="mx-auto mb-1 max-w-3xl text-center text-xs text-neutral-500">
+                {runner.state === "healing" ? t("session.healing", { round: runner.round ?? 1 }) : t("session.waitingInput")}
               </p>
             ) : null}
             <Composer

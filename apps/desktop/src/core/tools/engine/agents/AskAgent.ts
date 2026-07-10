@@ -43,6 +43,6 @@ export class AskAgent extends BaseEngineTool {
     const message = String(run.message ?? "").trim();
     if (!message) return { error: `agent (id: ${alias}): missing message — say what to ask or tell it.` };
     if (getStreamingIds().has(child.id)) return { error: `agent (id: ${alias}): already running — wait for it to finish before re-tasking it.` };
-    return { childSid: child.id, alias, name: child.title, dispatch: ec.engine.sendTo(child.id, message, { autoName: false }) };
+    return { childSid: child.id, alias, name: child.title, task: message };
   }
 }

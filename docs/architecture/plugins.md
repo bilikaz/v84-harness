@@ -175,6 +175,30 @@ MySQL and Postgres — with the engine carried on each connection, not split int
 Tool names are **PascalCase, prefixed by the plugin** (`DatabaseQuery`, not `database_query`) — consistent
 with core tools and namespaced against collisions.
 
+## Reference plugin — Comics (`plugins/comics/`)
+
+The flow-heavy reference: two graphs over the session loop and the gallery.
+**Create a mascot** — one interview dialog (the `comics:mascot` agent in its own sub chat, under a
+budgeted avatar JOB; the USER is the gate — every attempt is seen and approved live), then
+deterministic promotion (Copy to `avatars/`, bible json, memory sheet — written
+ONCE by the graph at settle). The avatars FOLDER is the roster — the bible files ARE the
+registration (files-as-ledger): a hand-copied mascot is as real as a flow-made one, and the roster
+is workspace-scoped by construction. **Make a comic** — one plan dialog (the `comics:plan`
+agent in its own sub chat: bibles + layouts via GalleryOptions, pasted refs recorded per panel),
+then per panel: a fresh grounded `comics:frame` head (budgeted `PanelGenerate`, structured
+references with tool-owned alias→position manifests) → an independent `comics:check` validation
+(bounded refires) → graph securing into `comics/<name>/` (+ an optional `comics:review` sub chat
+per panel when the user opted into per-frame review); compose via GalleryCompose straight into
+finish (every panel was already validated — a targeted redo stays available via a `frame {json}`
+node jump); story records + settled lore stamped to every cast bible at finish. Every
+conversation-length role has its method + JSON contract in the agent's SYSTEM prompt; tasks carry
+only the run's data. Design rules:
+models create / graphs housekeep; scratch vs curated; task = data. See
+[ADR-0082](../adr/0082-generation-jobs-and-budgeted-tools.md).
+
+Plugin agents declare `"listed": true` to appear in the Agents catalog — undeclared agents are
+internal graph workers ([ADR-0083](../adr/0083-total-agent-grounding.md)).
+
 ## Writing a new plugin
 
 1. Create `plugins/<slug>/manifest.ts` exporting a `PluginManifest` (slug, name, version, settings

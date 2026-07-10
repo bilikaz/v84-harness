@@ -34,10 +34,10 @@ export function Composer(props: {
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const canSend =
-    (input.trim().length > 0 || images.length > 0 || videos.length > 0 || files.length > 0) &&
-    !props.streaming &&
-    !props.disabled;
+  // A busy session QUEUES a text message (the pending inbox — delivered at the next cycle
+  // boundary); attachments can't ride a pending record yet, so they still wait for idle.
+  const hasAtts = images.length > 0 || videos.length > 0 || files.length > 0;
+  const canSend = (input.trim().length > 0 || hasAtts) && !(props.streaming && hasAtts) && !props.disabled;
 
   useLayoutEffect(() => {
     const el = inputRef.current;

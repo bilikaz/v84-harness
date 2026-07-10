@@ -5,6 +5,7 @@
     "empty": "Enable a flow plugin to run one.",
     "stop": "Stop",
     "continue": "Continue",
+    "headFailed": "The {{head}} agent didn't deliver a valid result — send `continue` to let it retry.",
     "help": {
       "unknown": "Unknown command.",
       "badJson": "Couldn't parse the JSON input.",
@@ -74,7 +75,6 @@
     "cancel": "Cancel",
     "confirmDelete": "Delete this agent?",
     "systemBanner": "System — {{name}}",
-    "system": "System",
     "noSystem": "No system prompt.",
     "viewRun": "View run",
     "childRun": "Sub-agent run — read-only.",
@@ -252,7 +252,9 @@
     "attachResized": "Downscaled to {{max}}px: {{names}}",
     "imageRefOnly": "The chat model can't view images — attached as a generation reference (img-N) the agent can still use.",
     "compactedDivider": "Compacted — messages above are kept here but no longer sent to the model",
-    "compactedSummary": "Summary sent to the model"
+    "compactedSummary": "Summary sent to the model",
+    "healing": "Self-healing (attempt {{round}})…",
+    "waitingInput": "Waiting for your input…"
   },
   "progress": {
     "progress": "Progress",
@@ -333,5 +335,10 @@
     "closeEsc": "Close (Esc)",
     "saveImage": "Save image",
     "saveVideo": "Save video"
+  },
+  "gallery": {
+    "hint": "Every page layout the gallery composer supports — tell the agent the handle (e.g. \"use 5-3\"). Click a preview to enlarge.",
+    "groupTitle": "{{count}} images",
+    "unavailable": "Layout previews are unavailable here (desktop app only)."
   }
 }

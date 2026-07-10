@@ -61,14 +61,16 @@ export class ToolRegistry {
       const needsWorkspace = tool.needsWorkspace();
       const defaultMode = tool.defaultPermission();
 
-      // workspace + agent policy: only applies to permissioned tools (stricter of grant and ceiling wins).
-      // The agent ceiling falls back to a `*` wildcard before the default — an agent sets `{ "*": 0, Read: 2 }`
+      // The AGENT ceiling binds EVERY tool — it is a statement about the agent, not the workspace policy
+      // (a permissionless general tool bypassing `{"*": 0}` grounding is how a grounded head escapes its
+      // toolset). Falls back to a `*` wildcard before the default — an agent sets `{ "*": 0, Read: 2 }`
       // to GROUND itself to a fixed toolset (everything unlisted disabled), instead of inheriting the
-      // workspace's full set. No wildcard → unlisted tools default to 2 (inherit), the prior behaviour.
-      let effectiveMode: ToolPermission = 2;
+      // full set. No wildcard → unlisted tools default to 2 (inherit), the prior behaviour. The WORKSPACE
+      // grant applies only to permissioned tools (the policy surface); stricter of grant and ceiling wins.
+      const agentCeiling = (params?.agentPermissions?.[name] ?? params?.agentPermissions?.["*"] ?? 2) as ToolPermission;
+      let effectiveMode: ToolPermission = agentCeiling;
       if (permissioned) {
         const wsMode = params?.workspacePermissions?.[name] ?? defaultMode;
-        const agentCeiling = params?.agentPermissions?.[name] ?? params?.agentPermissions?.["*"] ?? 2;
         effectiveMode = Math.min(wsMode, agentCeiling) as ToolPermission;
       }
       // A tool that needs a workspace is off when none is in context.
@@ -127,7 +129,7 @@ export class ToolRegistry {
       };
     }
     try {
-      return await tool.run(args, call.cwd, controller.signal, { imageOutputDir: call.imageOutputDir, mediaRefs: call.mediaRefs });
+      return await tool.run(args, call.cwd, controller.signal, { imageOutputDir: call.imageOutputDir, mediaRefs: call.mediaRefs, sessionId: call.sessionId, meta: call.meta });
     } catch (e) {
       return { ok: false, output: `error running ${call.name}: ${errorMessage(e)}` };
     } finally {

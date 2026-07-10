@@ -82,7 +82,6 @@ function validate(c: ConfigApp): ConfigApp {
       maxSteps: posInt(c.session.maxSteps, d.session.maxSteps),
       titleMaxTokens: posInt(c.session.titleMaxTokens, d.session.titleMaxTokens),
       compactThinkingBudget: posInt(c.session.compactThinkingBudget, d.session.compactThinkingBudget),
-      asyncAgents: typeof c.session.asyncAgents === "boolean" ? c.session.asyncAgents : d.session.asyncAgents,
       asyncDelivery: c.session.asyncDelivery === "nudge" || c.session.asyncDelivery === "synthetic" ? c.session.asyncDelivery : d.session.asyncDelivery,
       runnerTtlMs: posInt(c.session.runnerTtlMs, d.session.runnerTtlMs),
       kvProtectThreshold: posInt(c.session.kvProtectThreshold, d.session.kvProtectThreshold),

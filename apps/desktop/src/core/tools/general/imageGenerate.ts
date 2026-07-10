@@ -1,13 +1,9 @@
 import { type Image, type ToolResult, type ToolSpec } from "../types.ts";
 import { BaseGeneralTool } from "./base.ts";
 import { mimeToExt } from "../../../lib/dataUrl.ts";
-import { imageHandler } from "../../../llm/index.ts";
-import { errorMessage } from "../../../lib/errors.ts";
-import { ASPECTS, deriveSize, parseDims, pickQuality, qualityWidth, randomSeed } from "../helpers/generation.ts";
+import { runImageGeneration } from "../helpers/imageGeneration.ts";
 import type { PreparedSave } from "../helpers/imageSave.ts";
 import type { ToolRunCtx } from "../types.ts";
-import { cosmosImagePrompt } from "../helpers/upsampler/cosmos.ts";
-import { getAppConfig } from "../../config/index.ts";
 
 // ImageGenerate: prompt → imageGen slot model → image as a data-URL riding the message (no files, no workspace; the model gets it back to inspect).
 export class ImageGenerate extends BaseGeneralTool {
@@ -44,7 +40,7 @@ export class ImageGenerate extends BaseGeneralTool {
             name: {
               type: "string",
               description:
-                "A short DESCRIPTIVE filename for the image (no extension, no path, not an img-N alias), e.g. " +
+                "A short DESCRIPTIVE filename for the image (no extension, not an img-N alias; MAY include a subfolder like \"heroes/mia\" which nests INSIDE the images folder — generation never writes outside it), e.g. " +
                 "\"sunset-over-harbor\". " +
                 "Used to save it into the workspace's images folder. If a file with that name already exists the " +
                 "call is refused — pick another name or set overwrite. Omit to auto-name.",
@@ -73,15 +69,6 @@ export class ImageGenerate extends BaseGeneralTool {
   async run(args: Record<string, unknown>, cwd?: string, signal?: AbortSignal, ctx?: ToolRunCtx): Promise<ToolResult> {
     const prompt = String(args.prompt ?? "").trim();
     if (!prompt) return { ok: false, output: `ImageGenerate rejected: missing required "prompt".` };
-    const media = this.requireSlot("imageGen", "ImageGenerate");
-    if ("ok" in media) return media;
-
-    // We own the dimensions — the model never sets width/height; quality (a size tier) picks the base width.
-    const max = parseDims(media.model.maxImageSize);
-    const aspect = typeof args.aspect === "string" && args.aspect in ASPECTS ? args.aspect : "1:1";
-    const cfg = getAppConfig().imageGen;
-    const reqW = qualityWidth(cfg.quality[pickQuality(args.quality)], max, cfg.fallbackWidth);
-    const { w, h } = deriveSize(reqW, ASPECTS[aspect], max, cfg.fallbackWidth);
 
     // Workspace save: check the name for collisions BEFORE spending a generation. The fs-backed helper is
     // loaded dynamically so this general (web-bundled) tool never pulls node:fs into the web graph; cwd is
@@ -95,31 +82,16 @@ export class ImageGenerate extends BaseGeneralTool {
       save = prep;
     }
 
-    const finalPrompt =
-      media.model.promptStyle === "cosmos-json" ? await cosmosImagePrompt(this.llm, prompt, signal) : prompt;
+    const out = await runImageGeneration(this.llm, { prompt, aspect: args.aspect, quality: args.quality, signal });
+    if ("error" in out) return { ok: false, output: `ImageGenerate ${out.failed ? "failed" : "rejected"}: ${out.error}` };
 
-    try {
-      const { b64, mime } = await this.llm.call({
-        service: "imageGen",
-        messages: [{ role: "user", content: finalPrompt }],
-        signal: signal,
-        handler: imageHandler(),
-        params: {
-          w,
-          h,
-          seed: randomSeed(),
-        },
-      });
-
-      const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `${save?.base ?? "generated"}.${mimeToExt(mime)}` };
-      const savedNote = save ? ` Saved to ${await save.write(mime, b64)} — edit or reference it later by that path.` : "";
-      return {
-        ok: true,
-        output: `Generated an image (shown to you above).${savedNote} Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
-        images: [image],
-      };
-    } catch (e) {
-      return { ok: false, output: `ImageGenerate failed: ${errorMessage(e)}` };
-    }
+    const { b64, mime } = out;
+    const image: Image = { url: `data:${mime};base64,${b64}`, mime, name: `${save?.base ?? "generated"}.${mimeToExt(mime)}` };
+    const savedNote = save ? ` Saved to ${await save.write(mime, b64)} — edit or reference it later by that path.` : "";
+    return {
+      ok: true,
+      output: `Generated an image (shown to you above).${savedNote} Inspect it and regenerate with a refined prompt if it doesn't match the request.`,
+      images: [image],
+    };
   }
 }

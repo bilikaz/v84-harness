@@ -10,22 +10,41 @@ import { BaseGraph, GraphEngine, registerGraph, clearGraphs, getPendingSelects, 
 import type { GraphNode, SelectAnswer } from "../src/core/graph/types.ts";
 import type { TurnResult } from "../src/core/sessions/index.ts";
 import type { Ctx } from "../src/core/ctx.ts";
+import { classify } from "../src/core/sessions/loop/contract.ts";
 
 const ok = (text: string): TurnResult => ({ text, errored: false, aborted: false });
 
 function stubCtx(head: (task: string) => TurnResult = () => ok("")): Ctx {
   const inflight = new Map<string, AbortController>();
+  // A contract-loop double over the REAL classify: errored/unparseable → resume, missing fields →
+  // correction, bounded — enough to exercise the graph's routing against real contract semantics.
+  const runContract = (sid: string, spec: { task?: string; schema?: Record<string, unknown>; reattach?: boolean }) => ({
+    settled: (async () => {
+      let reply = head(spec.task && !spec.reattach ? spec.task : "__resume__");
+      for (let i = 0; i < 4; i++) {
+        if (reply.aborted) return { sessionId: sid, ok: false, data: "aborted" };
+        if (reply.errored) {
+          reply = head("__resume__");
+          continue;
+        }
+        const v = classify(reply.text, spec.schema);
+        if (v.ok) return { sessionId: sid, ok: true, data: v.text };
+        reply = head(v.fault === "missing-fields" ? `missing: ${(v.missing ?? []).join(", ")}` : "__resume__");
+      }
+      return { sessionId: sid, ok: false, data: "errored" };
+    })(),
+  });
   return {
     sessions: {
       registerInflight: (sid: string, c: AbortController) => inflight.set(sid, c),
       clearInflight: (sid: string) => inflight.delete(sid),
+      killLoop: () => {},
       sendTo: (_sid: string, task: string) => Promise.resolve(head(task)),
       resume: () => Promise.resolve(head("__resume__")),
-      awaitSettled: (_sid: string, _sig: AbortSignal, dispatch: Promise<TurnResult | null>) => dispatch,
+      runContract,
     },
   } as unknown as Ctx;
 }
-
 // Drive a graph the way the seam does: create the session, then send it the `start` command.
 function run(engine: GraphEngine, graphId: string): { sid: string; result: Promise<TurnResult> } {
   const sid = createSession({ graphId });
@@ -168,9 +187,23 @@ describe("GraphEngine", () => {
     expect((await run(new GraphEngine(stubCtx(head)), "t:heal").result).text).toContain('"x": 1');
   });
 
-  it("a failed (errored) head forwards nothing, not the error text", async () => {
+  it("an errored head turn SELF-heals — the loop resumes the same head, no user input", async () => {
     registerGraph(new HealG());
-    const head = (): TurnResult => ({ text: "⚠️ 400 bad request", errored: true, aborted: false });
-    expect((await run(new GraphEngine(stubCtx(head)), "t:heal").result).text).toBe("");
+    let calls = 0;
+    const head = (): TurnResult => (++calls === 1 ? { text: "⚠️ 400 bad request", errored: true, aborted: false } : ok('{"x":1}'));
+    expect((await run(new GraphEngine(stubCtx(head)), "t:heal").result).text).toContain('"x": 1');
+  });
+
+  it("a head that exhausts its budget parks (error text never leaks) — `continue` retries the SAME head", async () => {
+    registerGraph(new HealG());
+    let fail = true;
+    const head = (): TurnResult => (fail ? { text: "⚠️ 400 bad request", errored: true, aborted: false } : ok('{"x":1}'));
+    const engine = new GraphEngine(stubCtx(head));
+    const { sid, result } = run(engine, "t:heal");
+    expect((await result).text).not.toContain("400");
+    expect(engine.hasRun(sid)).toBe(true); // parked with the head session kept, not finished
+    fail = false;
+    expect((await engine.command(sid, "continue")).text).toContain('"x": 1'); // the same head, resumed
+    expect(engine.hasRun(sid)).toBe(false);
   });
 });

@@ -18,6 +18,8 @@ export interface ToolResult {
 export interface ToolRunCtx {
   imageOutputDir?: string;
   mediaRefs?: Record<string, { url: string; mime?: string; name?: string }>;
+  sessionId?: string;
+  meta?: Record<string, unknown>; // the calling session's meta, engine-stamped — tools look for the keys they recognize
 }
 
 // What crosses the bridge to the main runner alongside the call: the config snapshot (functions/clients can't

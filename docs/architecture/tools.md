@@ -68,7 +68,10 @@ Part of the architecture map — start at [../ARCHITECTURE.md](../ARCHITECTURE.m
   entry falls back to the tool's `defaultPermission()`, and a `needsWorkspace` tool is forced
   to mode 0 when no workspace is in context. The agent ceiling consults a reserved `*` wildcard
   before the default, so an agent **grounds** itself with `{ "*": 0, … }` — only the listed tools
-  survive ([ADR-0070](../adr/0070-agent-tool-grounding-wildcard.md)).
+  survive ([ADR-0070](../adr/0070-agent-tool-grounding-wildcard.md)). The ceiling binds **every**
+  tool tier ([ADR-0083](../adr/0083-total-agent-grounding.md)): `effectiveMode` STARTS from it —
+  permissionless (general-tier) tools included — and the engine tier filters through the same
+  ceiling before joining the advertised set. Workspace grants only tighten permissioned tools.
 
 ## The engine tier — driver-level tools ([ADR-0050](../adr/0050-engine-tool-tier.md))
 

@@ -72,7 +72,6 @@ function ConfigurationTab() {
   const [settleMs, setSettleMs] = useState(cfg.browser.settleMs);
   const [graceMs, setGraceMs] = useState(cfg.browser.graceMs);
   const [shots, setShots] = useState(cfg.browser.shots);
-  const [asyncAgents, setAsyncAgents] = useState(cfg.session.asyncAgents);
   const [delivery, setDelivery] = useState(cfg.session.asyncDelivery);
   const [ttlMin, setTtlMin] = useState(Math.round(cfg.session.runnerTtlMs / 60000));
   const [kvThreshold, setKvThreshold] = useState(cfg.session.kvProtectThreshold);
@@ -82,11 +81,6 @@ function ConfigurationTab() {
   function persistBrowser(patch: { settleMs?: number; graceMs?: number; shots?: number }): void {
     const o = getConfigOverrides();
     setConfigOverrides({ ...o, browser: { ...o.browser, ...patch } });
-  }
-  function persistAsync(on: boolean): void {
-    setAsyncAgents(on);
-    const o = getConfigOverrides();
-    setConfigOverrides({ ...o, session: { ...o.session, asyncAgents: on } });
   }
   function persistDelivery(mode: "synthetic" | "nudge"): void {
     setDelivery(mode);
@@ -111,20 +105,15 @@ function ConfigurationTab() {
     <div className="mt-4">
       <h3 className="text-base font-semibold text-neutral-900">Sub-agents</h3>
       <p className="mt-1 text-sm text-neutral-500">
-        When on, RunAgent returns immediately and you're told each sub-agent's result as it finishes, instead of the
-        turn blocking until every one is done. Off = the classic wait-for-all behaviour.
+        Sub-agents run in the background — RunAgent returns immediately and each result is delivered to the parent as
+        it finishes.
       </p>
-      <Row label="Async sub-agents">
-        <Switch on={asyncAgents} onToggle={() => persistAsync(!asyncAgents)} />
+      <Row label="Result delivery">
+        <select className={fieldInput} value={delivery} onChange={(e) => persistDelivery(e.target.value as "synthetic" | "nudge")}>
+          <option value="synthetic">Synthetic call (no extra round-trip)</option>
+          <option value="nudge">Nudge (agent fetches it)</option>
+        </select>
       </Row>
-      {asyncAgents && (
-        <Row label="Result delivery">
-          <select className={fieldInput} value={delivery} onChange={(e) => persistDelivery(e.target.value as "synthetic" | "nudge")}>
-            <option value="synthetic">Synthetic call (no extra round-trip)</option>
-            <option value="nudge">Nudge (agent fetches it)</option>
-          </select>
-        </Row>
-      )}
 
       <h3 className="mt-8 text-base font-semibold text-neutral-900">Concurrency</h3>
       <p className="mt-1 text-sm text-neutral-500">

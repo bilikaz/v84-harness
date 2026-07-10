@@ -65,6 +65,21 @@ export interface SessionRuntime {
   // Media alias counter ("img-N"/"vid-N") — next number to hand out. Never recomputed from the
   // transcript: renumbering would break references the model (or user) already holds.
   mediaSeq?: number;
+  // Graph-run MILESTONE (graph sessions only): the last node boundary the run settled at, written at the
+  // same settle cadence as messages. A relaunch (RunState is memory-only) revives the run parked here via
+  // `continue`; `dialogSurface` re-binds a live interview sub chat instead of orphaning it. Single-track
+  // runs only — a fan-out stage clears it (fan-out revival needs the arrivals store too; nothing fans out
+  // yet). Cleared when the run ends.
+  graphRun?: { node: string; head: string; input?: unknown; dialogSurface?: string };
+  // Persisted WAIT records (loop/records.ts) — "A settled (data stored), B and C still running".
+  // On load, settled children replay from here and pending ones re-arm settlement listeners.
+  waits?: { id: string; sessionId: string; children: Record<string, { settled: boolean; ok?: boolean; data?: string }> }[];
+  // EXTENSION keys live flat next to the core ones: the flow that configures a session patches in
+  // whatever its tools (or anything else) need (e.g. comics' `generationJob`), the whole meta is
+  // stamped onto every tool call at dispatch (tools run across the bridge and can't reach the store),
+  // and each consumer looks for the key it recognizes. Core carries these blindly and never reads
+  // them; owners must not collide with the core keys above.
+  [ext: string]: unknown;
 }
 
 export interface Session {

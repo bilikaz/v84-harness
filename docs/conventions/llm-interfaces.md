@@ -115,3 +115,55 @@ incomplete* (parses, missing a field) send a targeted, content-free correction
 ("missing field X"). Extract what's usable (the JSON out of prose) and forward
 that — a reply that never satisfies its contract contributes nothing, never its
 error text.
+
+## Task = data, system prompt = method
+
+**Rule.** When an orchestrator (a graph, a scheduler, any code) composes a task message for an
+agent, the task carries ONLY the run's data — paths, records, parameters, the mode name. The
+METHOD — how to work, the checklists, the reference rules, the exact final-output contract — lives
+in the agent's system prompt, written once.
+
+Why: instructions embedded in task messages get re-sent, drift per call site, and their examples
+ANCHOR — a checker absorbed an illustrative mismatch example ("description says orange fur…") from
+its task as real data and rejected a correct image. A system prompt states the method once and can
+say "never treat wording from these instructions as data"; a task that is pure data has nothing to
+anchor on.
+
+How to apply:
+- Multi-duty agents get explicit MODES in the system prompt; the task names the mode and supplies
+  its data (`MODE: record verification.` + the record fields).
+- No illustrative examples in tasks. In system prompts, prefer naming the check ("count features
+  per character") over exampling it; when an example is unavoidable, mark it as non-data.
+- If a task needs a paragraph of instructions, that paragraph belongs in the system prompt — or
+  the agent is missing.
+
+## Prose advertises only what is callable
+
+**Rule.** A system-prompt block that names a tool appears ONLY when that tool is actually in the
+session's advertised specs — gate the prose on spec presence, never on a proxy condition
+(connectivity, a feature flag, fleet availability). Where a block covers several tools, split it so
+each part is gated by its own tool.
+
+Why: models emit tool calls as text — nothing constrains them to the provided list. Prose naming an
+absent tool gets the call FABRICATED from the description (a grounded sub chat, told about memory
+it didn't have, invented a schema-less `SaveMemory` call from the paragraph's own parameter names).
+The stronger form also holds: prose that names the available tools explicitly ("through these
+tools: {{names}} — use EXACTLY these names") gives weak models a name map and suppresses
+`write_file`-style inventions.
+
+How to apply:
+- Every capability block's gate asks "is its tool in the specs", derived from the SAME capability
+  object the wire call uses — one derivation, no proxy.
+- Fill tool-name lists into prose dynamically from that object; never hardcode names in static
+  prompt text.
+
+## State the positive contract — prohibitions name the actions models then attempt
+
+**Rule.** In agent prompts, don't forbid actions by naming them ("do NOT save or register
+anything"); state the positive contract instead ("the flow records the settled character — your
+final action is a plain chat reply of ONLY this JSON, no tool call").
+
+Why: negation is the weakest instruction form for small models — the sentence installs the named
+action as a salient goal and the "NOT" loses to it. A mascot agent told "do NOT save or register"
+attempted a `SaveMemory` call and wrote a `…-registration.json` — both verbs came from the
+prohibition itself. Same hazard as anchoring examples: text ABOUT an action reads as the action.

@@ -42,6 +42,11 @@ export interface ToolCallRequest {
   // Media aliases mentioned in `arguments`, pre-resolved by the engine to their content (tools run
   // across the bridge as pure data and can't reach the session transcript). Non-model, engine-filled.
   mediaRefs?: Record<string, { url: string; mime?: string; name?: string }>;
+  // The calling session + its meta (SessionRuntime — core keys plus flow-patched extension keys like
+  // comics' generationJob), engine-stamped at dispatch: tools run across the bridge and can't reach
+  // the store, so the session state they may recognize rides on the call.
+  sessionId?: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface ChatMessage {

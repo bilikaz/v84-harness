@@ -5,6 +5,7 @@
     "empty": "Įjunkite srauto papildinį, kad galėtumėte jį paleisti.",
     "stop": "Stabdyti",
     "continue": "Tęsti",
+    "headFailed": "Agentas {{head}} nepateikė tinkamo rezultato — siųskite `continue`, kad bandytų iš naujo.",
     "help": {
       "unknown": "Nežinoma komanda.",
       "badJson": "Nepavyko apdoroti JSON įvesties.",
@@ -74,7 +75,6 @@
     "cancel": "Atšaukti",
     "confirmDelete": "Ištrinti šį agentą?",
     "systemBanner": "Sistema — {{name}}",
-    "system": "Sistema",
     "noSystem": "Nėra sisteminės žinutės.",
     "viewRun": "Žiūrėti vykdymą",
     "childRun": "Sub-agento vykdymas — tik peržiūra.",
@@ -252,7 +252,9 @@
     "attachResized": "Sumažinta iki {{max}}px: {{names}}",
     "imageRefOnly": "Pokalbio modelis vaizdų nemato — prisegta kaip generavimo nuoroda (img-N), kurią agentas vis tiek gali naudoti.",
     "compactedDivider": "Suglaudinta — žinutės aukščiau lieka čia, bet modeliui nebesiunčiamos",
-    "compactedSummary": "Modeliui išsiųsta santrauka"
+    "compactedSummary": "Modeliui išsiųsta santrauka",
+    "healing": "Savitaisa (bandymas {{round}})…",
+    "waitingInput": "Laukiama jūsų įvesties…"
   },
   "progress": {
     "progress": "Eiga",
@@ -333,5 +335,10 @@
     "closeEsc": "Užverti (Esc)",
     "saveImage": "Išsaugoti paveikslėlį",
     "saveVideo": "Išsaugoti vaizdo įrašą"
+  },
+  "gallery": {
+    "hint": "Visi galerijos puslapių išdėstymai — nurodykite agentui kodą (pvz., „use 5-3“). Spustelėkite peržiūrą, kad padidintumėte.",
+    "groupTitle": "{{count}} paveikslėliai",
+    "unavailable": "Išdėstymų peržiūros čia nepasiekiamos (tik darbalaukio programoje)."
   }
 }

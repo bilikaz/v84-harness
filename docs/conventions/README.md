@@ -16,7 +16,7 @@ This repo's instance-specific documentation lives in
 | [base-classes.md](base-classes.md) | Family plumbing as protected base members; one constructor shape + `init()` hook; wire per-call state at construction |
 | [canonical-shapes.md](canonical-shapes.md) | One concept, one shape, end to end — stores hold it; shape-sniffing unions mean the canonical shape is missing |
 | [types-placement.md](types-placement.md) | `types.ts` holds vocabulary (promotion test: 2+ importers / boundary / family); `shared.ts` holds cross-cutting helpers; everything else colocates |
-| [consolidation.md](consolidation.md) | Extract only essential duplication or near-universal sharing; 2-of-N look-alikes stay duplicated |
+| [consolidation.md](consolidation.md) | Extract only essential duplication or near-universal sharing; 2-of-N look-alikes stay duplicated — but code born as a copy is extracted at consumer #2, never pasted; wire and display render from one function |
 | [capability-injection.md](capability-injection.md) | Platform parts injected onto a shared context at the composition root; agnostic code reads the carrier, gates optional capabilities on presence |
 | [capability-gating.md](capability-gating.md) | One `canRun()` predicate, enforced at both the advertise boundary and the invoke boundary; advertise-only gates drift |
 | [error-handling.md](error-handling.md) | Normalize unknown throws; context-prefixed messages; per-item catch in batches |
@@ -25,7 +25,7 @@ This repo's instance-specific documentation lives in
 | [testing.md](testing.md) | Mock at the port with side-effect recorders; real engines; structural assertions |
 | [documentation.md](documentation.md) | Three doc layers (map / conventions / ADRs); Mermaid for diagrams; why-comments |
 | [i18n.md](i18n.md) | Every user-facing string through `t()`; locale files stay key-for-key; constants store keys |
-| [llm-interfaces.md](llm-interfaces.md) | Stable schemas, catalogs as data; batch params; normalized name addressing; announce context edits; bound resubmitted payloads; context pressure shrinks the projection, never the stored source |
+| [llm-interfaces.md](llm-interfaces.md) | Stable schemas, catalogs as data; batch params; normalized name addressing; announce context edits; bound resubmitted payloads; context pressure shrinks the projection, never the stored source; task = data, system prompt = method; prose advertises only callable tools; positive contracts over prohibitions |
 | [react.md](react.md) | Named function components; hooks-only state access; stable list keys; no floating rejections |
 | [constants-and-identifiers.md](constants-and-identifiers.md) | Behavioral literals are named; one id generator (seeds are not ids); namespaced persisted keys |
 | [destructive-actions.md](destructive-actions.md) | Delete affordances name exactly what is destroyed; deleted items leave tombstones, not gaps |

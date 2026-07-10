@@ -1,22 +1,17 @@
-import type { ErrorKind, ToolCallRequest, ToolSpec } from "../../llm/types.ts";
-import { healCorrection, type ResponseHandler } from "../../llm/index.ts";
+import type { ErrorKind, ToolCallRequest } from "../../llm/types.ts";
 import { llmLog } from "../../llm/debug.ts";
-import type { Attachments, Image, Video, Session } from "./types.ts";
+import type { Attachments, Session } from "./types.ts";
 import { resolveMain } from "../settings.ts";
 import type { Ctx } from "../ctx.ts";
-import { effectiveImageMaxDim, getAppConfig } from "../config/index.ts";
-import { denyApprovalsForSession, requestApproval } from "../approvals.ts";
-import { getAgent, type Agent } from "../agents.ts";
-import { getActiveContainerId, getContainer, type Container } from "../containers.ts";
+import { getAppConfig } from "../config/index.ts";
+import { denyApprovalsForSession } from "../approvals.ts";
+import { type Agent } from "../agents.ts";
+import { getActiveContainerId, getContainer } from "../containers.ts";
 import { isConnected } from "../account.ts";
-import { type ToolName, type ToolPermission, type ToolResult } from "../tools/types.ts";
-import { pt, deliveryNudge } from "../prompts.ts";
-import { baseSystemFor } from "./system.ts";
-import { engineToolSchemas, isEngineTool, runEngineTool } from "../tools/engine/dispatch.ts";
-import { GET_AGENT_CONTENT, RUN_AGENT, aliasOf, childrenOf, collectAgentContent, lastAgentText } from "../tools/helpers/agents/catalog.ts";
-import type { EngineCtx } from "../tools/engine/base.ts";
+import { type ToolName, type ToolPermission } from "../tools/types.ts";
+import { deliveryNudge } from "../prompts.ts";
+import { GET_AGENT_CONTENT, aliasOf, childrenOf, collectAgentContent } from "../tools/helpers/agents/catalog.ts";
 import { browserFleet } from "../browser.ts";
-import { enabledPluginPrompts } from "../plugins/config.ts";
 import { sessionBus as bus } from "./events.ts";
 import {
   createSession,
@@ -27,18 +22,26 @@ import {
   getSessions,
   getStreamingIds,
   isFull,
-  removeToolCall,
+  commitMessages,
+  pushToolResult,
+  pushTurn,
   setDelivered,
-  setLastSystem,
+  patchMeta,
+  setLastToolCalls,
   setUserPaused,
-  stampMediaRefs,
-  toChatMessages,
 } from "./store.ts";
-import { extractRefTokens, refLabel, resolveRefs } from "./mediaRefs.ts";
 import { errorMessage } from "../../lib/errors.ts";
 import { downscaleImage } from "../../lib/imageResize.ts";
 import { nameSession } from "./naming.ts";
 import { compact as compactSession } from "./compaction.ts";
+import { LlmSessionLoop } from "./loop/llm.ts";
+import { capabilityContext } from "./system.ts";
+import type { LoopInput } from "./loop/base.ts";
+import { memoryInbox } from "./loop/records.ts";
+import type { Settlement } from "./loop/records.ts";
+
+// The step-level single-tool drop rule lives with the llm shape; re-exported for its unit tests.
+export { dropExtraSingleCalls } from "./loop/llm.ts";
 
 // Validator for the model's final (no-tool) turn: throw to reject — the engine injects a correction and retries.
 export type OutputValidator = (text: string) => void;
@@ -82,11 +85,10 @@ export class SessionEngine {
       this.pumpDeliveries(e.sessionId);
       const s = getSession(e.sessionId);
       // A child whose turn just FINISHED delivers its result up to its parent — but ONLY in async mode.
-      // Sync mode delivers via awaitSettled's own turn:end subscription instead; pushing here too would
-      // double-deliver. Skip aborts (a user pause / cascade) — only a terminal success/error is delivered.
-      // A GRAPH orchestrator is never a delivery parent: it consumes its heads via awaitHead, so a delivery
-      // here would re-drive (and restart) the run. Exclude children whose parent is a graph session.
-      if (s?.parentId && getAppConfig().session.asyncAgents && !getSession(s.parentId)?.graphId) {
+      // Skip aborts (a user pause / cascade) — only a terminal success/error is delivered. A GRAPH
+      // orchestrator is never a delivery parent: it consumes its heads through its own Call dispatch,
+      // so a delivery here would re-drive (and restart) the run. Exclude graph-session parents.
+      if (s?.parentId && !getSession(s.parentId)?.graphId) {
         llmLog.debug("agent:child-end", { childSid: e.sessionId, parentSid: s.parentId, errored: e.errored, aborted: e.aborted });
         if (!e.aborted) this.onChildSettled(s.parentId, e.sessionId, aliasOf(s));
       }
@@ -104,6 +106,13 @@ export class SessionEngine {
       this.ctx.graph.stop(sid);
       return;
     }
+    this.inflight.get(sid)?.abort();
+    denyApprovalsForSession(sid);
+  }
+
+  // Abort the raw in-flight turn with NO graph delegation — the graph engine's own Stop path uses this
+  // to end a live dialog model turn (its soft-pause semantics own everything else).
+  abortTurn(sid: string): void {
     this.inflight.get(sid)?.abort();
     denyApprovalsForSession(sid);
   }
@@ -136,35 +145,6 @@ export class SessionEngine {
     this.pumpDeliveries(parentSid);
   }
 
-  // Block until a child reaches a TERMINAL, non-aborted end (success or error), then return its final result
-  // read from history. This is sync delivery: it rides through any number of user pause→guide→resume cycles —
-  // an aborted turn:end is a PAUSE, so we keep waiting (the raw turn Promise can't, it resolves on first
-  // abort). `dispatch` (the started turn's Promise) is a liveness guard: if it resolves null the turn never
-  // started (busy/full) and no turn:end will come, so resolve null rather than hang. On the PARENT's abort,
-  // stop the child and resolve aborted.
-  awaitSettled(childSid: string, signal: AbortSignal, dispatch: Promise<TurnResult | null>): Promise<TurnResult | null> {
-    return new Promise<TurnResult | null>((resolve) => {
-      const finish = (r: TurnResult | null): void => {
-        offEnd();
-        signal.removeEventListener("abort", onAbort);
-        resolve(r);
-      };
-      const offEnd = bus.on("turn:end", (e) => {
-        if (e.sessionId !== childSid || e.aborted) return; // not ours, or a pause — keep waiting
-        finish({ text: lastAgentText(childSid), errored: e.errored, aborted: false, errorKind: e.errored ? getSession(childSid)?.meta.errorKind : undefined });
-      });
-      const onAbort = (): void => {
-        this.stopTurn(childSid);
-        finish({ text: lastAgentText(childSid), errored: false, aborted: true });
-      };
-      // A refused dispatch (null) never emits turn:end — don't hang. A non-null result is a single turn
-      // ending (possibly a pause); ignore it and let the turn:end subscription decide (it rides pauses).
-      void dispatch.then((r) => { if (r === null) finish(null); }).catch(() => finish(null));
-      if (signal.aborted) return void onAbort();
-      signal.addEventListener("abort", onAbort, { once: true });
-    });
-  }
-
   private enqueueDelivery(parentSid: string, childSid: string, alias: number): void {
     const q = this.deliveries.get(parentSid) ?? new Map<string, number>();
     q.set(childSid, alias);
@@ -180,7 +160,17 @@ export class SessionEngine {
       this.deliveries.delete(parentSid); // parent gone — drop its queue
       return;
     }
-    if (getStreamingIds().has(parentSid)) return; // busy — retained; turn:end will pump again
+    if (getStreamingIds().has(parentSid)) {
+      // Busy parent: the delivery rides the pending inbox — the LIVE loop drains it at its next
+      // cycle boundary (sooner than turn:end, and one injection path). Nudge form: the model reads
+      // the results with getAgentContent, which marks them delivered.
+      const aliases = [...q.values()].filter((n) => n > 0).sort((a, b) => a - b);
+      this.deliveries.delete(parentSid);
+      if (aliases.length) {
+        this.inbox.push({ id: crypto.randomUUID(), sessionId: parentSid, text: deliveryNudge(aliases), queuedAt: Date.now(), from: "delivery" });
+      }
+      return;
+    }
     const entries = [...q];
     this.deliveries.delete(parentSid);
     // A throw here (e.g. the history read fails) would otherwise drop the child's result for good —
@@ -218,14 +208,13 @@ export class SessionEngine {
   }
 
   // Boot recovery for async sub-agent runs an app restart interrupted. The in-memory delivery queue and
-  // the awaitSettled subscriptions don't survive a reload, so re-derive each parent's outstanding work
+  // the settlement listeners don't survive a reload, so re-derive each parent's outstanding work
   // from durable state: of the children its committed history knows about (childSessionIds on a spawn
   // ack / prior delivery), the ones not yet delivered (the durable `delivered` flag). A settled one is
   // re-queued for delivery; an unfinished one is resumed and delivers itself on its next turn:end.
   // Content is always read from the children's own transcripts — never reconstructed here. Fire-and-
   // forget from init after hydrate; sync runs (which block the parent turn) have nothing to re-pump.
   async reconcile(): Promise<void> {
-    if (!getAppConfig().session.asyncAgents) return;
     const parents = new Set(getSessions().map((s) => s.parentId).filter((p): p is string => !!p));
     for (const parentSid of parents) {
       const parent = getSession(parentSid);
@@ -257,8 +246,11 @@ export class SessionEngine {
   // cascades to the children it spawned.
   deleteSession(id: string): void {
     for (const child of getSessions().filter((s) => s.parentId === id)) this.deleteSession(child.id);
-    // Hard-abort the in-flight turn (a graph run's controller too — stopTurn would only soft-pause it).
+    // Hard-abort the in-flight turn (a graph run's controller too — stopTurn would only soft-pause it),
+    // and tear down any resident loop parked on user input — the graph loop included.
     this.inflight.get(id)?.abort();
+    this.killLoop(id);
+    this.ctx.graph.kill(id);
     denyApprovalsForSession(id);
     this.ctx.runner.drop(id); // release any held slot + queued wait + binding
     // A deleted session's browser windows have no owner left to drive them — close them.
@@ -291,7 +283,15 @@ export class SessionEngine {
     if (!session || (!t && !opts.images?.length && !opts.videos?.length && !opts.files?.length)) return null;
     // Unconfigured (null cfg) falls through — runTurn answers that with a proper turn error.
     const cfg = resolveMain();
-    if (getStreamingIds().has(sid) || (cfg && isFull(cfg, session))) return null;
+    if (cfg && isFull(cfg, session)) return null;
+    if (getStreamingIds().has(sid)) {
+      // Truly async injection: a busy session never refuses a plain text message — it queues in the
+      // pending inbox and the live loop drains it at its next cycle boundary (the message enters the
+      // transcript at drain time, so order holds). Attachment sends still refuse: media can't queue yet.
+      if (opts.images?.length || opts.videos?.length || opts.files?.length) return null;
+      this.inbox.push({ id: crypto.randomUUID(), sessionId: sid, text: t, queuedAt: Date.now(), from: "user" });
+      return null;
+    }
     // Sessions lazy-load (ADR-0021) — load history before the turn reads it, or the model sees an empty conversation.
     await ensureLoaded(sid);
     return this.runTurn(sid, t, opts);
@@ -343,357 +343,155 @@ export class SessionEngine {
     return this.drive(sid, {}, { firstExchange: false, autoName: false, userText: "" });
   }
 
-  // The shared turn body: setup → step loop → finalize. Both runTurn (after pushing the user turn) and
-  // resume (after re-opening the tail) call it — the only difference is how the turn was opened above.
+  // The shared turn body. Both runTurn (after pushing the user turn) and resume (after re-opening the
+  // tail) call it. The seam is ONE question: is a resident loop waiting on this surface? Yes → the
+  // message feeds it (the loop's next segment). No → a graph session routes commands to its graph;
+  // anything else is a fresh loop entry.
   private async drive(sid: string, opts: SendOptions, meta: { firstExchange: boolean; autoName: boolean; userText: string }): Promise<TurnResult> {
-    const { firstExchange, autoName, userText } = meta;
-    // The seam: a graph session's turns are produced by the owning graph, not the model. Every turn is a
-    // command message (`start` / `continue` / `<nodeName>`); an empty drive (a stray resume) is a no-op there,
-    // never a restart. Everything below — config, lease, the model step loop — is the model path only.
-    if (getSession(sid)?.graphId) return this.ctx.graph.command(sid, userText);
-    // First thing to sanity-check: the live config (is async on? which delivery? connected?). Logged once.
+    const resident = this.loops.get(sid);
+    if (getSession(sid)?.graphId) {
+      // Mid-interview the graph session is a normal chat surface — except the exact `start` command,
+      // which stays the kill-and-restart escape hatch. Everything else routes as a graph command.
+      if (resident?.loop.waiting && meta.userText.trim().toLowerCase() !== "start") return resident.loop.feed(opts, meta);
+      return this.ctx.graph.command(sid, meta.userText);
+    }
+    if (resident?.loop.waiting) return resident.loop.feed(opts, meta);
+    return this.modelTurn(sid, opts, meta);
+  }
+
+  // ── The loop host (LoopHost) — resident loops by surface sid ────────────────
+
+  private readonly loops = new Map<string, { loop: LlmSessionLoop; kill: () => void }>();
+  // The pending inbox — injection into a BUSY session queues here and the live loop drains it at its
+  // next cycle boundary. In-memory for now (declared-persistence lands with the wait records).
+  private readonly inbox = memoryInbox();
+
+  attachLoop(sid: string, loop: LlmSessionLoop): void {
+    this.loops.set(sid, { loop, kill: () => loop.poke() });
+  }
+  detachLoop(sid: string, loop: LlmSessionLoop): void {
+    if (this.loops.get(sid)?.loop === loop) this.loops.delete(sid);
+  }
+
+  // Tear down a session's resident loop: abort its signal, then wake it so the loop observes the
+  // abort and settles (a waiting loop holds no in-flight turn to abort).
+  killLoop(sid: string): void {
+    this.loops.get(sid)?.kill();
+    this.loops.delete(sid);
+  }
+
+  // A fresh loop entry for a plain turn: interactive (a user is present — errors and stops PAUSE, the
+  // next message continues the same loop), no schema (settles on the first final reply), the validate
+  // option riding as the custom classifier.
+  private modelTurn(sid: string, opts: SendOptions, meta: { firstExchange: boolean; autoName: boolean; userText: string }): Promise<TurnResult> {
     if (!this.tracedConfig) {
       this.tracedConfig = true;
       llmLog.debug("config", { session: getAppConfig().session, connected: isConnected() });
     }
-    const cfg = resolveMain();
-    if (!cfg) {
-      bus.emit("turn:error", { sessionId: sid, message: "no chat model is configured — pick a provider and model in Settings.", kind: "other" });
-      bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: true, firstExchange, autoName, userText });
-      bus.emit("turn:end", { sessionId: sid, errored: true, aborted: false });
-      return { text: "", errored: true, aborted: false, errorKind: "other" };
-    }
-
-    const isChild = !!getSession(sid)?.parentId; // a sub-agent run — never orchestrates further
-    const { ws, agent } = capabilityContext(getSession(sid));
     const controller = new AbortController();
-    this.inflight.set(sid, controller);
-
-    // Lease a concurrency slot for the whole turn: foreground draws the `main` pool, a child the
-    // `subAgent` pool (held across every step, released in the finally). A null lease is either a
-    // user Stop while queued (aborted — clean exit) or an empty pool (no models for this role) —
-    // the latter falls back to the primary `main` target so a child still runs un-leased.
-    const role = isChild ? "subAgent" : "main";
-    const lease = await this.ctx.runner.acquire(role, sid, getSession(sid)?.meta.usedTokens ?? 0, { signal: controller.signal });
-    if (!lease && controller.signal.aborted) {
-      this.inflight.delete(sid);
-      bus.emit("message:done", { sessionId: sid, text: "", thinking: "", errored: false, firstExchange, autoName, userText });
-      bus.emit("turn:end", { sessionId: sid, errored: false, aborted: true });
-      return { text: "", errored: false, aborted: true };
-    }
-    const callTarget = lease?.config; // undefined → resolveProvider falls back to the global `main` assignment
-    const turnInput = (lease?.config.input ?? cfg.input) ?? {};
-
-    // The engine-call context for the driver-level tool tier (browser fleet, sub-agent spawner).
-    const ec: EngineCtx = { ctx: this.ctx, sessionId: sid, workspace: ws, signal: controller.signal, isChild, engine: this };
-    // One policy pass: the gateway returns the advertised schemas + each tool's effective mode. The engine
-    // tier (sub-agent pair, browser fleet) is driver-level and joins the advertised set here.
-    const filtered = await this.ctx.tools.filter({
-      checkCanRun: true,
-      hasWorkspace: !!ws,
-      workspacePermissions: ws?.permissions as Record<ToolName, ToolPermission> | undefined,
-      agentPermissions: agent?.tools,
-    });
-    const toolSpecs: ToolSpec[] = [...Object.values(filtered).map((e) => e.schema as ToolSpec), ...engineToolSchemas(ec)];
-    llmLog.debug("turn", { workspace: ws?.name ?? null, tools: toolSpecs.map((t) => t.function.name) });
-    // The virtual-root convention (ADR-0007) is invisible otherwise — tell the model only when FILE tools are
-    // actually advertised. Gate on needsWorkspace, not permissioned: a permissioned-but-workspaceless tool (an
-    // MCP tool) must not drag the /workspace prompt into a plain chat.
-    const fsAccess = Object.values(filtered).some((e) => e.needsWorkspace);
-    // Browser guidance (reuse windows, short ids, ask the user for logins) — only when the fleet is live and
-    // the browser tools are actually advertised (top-level sessions on the electron host).
-    const browserAccess = !isChild && browserFleet().available();
-
-    let finalText = "";
-    let finalThinking = "";
-    let errored = false;
-    let errorKind: ErrorKind | undefined;
-    let healAttempts = 0;
-
-    const maxSteps = getAppConfig().session.maxSteps;
-    let step = 0;
-    try {
-      for (; step < maxSteps; step++) {
-        if (controller.signal.aborted) break;
-        // History is re-filtered against the CURRENT model's inputs each step — the model can change mid-session, and yesterday's images must not 400 today's text-only endpoint.
-        const history = toChatMessages(getSession(sid)?.messages ?? [], turnInput);
-        // The overridable BASE block, resolved live (agent system → container message → global prompt →
-        // default) via the shared resolver, so the SystemBanner shows exactly this. The capability blocks
-        // below (workspace fs / browser / memory) append on top regardless, to enforce proper tool usage.
-        const baseSystem = baseSystemFor(getSession(sid));
-        // Append the workspace prompt when file tools are advertised, and the memory
-        // prompt when the account is connected (same gate that advertises the memory tools).
-        // Sub-agent guidance when the orchestration tools are advertised (top-level sessions). The async
-        // addendum (don't wait, getAgentContent, AskAgent) only applies when async delivery is on — in sync
-        // mode RunAgent blocks and returns the answer, so there's nothing to not-wait for.
-        const agentsAdvertised = toolSpecs.some((t) => t.function.name === RUN_AGENT);
-        const system =
-          [
-            baseSystem,
-            // Plugin guidance goes BEFORE the built-in capability blocks so workspace/browser/memory keep
-            // recency advantage — a plugin prompt can't lean on recency bias to override their constraints.
-            ...enabledPluginPrompts(), // each enabled plugin's own tool guidance
-            fsAccess ? pt("workspace.system") : undefined,
-            browserAccess ? pt("browser.system") : undefined,
-            isConnected() ? pt("memory.system") : undefined,
-            agentsAdvertised ? pt("agents.system") : undefined,
-            agentsAdvertised && getAppConfig().session.asyncAgents ? pt("agents.async") : undefined,
-          ]
-            .filter(Boolean)
-            .join("\n\n") || undefined;
-        // Record the FULL assembled prompt (base + capability blocks, exactly as gated this turn) so the
-        // SystemBanner shows what the model actually received — not a reconstruction the UI would have to guess.
-        setLastSystem(sid, system ?? "");
-
-        // Heal stays driver-driven (the correction is a SESSION turn via the store), so the handler never throws HealError.
-        const { text, thinking, calls: rawCalls } = await this.ctx.llm.call({
-          service: "main",
-          target: callTarget,
-          messages: history,
-          system,
-          tools: toolSpecs,
-          signal: controller.signal,
-          handler: this.chatStepHandler(sid, (kind) => {
-            errored = true;
-            errorKind = kind;
-          }),
-        });
-        finalText = text;
-        finalThinking = thinking;
-        if (errored || controller.signal.aborted) break;
-
-        // Rejected final turn → hidden correction + re-stream, up to llm.maxHealAttempts; budget spent → error, never best-effort output.
-        if (!rawCalls.length) {
-          if (opts.validate) {
-            try {
-              opts.validate(text);
-            } catch (e) {
-              if (healAttempts < getAppConfig().llm.maxHealAttempts) {
-                healAttempts += 1;
-                bus.emit("heal", { sessionId: sid, correction: healCorrection(e) });
-                continue;
-              }
-              errored = true;
-              errorKind = "other";
-              bus.emit("turn:error", {
-                sessionId: sid,
-                message: `output validation failed after ${healAttempts} heal attempt(s): ${errorMessage(e)}`,
-                kind: "other",
-              });
-            }
-          }
-          break;
-        }
-        // "single" tools run at most ONCE per step (BaseTool.single, surfaced on the filter entry): if the
-        // model emits several calls to the same single tool, only the FIRST survives — the extras are dropped
-        // from the call set entirely (never executed, never answered), so the assistant message shows just the
-        // one call that ran. Parallel copies of an image op would collide on output names and hammer the media
-        // server; other exclusive/expensive tools can opt in the same way.
-        const calls = dropExtraSingleCalls(rawCalls, (name) => !!filtered[name]?.single);
-        if (calls.length !== rawCalls.length) {
-          llmLog.debug("tool:calls.deduped", { sessionId: sid, kept: calls.length, dropped: rawCalls.length - calls.length });
-        }
-        // Run all calls concurrently — results link back via toolCallId, so completion order doesn't matter.
-        bus.emit("tool:calls", { sessionId: sid, calls });
-        llmLog.debug("tool:calls", {
-          sessionId: sid,
-          isChild,
-          step,
-          calls: calls.map((c) => ({ id: c.id, name: c.name, engine: isEngineTool(c.name), args: c.arguments })),
-        });
-        const fedImages: Image[] = []; // tool-produced images to show the vision agent this step
-        const fedVideo: Video[] = []; // tool-produced video — fed back only when the model takes video input
-        let erased = false; // an engine tool asked to erase its call and end the turn (premature getAgentContent)
-        await Promise.all(
-          calls.map(async (call) => {
-            // The engine tool tier (sub-agent pair, browser fleet) is driver-level — it needs the live
-            // engine/ctx, not the registry. One gated dispatch; the engine emits its result + feeds images.
-            if (isEngineTool(call.name)) {
-              const res = await runEngineTool(call, ec);
-              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "engine", erase: !!res.eraseTurn, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId, output: logTrunc(res.output) });
-              // Erase: scrub the call from history and end the turn — no tool:result, looks like it never happened.
-              if (res.eraseTurn) {
-                erased = true;
-                removeToolCall(sid, call.id);
-                return;
-              }
-              const images = await this.downscaleToolImages(res.images, effectiveImageMaxDim(cfg.imageMaxDim));
-              stampMediaRefs(sid, images, res.videos);
-              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: withMediaRefNote(res.output, images, res.videos), images, videos: res.videos, childSessionIds: res.childSessionIds, browserWindowId: res.browserWindowId });
-              if (images?.length) fedImages.push(...images);
-              if (res.videos?.length) fedVideo.push(...res.videos);
-              return;
-            }
-            const mode = filtered[call.name]?.effectiveMode ?? 0;
-            if (mode === 0) {
-              const why = !ws
-                ? `tool "${call.name}" needs a workspace folder — open one for this session to use it.`
-                : `tool "${call.name}" is disabled for this session.`;
-              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "blocked", output: why });
-              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: why });
-              return;
-            }
-            if (mode === 1 && !(await requestApproval(sid, call))) {
-              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "denied" });
-              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: `the user denied the ${call.name} call.` });
-              return;
-            }
-            // The user may have hit Stop while the approval sat in the queue.
-            if (controller.signal.aborted) {
-              llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "cancelled" });
-              bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output: "cancelled by the user." });
-              return;
-            }
-            let result: ToolResult;
-            // A live AbortSignal can't cross the bridge — Stop cancels the running tool by id.
-            const onAbort = (): void => this.ctx.tools.cancel(call.id);
-            controller.signal.addEventListener("abort", onAbort, { once: true });
-            try {
-              // The platform's gateway runs the call — web in-process, electron over the bridge (cancel via ADR-0014).
-              // Media aliases mentioned in the args are pre-resolved here (the tool can't reach the transcript).
-              result =
-                (await this.ctx.tools.run({
-                  id: call.id,
-                  name: call.name,
-                  arguments: call.arguments,
-                  cwd: (ws?.config.root as string | undefined) ?? "",
-                  imageOutputDir: ws?.config.imageOutputDir as string | undefined,
-                  mediaRefs: resolveRefs(getSession(sid)?.messages ?? [], extractRefTokens(call.arguments)),
-                })) ??
-                { ok: false, output: `tool "${call.name}" is unavailable here.` };
-            } catch (e) {
-              result = { ok: false, output: `tool execution failed: ${errorMessage(e)}` };
-            } finally {
-              controller.signal.removeEventListener("abort", onAbort);
-            }
-            llmLog.debug("tool:result", { sessionId: sid, name: call.name, via: "registry", ok: result.ok, output: logTrunc(result.output) });
-            const images = await this.downscaleToolImages(result.images, effectiveImageMaxDim(cfg.imageMaxDim));
-            const videos = result.videos?.map((g) => ({ ...g }));
-            stampMediaRefs(sid, images, videos);
-            const output = withMediaRefNote(result.output, images, videos);
-            bus.emit("tool:result", { sessionId: sid, toolCallId: call.id, output, images, videos });
-            if (images?.length) fedImages.push(...images);
-            if (videos?.length) fedVideo.push(...videos);
-          }),
-        );
-        // A premature getAgentContent erased its own call — end the turn cleanly (no result to react to).
-        if (erased) break;
-        // Feed back only what the model's declared inputs accept — otherwise the endpoint rejects the turn.
-        const feedImages = turnInput.image !== false ? fedImages : [];
-        const feedVideo = turnInput.video === true ? fedVideo : [];
-        if (feedImages.length || feedVideo.length) {
-          bus.emit("mediaFeedback", {
-            sessionId: sid,
-            images: feedImages.length ? feedImages : undefined,
-            videos: feedVideo.length ? feedVideo : undefined,
-          });
-        }
-        bus.emit("assistant:open", { sessionId: sid });
-      }
-      // Step budget spent: emit an error — silent truncation reads as a finished answer.
-      if (step >= maxSteps && !errored && !controller.signal.aborted) {
-        errored = true;
-        errorKind = "other";
-        bus.emit("turn:error", {
-          sessionId: sid,
-          message: `tool loop stopped after ${maxSteps} steps without a final answer — the task may be looping or too complex for one turn.`,
-          kind: "other",
-        });
-      }
-    } catch (e) {
-      // A user Stop aborts the controller → the stream throws here; that's a clean stop, not an error.
-      if (!controller.signal.aborted) {
-        errored = true;
-        errorKind = "other";
-        bus.emit("turn:error", { sessionId: sid, message: errorMessage(e), kind: "other" });
-      }
-    } finally {
-      this.inflight.delete(sid);
-      this.ctx.runner.release(sid); // free the slot; the provider binding lingers for the TTL
-      // The model that actually served this turn (leased pool model, or the `main` fallback) — recorded as
-      // the session's lastModel so the composer labels the chat by what answered, not the configured head.
-      const model = errored ? undefined : callTarget?.model.id ?? cfg.model.id;
-      bus.emit("message:done", { sessionId: sid, text: finalText, thinking: finalThinking, errored, firstExchange, autoName, userText, model });
-      bus.emit("turn:end", { sessionId: sid, errored, aborted: controller.signal.aborted });
-    }
-    return { text: finalText, errored, aborted: controller.signal.aborted, errorKind: errored ? errorKind : undefined };
-  }
-
-  // Streams one chat step's events onto the session bus; `onError` flags a terminal stream error (already emitted) so the turn loop stops, with its kind.
-  private chatStepHandler(sid: string, onError: (kind: ErrorKind) => void): ResponseHandler<{ text: string; thinking: string; calls: ToolCallRequest[] }> {
-    return {
-      async handle(interaction) {
-        if (interaction.kind !== "chat") throw new Error("the chat step expects a chat interaction.");
-        let text = "";
-        let thinking = "";
-        let thinkingDone = false;
-        const calls: ToolCallRequest[] = [];
-        for await (const evt of interaction.events) {
-          if (evt.type === "text") {
-            if (thinking && !thinkingDone) {
-              thinkingDone = true;
-              bus.emit("thinking:done", { sessionId: sid });
-            }
-            text += evt.delta;
-            bus.emit("text", { sessionId: sid, delta: evt.delta });
-          } else if (evt.type === "thinking") {
-            thinking += evt.delta;
-            bus.emit("thinking", { sessionId: sid, delta: evt.delta });
-          } else if (evt.type === "tool_call") {
-            calls.push(evt.call);
-          } else if (evt.type === "retry") {
-            // Transport retry re-sends the step from scratch — discard the attempt's partial output.
-            text = "";
-            thinking = "";
-            thinkingDone = false;
-            calls.length = 0;
-            bus.emit("stream:retry", { sessionId: sid, message: evt.message });
-          } else if (evt.type === "usage") {
-            bus.emit("usage", { sessionId: sid, usage: evt.usage });
-          } else if (evt.type === "error") {
-            onError(evt.kind);
-            bus.emit("turn:error", { sessionId: sid, message: evt.message, kind: evt.kind });
-            break;
-          }
-        }
-        if (thinking && !thinkingDone) bus.emit("thinking:done", { sessionId: sid });
-        return { text, thinking, calls };
+    const loop = new LlmSessionLoop(
+      this.ctx,
+      this,
+      {
+        sid,
+        contract: { interactive: true },
+        budget: getAppConfig().llm.maxHealAttempts,
+        maxSteps: getAppConfig().session.maxSteps,
+        signal: controller.signal,
+        inbox: this.inbox,
       },
-    };
-  }
-
-  // Downscale tool-produced images in this renderer hop (canvas lives here, not main). The item's mime is
-  // optional; the resizer treats unknown ("") as "try". Shared by the registry path and the engine tier.
-  private async downscaleToolImages(images: Image[] | undefined, maxDim: number): Promise<Image[] | undefined> {
-    if (!images?.length) return undefined;
-    return Promise.all(
-      images.map(async (g) => {
-        const d = await downscaleImage(g.url, g.mime ?? "", maxDim);
-        return { ...g, url: d?.url ?? g.url, mime: d?.mime ?? g.mime };
-      }),
+      { meta, opts },
     );
+    this.loops.set(sid, { loop, kill: () => (controller.abort(), loop.poke()) });
+    void loop.run({ kind: "go" });
+    return loop.firstTurn;
   }
+
+  // The public contract API — drive a session (child head, interview surface, one-shot run) to a
+  // settled result. The graph's dialog/agent nodes and future Call dispatches come through here.
+  runContract(
+    sid: string,
+    spec: {
+      task?: string;
+      schema?: Record<string, unknown>;
+      interactive: boolean;
+      budget?: number;
+      // Extension meta keys patched into the session at construction (e.g. comics' generationJob) —
+      // ride to tools on every call (see SessionRuntime).
+      meta?: Record<string, unknown>;
+      seedFiles?: string[];
+      signal?: AbortSignal;
+      reattach?: boolean;
+    },
+  ): { settled: Promise<Settlement> } {
+    const controller = new AbortController();
+    spec.signal?.addEventListener("abort", () => controller.abort(), { once: true });
+    if (spec.signal?.aborted) controller.abort();
+    const loop = new LlmSessionLoop(
+      this.ctx,
+      this,
+      {
+        sid,
+        contract: { schema: spec.schema, interactive: spec.interactive },
+        budget: spec.budget ?? getAppConfig().llm.maxHealAttempts,
+        maxSteps: getAppConfig().session.maxSteps,
+        signal: controller.signal,
+        inbox: this.inbox,
+      },
+      { meta: { firstExchange: false, autoName: false, userText: "" }, opts: {} },
+    );
+    this.loops.set(sid, { loop, kill: () => (controller.abort(), loop.poke()) });
+    const settled = (async () => {
+      await ensureLoaded(sid);
+      if (spec.meta) patchMeta(sid, spec.meta);
+      // Never seed a reattach — the surface already carries its transcript; seeding would re-post the task.
+      if (!spec.reattach) await this.seedFiles(sid, spec.task, spec.seedFiles);
+      const initial: LoopInput =
+        spec.reattach || !spec.task ? { kind: "resume" } : spec.seedFiles?.length ? { kind: "resume" } : { kind: "task", text: spec.task };
+      return await loop.run(initial);
+    })();
+    return { settled };
+  }
+
+  // Load files into the transcript as REAL tool calls — [assistant: Read/ImageLoad calls] →
+  // [tool: contents/images], images downscaled like any tool image. The shared trunk behind
+  // contract seeding (below) and graph result showcasing (a finished flow SHOWS its page instead
+  // of pointing at a folder).
+  async loadFiles(sid: string, files: string[] | undefined): Promise<void> {
+    const paths = [...new Set((files ?? []).filter((p) => p.startsWith("/")))];
+    if (!paths.length || !this.ctx.tools) return;
+    const root = (getContainer(getSession(sid)?.containerId)?.config.root as string | undefined) ?? "";
+    const isImage = (p: string): boolean => /\.(png|jpe?g|webp|gif)$/i.test(p);
+    const calls = paths.map((path) => ({ id: crypto.randomUUID(), name: isImage(path) ? "ImageLoad" : "Read", arguments: JSON.stringify({ path }), cwd: root, path }));
+    setLastToolCalls(sid, calls.map(({ path: _p, ...call }) => call));
+    const maxDim = resolveMain()?.imageMaxDim;
+    for (const c of calls) {
+      const res = await this.ctx.tools.run({ id: c.id, name: c.name, arguments: c.arguments, cwd: root });
+      const images = res?.images?.length
+        ? await Promise.all(res.images.map(async (g) => {
+            const d = maxDim ? await downscaleImage(g.url, g.mime ?? "", maxDim) : undefined;
+            return { ...g, url: d?.url ?? g.url, mime: d?.mime ?? g.mime };
+          }))
+        : undefined;
+      pushToolResult(sid, c.id, res?.output ?? `(could not load ${c.path})`, images);
+    }
+    // Direct store pushes bypass the bus listeners — register the loaded opening NOW, so a head
+    // that stalls after seeding still has its task + reference cards on disk.
+    commitMessages(sid);
+  }
+
+  // Seed the opening with pre-selected files: [task] → loadFiles; the loop then resumes with
+  // everything already in context (an agent studies what is in front of it far more reliably than
+  // it remembers to fetch it). No-op without files.
+  private async seedFiles(sid: string, task: string | undefined, files: string[] | undefined): Promise<void> {
+    const paths = (files ?? []).filter((p) => p.startsWith("/"));
+    if (!paths.length || !task) return;
+    pushTurn(sid, task);
+    await this.loadFiles(sid, paths);
+  }
+
 }
 
-// Tool media gets its alias stamped BEFORE the result is emitted, and the output text names it — the
-// tool ran in the platform (possibly main across the bridge) and cannot know renderer-side refs.
-function withMediaRefNote(output: string, images?: Image[], videos?: Video[]): string {
-  const labels = [...(images ?? []), ...(videos ?? [])].filter((g) => g.ref).map(refLabel);
-  if (!labels.length) return output;
-  return `${output}\n[media reference${labels.length > 1 ? "s" : ""}: ${labels.join(", ")} — reuse by alias, e.g. in ImageCompose references]`;
-}
-
-// Keep only the FIRST call to each "single" tool in a step; drop the later duplicates entirely. Non-single
-// tools all pass through. Pure + exported so the drop rule is unit-tested without driving a whole turn.
-export function dropExtraSingleCalls(calls: ToolCallRequest[], isSingle: (name: string) => boolean): ToolCallRequest[] {
-  const seen = new Set<string>();
-  return calls.filter((c) => {
-    if (!isSingle(c.name)) return true; // not single → always kept
-    if (seen.has(c.name)) return false; // a later call to a single tool → dropped
-    seen.add(c.name);
-    return true; // the first call to this single tool → kept
-  });
-}
 
 // A child has reached a terminal, deliverable state: a stored failure (errorKind — delivered as a note)
 // or a final answer (its last committed message is an assistant with no pending tool calls). Anything
@@ -705,18 +503,3 @@ function isSettled(s: Session): boolean {
   return !!last && last.role === "assistant" && !last.toolCalls?.length;
 }
 
-// Cap a tool result for the debug log — full outputs (file dumps, page text) would swamp the console.
-function logTrunc(s: string | undefined, max = 800): string {
-  if (!s) return "";
-  return s.length > max ? `${s.slice(0, max)}… (+${s.length - max} chars)` : s;
-}
-
-// The STRICTER context selection: a chat-only agent is masked (no fs workspace). Only `local`
-// containers expose the fs tool tier today (the `remote` VM tier is deferred to a later slice);
-// `chat` containers get no workspace, just the general tier.
-function capabilityContext(session: Session | undefined): { ws: Container | undefined; agent: Agent | undefined } {
-  const agent = session?.agentId ? getAgent(session.agentId) : undefined;
-  const container = getContainer(session?.containerId);
-  const ws = agent && !agent.workspace ? undefined : container?.type === "local" ? container : undefined;
-  return { ws, agent };
-}

@@ -4,7 +4,7 @@ import { ChevronDown, ShieldCheck, Unlink } from "lucide-react";
 
 import { unlinkAgent, useActiveSession } from "../../core/sessions/index.ts";
 import { useCtx } from "../../renderer/ctx.tsx";
-import { useAgents } from "../../core/agents.ts";
+import { getPluginAgents, useAgents } from "../../core/agents.ts";
 import { useContainers } from "../../core/containers.ts";
 import { type ToolPermission } from "../../core/tools/types.ts";
 import { ConfirmActions } from "../../components/ConfirmActions.tsx";
@@ -32,7 +32,9 @@ export function AgentPermissionsPanel() {
   }, [ctx, session]);
 
   if (!session.agentId) return null;
-  const agent = agents.find((a) => a.id === session.agentId);
+  // User agents from the store, then the plugin-agent registry — same resolution as the engine's
+  // getAgent, so a plugin-agent sub chat never reads as "deleted".
+  const agent = agents.find((a) => a.id === session.agentId) ?? getPluginAgents().find((a) => a.id === session.agentId);
   const status = !agent
     ? t("agents.permissionsDeleted")
     : agent.workspace

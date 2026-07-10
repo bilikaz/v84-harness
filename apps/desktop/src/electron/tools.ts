@@ -6,6 +6,8 @@ import { getConfig, type Config } from "../core/config/index.ts";
 import { ToolRegistry } from "../core/tools/registry.ts";
 import type { ToolCallRequest, ToolResult, ToolFilterParams, ToolFilterResult, WireConfig } from "../core/tools/types.ts";
 import type { PluginToolRegistrar } from "../core/plugins/types.ts";
+import { setPageRenderer } from "../core/gallery/render.ts";
+import { renderPageOffscreen } from "./pageRender.ts";
 
 const MODULES = {
   ...import.meta.glob<Record<string, unknown>>("../core/tools/general/*.ts", { eager: true }),
@@ -20,6 +22,8 @@ const MODULES = {
 // so tools (and the clients they derive) see live config.
 let config: Config = getConfig();
 const reg = new ToolRegistry(() => config, MODULES);
+// Gallery pages render in main via an offscreen window — inject the platform muscle into the core port.
+setPageRenderer(renderPageOffscreen);
 
 export function toolFilter(wire: WireConfig, params?: ToolFilterParams): ToolFilterResult {
   config = wire.config;

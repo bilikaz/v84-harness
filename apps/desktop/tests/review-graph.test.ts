@@ -9,22 +9,41 @@ import { GraphEngine, registerGraph, clearGraphs, getPendingSelects, resolveSele
 import ReviewGraph from "../src/plugins/review/graphs/review.ts";
 import type { TurnResult } from "../src/core/sessions/index.ts";
 import type { Ctx } from "../src/core/ctx.ts";
+import { classify } from "../src/core/sessions/loop/contract.ts";
 
 const ok = (text: string): TurnResult => ({ text, errored: false, aborted: false });
 
 function stubCtx(head: (task: string) => TurnResult): Ctx {
   const inflight = new Map<string, AbortController>();
+  // A contract-loop double over the REAL classify: errored/unparseable → resume, missing fields →
+  // correction, bounded — enough to exercise the graph's routing against real contract semantics.
+  const runContract = (sid: string, spec: { task?: string; schema?: Record<string, unknown>; reattach?: boolean }) => ({
+    settled: (async () => {
+      let reply = head(spec.task && !spec.reattach ? spec.task : "__resume__");
+      for (let i = 0; i < 4; i++) {
+        if (reply.aborted) return { sessionId: sid, ok: false, data: "aborted" };
+        if (reply.errored) {
+          reply = head("__resume__");
+          continue;
+        }
+        const v = classify(reply.text, spec.schema);
+        if (v.ok) return { sessionId: sid, ok: true, data: v.text };
+        reply = head(v.fault === "missing-fields" ? `missing: ${(v.missing ?? []).join(", ")}` : "__resume__");
+      }
+      return { sessionId: sid, ok: false, data: "errored" };
+    })(),
+  });
   return {
     sessions: {
       registerInflight: (sid: string, c: AbortController) => inflight.set(sid, c),
       clearInflight: (sid: string) => inflight.delete(sid),
+      killLoop: () => {},
       sendTo: (_sid: string, task: string) => Promise.resolve(head(task)),
-      resume: () => Promise.resolve(head("")),
-      awaitSettled: (_sid: string, _sig: AbortSignal, dispatch: Promise<TurnResult | null>) => dispatch,
+      resume: () => Promise.resolve(head("__resume__")),
+      runContract,
     },
   } as unknown as Ctx;
 }
-
 // Reviewers, verifier, AND the consolidator all return the same findings shape; the consolidated JSON is
 // rendered by the exit node as the final ```json output.
 const FINDINGS = JSON.stringify({ findings: [{ file: "foo.ts", line: 12, severity: "high", claim: "off-by-one", rationale: "loop bound" }] });

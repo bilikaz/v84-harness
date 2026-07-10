@@ -6,6 +6,11 @@ This repo documents itself in three layers (see [docs/conventions/documentation.
 - **Rules** — [docs/conventions/](docs/conventions/): portable engineering rules, one topic per file.
 - **Decisions** — [docs/adr/](docs/adr/): dated decision log, Proposed → Accepted → Superseded.
 
+Terminology is governed by [docs/glossary.md](docs/glossary.md) — one canonical
+name per concept, synonyms map into its table. Before coining a term in any doc,
+discussion, or code identifier, check the glossary; new concepts get their row
+added in the same change that introduces them.
+
 ## Before starting work
 
 Check the current branch first. Starting from `main`/`master` is the normal case

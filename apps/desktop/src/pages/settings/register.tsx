@@ -1,4 +1,4 @@
-import { UserCircle, Plug, Image, Database, Blocks, Settings } from "lucide-react";
+import { UserCircle, Plug, Image, Database, Blocks, Settings, LayoutGrid } from "lucide-react";
 
 import { register } from "../../lib/registry.ts";
 import { AccountSection } from "./AccountSection.tsx";
@@ -7,6 +7,7 @@ import { ModelsSection } from "./ModelsSection.tsx";
 import { StorageSection } from "./StorageSection.tsx";
 import { PluginsSection } from "./PluginsSection.tsx";
 import { SystemSection } from "./SystemSection.tsx";
+import { GallerySection } from "./GallerySection.tsx";
 
 register(
   {
@@ -44,6 +45,15 @@ register(
     route: "settings/system",
     order: 2.5,
     render: () => <SystemSection />,
+  },
+  {
+    region: "settings",
+    id: "gallery",
+    title: "Gallery layouts",
+    icon: LayoutGrid,
+    route: "settings/gallery",
+    order: 2.7,
+    render: () => <GallerySection />,
   },
   {
     region: "settings",
