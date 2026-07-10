@@ -31,6 +31,10 @@ export interface Agent {
   // they live in a runtime-gated registry (like tools/UI/graphs), resolved by getAgent and shown only
   // while the plugin is enabled. Absent on user agents. Never persisted.
   ownerPluginId?: string;
+  // Plugin agents only: the plugin's explicit "this agent is general-purpose — offer it in the Agents
+  // catalog" declaration. Default hidden: undeclared agents are internal graph workers (10 plugins must
+  // not bloat the list with their cycle agents). User agents always list.
+  listed?: boolean;
 }
 
 const SEED: Agent[] = [
@@ -58,6 +62,7 @@ function normalize(p: Partial<Agent>): Agent {
     workspace: p.workspace === true,
     tools: { ...AGENT_TOOLS_DEFAULT, ...(p.tools ?? {}) },
     ownerPluginId: p.ownerPluginId,
+    listed: p.listed === true,
   };
 }
 

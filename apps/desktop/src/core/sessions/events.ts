@@ -99,6 +99,13 @@ export interface StreamRetry {
   sessionId: string;
   message: string;
 }
+// A supervised run's lifecycle (core/sessions/runner.ts — the SessionRunner) — the standard-activity
+// vocabulary: what the runner is doing on a surface, so "silent" is never ambiguous (healing vs waiting).
+export interface RunnerState {
+  sessionId: string;
+  state: "running" | "healing" | "waiting" | "settled" | "failed";
+  round?: number; // heal round, when state is "healing"
+}
 
 declare module "../../lib/bus.ts" {
   interface BusEvents {
@@ -120,6 +127,7 @@ declare module "../../lib/bus.ts" {
     "session:context": ForwardContext;
     "session:stream:retry": StreamRetry;
     "session:mediaFeedback": MediaFeedback;
+    "session:runner:state": RunnerState;
   }
 }
 

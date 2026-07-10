@@ -24,7 +24,10 @@ export function GraphsPanel() {
   const inWorkspace = activeType === "local" || activeType === "remote";
 
   const graphs = listGraphs().filter((g) => plugins[g.pluginSlug]?.enabled && (inWorkspace || !g.needsWorkspace()));
-  const runs = sessions.filter((s) => s.graphId);
+  // ACTIVE means a LIVE run: streaming now, or alive-but-paused (parked / soft-stopped / mid-dialog —
+  // continuable). Finished and restart-orphaned graph sessions are just sessions in the sidebar; listing
+  // them here read as "still running" and their continue could only answer "nothing to continue".
+  const runs = sessions.filter((s) => s.graphId && (streaming.has(s.id) || ctx.graph.hasRun(s.id)));
   if (!graphs.length && !runs.length) return null;
 
   function launch(id: string) {

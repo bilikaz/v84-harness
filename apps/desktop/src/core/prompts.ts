@@ -15,8 +15,12 @@ const PROMPTS = {
       "If the user writes in {{language}}, reply in {{language}}. Otherwise reply in English.",
   },
   workspace: {
+    // {{tools}} is filled with the SESSION'S advertised workspace tools (composeSystem) — naming the
+    // exact set stops small models from inventing read_file/write_file-style names, and naming only
+    // the advertised set keeps prose and specs from disagreeing.
     system:
-      "You have access to the user's workspace folder through your file tools. " +
+      "You have access to the user's workspace folder through these tools: {{tools}}. Use EXACTLY these " +
+      "names — no other file tool exists here. " +
       "The workspace root is `/workspace`: write paths as `/workspace/…` (or workspace-relative). A path that " +
       "leaves `/workspace` is refused — nothing outside the workspace is reachable. " +
       "Example paths: `/workspace/src/index.ts`, `notes.md`.",
@@ -31,15 +35,20 @@ const PROMPTS = {
       "captcha, or a popup dismissed, ASK THE USER to handle it in the window — they can act on it and tell " +
       "you to continue.",
   },
+  // Split save/search so each part is advertised ONLY with its tool present — prose naming an absent
+  // tool gets it fabricated from the description (schema-less SaveMemory calls in grounded sub chats).
   memory: {
-    system:
-      "You have a persistent memory (a shared knowledgebase) through the memory tools. " +
-      "When you learn something worth keeping — facts, decisions, the user's preferences, project details — save it with " +
-      "SaveMemory (scope `private` for just this user, `public` to share with everyone). " +
-      "When you need information that isn't in this conversation, search first with SearchMemory before asking or assuming: " +
+    save:
+      "You have a persistent memory (a shared knowledgebase). When you learn something worth keeping — " +
+      "facts, decisions, the user's preferences, project details — save it with SaveMemory (scope " +
+      "`private` for just this user, `public` to share with everyone), and use EditMemory / DeleteMemory " +
+      "to keep records current.",
+    search:
+      "You can search the persistent memory (a shared knowledgebase). When you need information that " +
+      "isn't in this conversation, search first with SearchMemory before asking or assuming: " +
       // Param names MUST match the SearchMemory tool schema (keywords/phrase). They were sparse/dense, which the tool ignores.
-      "pass a `keywords` list (lexical) and/or a related `phrase` (semantic) — both is best. SearchMemory returns snippets + record ids; " +
-      "read a full record with GetMemory, and use EditMemory / DeleteMemory to keep it current.",
+      "pass a `keywords` list (lexical) and/or a related `phrase` (semantic) — both is best. SearchMemory " +
+      "returns snippets + record ids; read a full record with GetMemory.",
   },
   agents: {
     // Always shown when the agent tools are advertised (top-level sessions; children don't orchestrate).
@@ -49,8 +58,7 @@ const PROMPTS = {
       "input it expects) before picking one. Start a run with RunAgent; pass several runs in one call to fan work " +
       "out concurrently. Each sub-agent runs in its own fresh session and can't see this conversation, so make every " +
       "task self-contained — include the content to work on, the constraints, and the output you want back.",
-    // Appended ONLY when async delivery is on; in sync mode RunAgent blocks and returns the answer, so there's
-    // nothing to "not wait" for.
+    // Sub-agents always run in the background (the sync wait-for-all mode is gone).
     async:
       "Delegation is asynchronous: RunAgent, AskAgent and ResumeAgent all return as soon as the agents start — the " +
       "reply is NOT inline. Don't wait, stall, or poll ActiveAgents for them: if you have other work carry on, and " +
@@ -61,6 +69,15 @@ const PROMPTS = {
     user:
       "Generate a concise 3-6 word title for THIS conversation. Do not add the word \"conversation\" in it. " +
       "Reply with ONLY the title — no quotes, no trailing punctuation.",
+  },
+  gallery: {
+    system:
+      "A gallery page composer is available: it lays IMAGES out into reviewed page layouts and renders a " +
+      "print-quality A4 PNG (photo galleries, postcards, comic pages). Layouts take {{counts}} images. " +
+      "Flow: call GalleryOptions({count}) to see that count's layout options (previews + descriptions, " +
+      "handles like \"4-1\"), then GalleryCompose({templateId, images: [...]}) with the slot images in " +
+      "reading order (workspace paths and/or img-N aliases). Optional masthead fields, each with a fixed home: " +
+      "title (big, left), date (top-right line 1), credit (top-right line 2), accent (color).",
   },
   compact: {
     system: "You compress conversations into faithful, self-contained summaries.",

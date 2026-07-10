@@ -161,11 +161,17 @@ export function commitMessages(sid: string): void {
   const session = getSession(sid);
   if (!session || session.loaded === false || !session.containerId) return;
   const msgs = session.messages;
+  // The exchange-hold protects PROVIDER history (a dangling tool_call 400s the next turn). A graph
+  // session's transcript never reaches a provider — and its Call exchanges take minutes (a child
+  // run) or never complete (a stalled head): holding them would keep the whole run's spine
+  // unpersisted ("no result ⇒ never registered"). Graph messages register at dispatch and their
+  // results upsert when they land.
+  const holdExchanges = !session.graphId;
   const run: Message[] = [];
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i];
     if (persisted.has(m.id)) break; // reached the durable boundary
-    if (neverPersist.has(m.id) || isPlaceholder(m) || inIncompleteExchange(m, msgs)) continue;
+    if (neverPersist.has(m.id) || isPlaceholder(m) || (holdExchanges && inIncompleteExchange(m, msgs))) continue;
     run.push(m);
   }
   if (!run.length) return;
@@ -202,6 +208,43 @@ export function setDelivered(sid: string, on: boolean): void {
   sessions = sessions.map((x) => (x.id === sid ? { ...x, meta: { ...x.meta, delivered: on } } : x));
   persistSessionMeta(sid);
   notify();
+}
+
+// Persisted wait records (see SessionRuntime.waits) — a WaitStore over session meta, written at the
+// same settle cadence as everything else. On load, unsettled waits re-arm; settled data replays.
+export function putWait(sid: string, w: NonNullable<SessionRuntime["waits"]>[number]): void {
+  const s = getSession(sid);
+  if (!s) return;
+  const waits = [...(s.meta.waits ?? []).filter((x) => x.id !== w.id), w];
+  sessions = sessions.map((x) => (x.id === sid ? { ...x, meta: { ...x.meta, waits } } : x));
+  persistSessionMeta(sid);
+}
+export function deleteWait(sid: string, id: string): void {
+  const s = getSession(sid);
+  if (!s?.meta.waits?.some((x) => x.id === id)) return;
+  const waits = (s.meta.waits ?? []).filter((x) => x.id !== id);
+  sessions = sessions.map((x) => (x.id === sid ? { ...x, meta: { ...x.meta, waits } } : x));
+  persistSessionMeta(sid);
+}
+export function waitsFor(sid: string): NonNullable<SessionRuntime["waits"]> {
+  return getSession(sid)?.meta.waits ?? [];
+}
+
+// Patch EXTENSION keys into a session's meta (see SessionRuntime) — set on configure, no clear.
+export function patchMeta(sid: string, patch: Record<string, unknown>): void {
+  const s = getSession(sid);
+  if (!s) return;
+  sessions = sessions.map((x) => (x.id === sid ? { ...x, meta: { ...x.meta, ...patch } } : x));
+  persistSessionMeta(sid);
+}
+
+// The graph-run milestone (see SessionRuntime.graphRun) — written by the graph engine at every node
+// boundary, cleared when the run ends; a relaunch revives the run parked here.
+export function setGraphRun(sid: string, run: SessionRuntime["graphRun"]): void {
+  const s = getSession(sid);
+  if (!s || (!run && !s.meta.graphRun)) return;
+  sessions = sessions.map((x) => (x.id === sid ? { ...x, meta: { ...x.meta, graphRun: run } } : x));
+  persistSessionMeta(sid);
 }
 
 // The wholesale transcript rewrite is GONE: compaction appends (appendSummary → commitMessages), so

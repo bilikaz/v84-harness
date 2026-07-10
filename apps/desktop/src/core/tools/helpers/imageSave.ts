@@ -73,16 +73,20 @@ export interface PreparedSave {
 }
 
 // Resolve where a generated/edited image will be saved and check for collisions UP FRONT (before generation).
-// Returns an error string if the name is invalid, escapes the workspace, or already exists (unless overwrite).
+// `name` may carry a subfolder ("heroes/mia" → <outputDir>/heroes/mia.png) which NESTS INSIDE the output
+// dir — generation organizes within scratch but can never write outside it (curated folders are reachable
+// only by a graph's deliberate promotion). Each segment is sanitized; confinement still applies.
 export function prepareWorkspaceImageSave(opts: {
   root: string;
   outputDir?: string;
   name: string;
   overwrite?: boolean;
 }): PreparedSave | { error: string } {
-  const base = slugName(opts.name);
-  if (!base) return { error: `invalid image name "${opts.name}" — use letters, numbers, dashes; no slashes or extension.` };
-  const dir = (opts.outputDir && opts.outputDir.trim()) || DEFAULT_IMAGE_DIR;
+  const parts = String(opts.name).split("/").filter((p) => p.trim());
+  const base = slugName(parts.pop() ?? "");
+  const subdirs = parts.map(slugName).filter(Boolean);
+  if (!base) return { error: `invalid image name "${opts.name}" — use letters, numbers, dashes; an optional folder like "avatars/name"; no extension.` };
+  const dir = [(opts.outputDir && opts.outputDir.trim()) || DEFAULT_IMAGE_DIR, ...subdirs].join("/");
   const realDir = path.resolve(opts.root, dir);
   if (realDir !== opts.root && !realDir.startsWith(opts.root + path.sep)) {
     return { error: `image output directory "${dir}" escapes the workspace.` };

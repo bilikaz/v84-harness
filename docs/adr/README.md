@@ -93,6 +93,11 @@ loading. Its index row below stays.
 | [0076](0076-image-edit-service-and-referenceable-images.md) | Image editing: `imageEdit` as its own service; `ImageCompose` (prompt + references); workspace-saved, model-named generated images (refuse-on-collision, two-phase); repeated-`image` multipart wire | accepted |
 | [0077](0077-media-reference-aliases.md) | Media reference aliases — per-session `img-N`/`vid-N` stamped at landing (counter in `session.meta`), in-band annotations, engine pre-resolution into `ToolCallRequest.mediaRefs` | accepted |
 | [0078](0078-compaction-as-send-boundary.md) | Compaction is a send boundary, not a rewrite — summary appended, send = last summary + tail, transcript/media never destroyed (amends 0072's compaction clause) | accepted |
+| [0079](0079-session-loop-architecture.md) | One supervised session loop — drivers, contract-in-loop, typed faults + one reaction table, settlement events + persisted waits, pending inbox, boot=resume, `runContract` (supersedes the modelTurn/awaitHead/onDialogTurn machinery) | accepted |
+| [0080](0080-graphs-as-response-producers.md) | Graphs are response producers — commands as prompt, nodes emit real Call/Select tool calls, park=yield, cursor revival; GraphEngine is a thin router (supersedes 0067's executor mechanics) | accepted |
+| [0081](0081-gallery-core-capability.md) | Gallery is core — self-described layout catalog as data, one A4 page format, render port, GalleryOptions/GalleryCompose | accepted |
+| [0082](0082-generation-jobs-and-budgeted-tools.md) | Generation jobs + budgeted generate tools — files-as-ledger attempts, silent budgets, scratch/curated split (graphs promote), the structured reference law, task=data | accepted |
+| [0083](0083-total-agent-grounding.md) | The agent tools ceiling binds EVERY tier — permissionless and engine tools included; plugin agents catalog-listed opt-in | accepted |
 
 ## Needs review / important missing parts
 

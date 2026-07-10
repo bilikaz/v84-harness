@@ -3,6 +3,7 @@ import {
   appendToLast,
   commitMessages,
   getActiveId,
+  getSession,
   markLastNeverPersist,
   markUnread,
   notify,
@@ -58,7 +59,13 @@ const offs: Array<() => void> = [
     notify();
   }),
 
-  bus.on("tool:calls", (e) => setLastToolCalls(e.sessionId, e.calls)), // committed once the exchange completes (tool:result)
+  // Model sessions: committed once the exchange completes (tool:result). Graph sessions: the Call
+  // card registers at DISPATCH (commitMessages skips the exchange-hold for graphId sessions — their
+  // transcript never reaches a provider, and a Call's "result" is a whole child run).
+  bus.on("tool:calls", (e) => {
+    setLastToolCalls(e.sessionId, e.calls);
+    if (getSession(e.sessionId)?.graphId) commitMessages(e.sessionId);
+  }),
   // tool:result completes the exchange (or one call of a multi-call step) — commit the assistant + all
   // its results together (commitMessages holds an exchange until every call has a result, so a crash
   // never leaves a dangling tool_call). An async RunAgent ack lands here too — the spawn is durable now.

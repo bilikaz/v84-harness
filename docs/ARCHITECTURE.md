@@ -7,6 +7,8 @@ the cross-cutting structure everyone reads first, with per-area deep dives in
 [ADR-0010](adr/0010-adopt-shared-conventions.md)); dated decisions and their
 trade-offs in [docs/adr/](adr/). The working procedure that maintains all three
 layers is the root [/CLAUDE.md](../CLAUDE.md) — agent sessions read it on start.
+Terminology is governed by the [glossary](glossary.md) — one canonical name per
+concept; check it before coining a word in any doc or discussion.
 
 ## Overview
 
@@ -15,7 +17,7 @@ A pnpm-workspace monorepo with two apps:
 - **`apps/desktop`** — an Electron + React desktop chat harness that talks to LLM
   providers (OpenAI-compatible, Anthropic, Gemini), runs agent tool calls against
   local workspaces, orchestrates stored agents as parallel sub-agents (ADR-0022),
-  drives deterministic event-driven graph orchestrations ([ADR-0067](adr/0067-graph-orchestration-engine.md)),
+  drives deterministic event-driven graph orchestrations ([ADR-0080](adr/0080-graphs-as-response-producers.md)),
   and generates media (images/video). **This hub maps `apps/desktop`.**
 - **`apps/knowledge`** — the remote backend it talks to when an account is
   connected: per-user durable storage (the per-entity data API behind the remote `StorageRepos`),
@@ -82,7 +84,9 @@ Layering rules:
 | `src/core/` | Host-agnostic domain logic: `ctx` (config + llm + storage engine + tool gateway + host api + sessions engine + concurrency runner), config (incl. the derived `pools.ts` runner view), sessions engine, tools (the `account/` registry tier + the `engine/` driver-level tier — sub-agents + browser fleet, [ADR-0050](adr/0050-engine-tool-tier.md)), the browser fleet store (`browser.ts`, [browser.md](architecture/browser.md)), per-entity `StorageRepos` + `StorageEngine` + `Consumer` base, host capability surface (`host.ts`), containers, approvals, the unified settings registry, agents, the machine-local `account` store (`account.ts` — identity + connection lifecycle), and the plugin system (`plugins/` — manifest registry, `config.plugins` slice, `pluginData` handle, boot scan) |
 | `src/llm/` | The model layer (the shared-shape floor): `client.call()` (service-named calls; accepts a leased `target` and an injected `SlotProvider` for target-less calls), Provider classes per `<modality>/<type>`, response handlers, and the shapes core/config/tools import down (`Image`/`Video`, `ToolSpec`, `ToolCallRequest`, service unions) |
 | `src/core/runner/` | The concurrency runner ([ADR-0066](adr/0066-concurrency-runner.md)): `RunnerEngine` leases live slots over the per-service priority pools (per-model `c` + reserve), provider-affinity binding with a TTL, the wait queue + reaper, and `status.ts` (the reactive "waiting for a slot" view) |
-| `src/core/graph/` | The graph orchestration engine ([ADR-0067](adr/0067-graph-orchestration-engine.md), [ADR-0069](adr/0069-message-driven-graph-control.md)): `GraphEngine` (`ctx.graph`) drives event-driven named-node graphs (`Start`/`End` pairs, `goTo`/`splitTo`/`goToAll`, reserved `exit` node with ```json output, producer-declared arrival-driven joins, seeded heads + JSON heal), message-driven control (`start`/`continue`/`<node>`), node-validated `ctx.break` → park/resume, the `BaseGraph` base, the registry, and the `Select` user-resolution bridge |
+| `src/core/graph/` | Graph orchestration as a RESPONSE PRODUCER over the session loop ([ADR-0080](adr/0080-graphs-as-response-producers.md), node model [ADR-0067](adr/0067-graph-orchestration-engine.md), commands [ADR-0069](adr/0069-message-driven-graph-control.md)): `GraphSessionLoop` (commands as prompt; nodes emit REAL `Call`/`Select` tool calls; park = yield; milestone-cursor revival), the thin `GraphEngine` router (`ctx.graph`), `BaseGraph` + registry + the `Select` bridge |
+| `src/core/sessions/loop/` | THE session loop ([ADR-0079](adr/0079-session-loop-architecture.md)): `SessionLoopBase` (respond → dispatch → drain inbox → classify → react/settle), the contract module (typed faults, ONE reaction table, budgets), settlement events + persisted waits + the pending inbox (boot = resume), and the llm shape (`LlmSessionLoop`: model step + tool tier behind `respond`/`dispatch`, segments → turn events, resident interactive loops) |
+| `src/core/gallery/` | Content-agnostic A4 page composition ([ADR-0081](adr/0081-gallery-core-capability.md)): the layout catalog as data (26 reviewed layouts, positional handles), the HTML page builder, and the render PORT the electron host implements offscreen |
 | `src/lib/` | Renderer utilities: event bus, i18n, router, registry, errors, ui state (the old `store.ts` factory is gone — state is now `core/storage/consumer.ts`) |
 | `src/lib/logger/` | `Logger` port (scoped children, structured events) + console / memory sinks |
 | `src/core/storage/` | The per-entity `StorageRepos` interface (`types.ts`) + `StorageEngine` (`engine.ts` — holds local + optional remote providers, exposes `repos()` active vs `localRepos()` machine lane), the reactive `Consumer` base (`consumer.ts`), and the providers: `remote.ts` (knowledge-API client), `idb.ts` (IndexedDB), `memory.ts` (tests). The electron local SQLite provider lives in its platform (`electron/sqliteStore.ts` + `sqliteRepos.ts`) |
@@ -110,9 +114,10 @@ Deep dives, one per subsystem — read the one for the area you're touching
 | Area doc | Covers |
 |----------|--------|
 | [architecture/state.md](architecture/state.md) | Reactive `Consumer` pattern + hooks; the typed event bus |
-| [architecture/sessions.md](architecture/sessions.md) | Sessions engine module shape; the turn loop; sub-agents; media resend window |
+| [architecture/sessions.md](architecture/sessions.md) | The one session loop and its shapes; runContract; settlement/waits/inbox; sub-agents; stop semantics |
 | [architecture/agents.md](architecture/agents.md) | Agents: definitions + ceiling; the standing team (aliases, roster, AskAgent/ResumeAgent); typed outcomes; resume-from-history; the built-in General agent |
-| [architecture/graph.md](architecture/graph.md) | Graph orchestration: event-driven Start/End nodes; routes (goTo/splitTo/goToAll) + reserved exit node; arrival-driven joins; seeded heads + JSON heal; the Select primitive; message-driven control (start/continue/jump) + break/park; plugin graphs + agents |
+| [architecture/graph.md](architecture/graph.md) | Graphs as response producers: commands as prompt; nodes as real Call/Select tool calls; park/revival; dialogs + heads via runContract; the Select primitive; plugin graphs + agents |
+| [architecture/gallery.md](architecture/gallery.md) | Gallery: the layout catalog as data; the A4 page builder; the offscreen render port; GalleryOptions/GalleryCompose |
 | [architecture/tools.md](architecture/tools.md) | Tool system: general / workspace / account registry tiers + the engine tier (driver-level tools); virtual root; caps |
 | [architecture/browser.md](architecture/browser.md) | Browser fleet: session-owned/ephemeral windows, the agent tools, host capturePage + load push, the god-view + comment flow |
 | [architecture/llm.md](architecture/llm.md) | The llm layer: client.call, services, LLMConfig, Provider classes, response handlers, heal |

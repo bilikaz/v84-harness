@@ -48,6 +48,6 @@ export class ResumeAgent extends BaseEngineTool {
     const alias = aliasOf(child);
     if (getUserPausedIds().has(child.id)) return { error: `agent ${alias} was paused by the user and is theirs to continue — leave it to them.` };
     if (getStreamingIds().has(child.id)) return { error: `agent ${alias} is already running — nothing to resume.` };
-    return { childSid: child.id, alias, name: child.title, dispatch: ec.engine.resume(child.id) };
+    return { childSid: child.id, alias, name: child.title };
   }
 }

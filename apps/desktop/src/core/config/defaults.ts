@@ -75,14 +75,10 @@ export interface ConfigApp {
     titleMaxTokens: number;
     // Auto-compaction thinking budget — a summary doesn't need deep reasoning.
     compactThinkingBudget: number;
-    // Async sub-agent orchestration: when on, RunAgent returns immediately and
-    // the parent is pushed each child's result as it finishes (instead of
-    // blocking the turn until all children are done). Off = the classic
-    // await-all-children behaviour.
-    asyncAgents: boolean;
-    // How a finished child's result reaches the parent (async mode only):
-    // "synthetic" fabricates a getAgentContent call+result into history (no extra
-    // round-trip); "nudge" injects a notice and lets the model call it.
+    // How a finished child's result reaches the parent (sub-agents always run in
+    // the background — RunAgent returns immediately, results deliver as children
+    // settle): "synthetic" fabricates a getAgentContent call+result into history
+    // (no extra round-trip); "nudge" injects a notice and lets the model call it.
     asyncDelivery: "synthetic" | "nudge";
     // Concurrency runner: how long a session's provider BINDING (affinity, not a
     // held slot) survives idle — a return within this window re-warms KV on the
@@ -128,7 +124,6 @@ export const CONFIG_DEFAULTS: ConfigApp = {
     maxSteps: 50,
     titleMaxTokens: 4096,
     compactThinkingBudget: 2048,
-    asyncAgents: true,
     asyncDelivery: "nudge",
     runnerTtlMs: 10 * 60 * 1000,
     kvProtectThreshold: 16_000,
